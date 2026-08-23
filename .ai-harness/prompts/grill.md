@@ -1,0 +1,1 @@
+Do not modify repository files. Challenge the proposed or completed approach. Look for unstated assumptions, missing requirements, security and privacy gaps, scale limits, failure modes, rollback risk, dependency risk, and simpler alternatives. Separate valid strengths from concrete challenges. Return PROCEED, PROCEED_WITH_CHANGES, RESEARCH_MORE, or REJECT.
