@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Adaptive provider-neutral AI coding harness.
-
-Python 3.11+; standard library only.
-The harness routes tasks, compacts context, executes a selected AI CLI,
-records evidence, and learns reusable patterns without rewriting its own code.
-"""
+"""Adaptive provider-neutral AI coding harness."""
 from __future__ import annotations
 
 import argparse
@@ -25,9 +20,8 @@ CONFIG_PATH = HARNESS / "config.toml"
 RUNS = HARNESS / "runs"
 MEMORY = HARNESS / "memory"
 PROMPTS = HARNESS / "prompts"
-
+PRINCIPLES = HARNESS / "principles.md"
 CAPABILITIES = ("research", "poc", "grill")
-DEFAULT_ROUTE = {"mode": "implement", "capabilities": [], "risk": "low", "uncertainty": "known"}
 
 
 def load_config() -> dict[str, Any]:
@@ -96,7 +90,7 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
 def normalize_words(text: str) -> set[str]:
     words = re.findall(r"[a-zA-Z][a-zA-Z0-9_-]{2,}", text.lower())
     stop = {"the", "and", "for", "with", "from", "this", "that", "into", "have", "will", "task", "change"}
-    return {w for w in words if w not in stop}
+    return {word for word in words if word not in stop}
 
 
 def build_repo_map(limit: int = 500) -> str:
@@ -131,13 +125,13 @@ def relevant_memory(task: str, budget: int) -> str:
     task_words = normalize_words(task)
     ranked: list[tuple[float, dict[str, Any]]] = []
     for item in candidates:
-        words = normalize_words(" ".join(str(item.get(k, "")) for k in ("pattern", "lesson", "scope", "tags")))
+        words = normalize_words(" ".join(str(item.get(key, "")) for key in ("pattern", "lesson", "scope", "tags")))
         overlap = len(task_words & words)
         confidence = float(item.get("confidence", 0.5))
         score = overlap * 2 + confidence
         if overlap or confidence >= 0.9:
             ranked.append((score, item))
-    ranked.sort(key=lambda x: x[0], reverse=True)
+    ranked.sort(key=lambda pair: pair[0], reverse=True)
     if not ranked:
         return "No relevant learned patterns."
     lines: list[str] = []
@@ -149,6 +143,24 @@ def relevant_memory(task: str, budget: int) -> str:
         lines.append(value)
         used += len(value)
     return "\n".join(lines) or "No relevant learned patterns."
+
+
+def load_principles(limit: int = 7000) -> str:
+    if not PRINCIPLES.exists():
+        return "Use language-neutral engineering judgment focused on correctness, simplicity, maintainability, security, testing, compatibility, and evidence."
+    return compact(PRINCIPLES.read_text(encoding="utf-8"), limit)
+
+
+def applicable_principles(task: str, route: dict[str, Any]) -> list[str]:
+    text = task.lower()
+    selected = ["DRY", "YAGNI", "KISS", "DI / Dependency Inversion", "Separation of Concerns", "High Cohesion / Low Coupling", "Compatibility by Default", "Test the Behavior", "Evidence over Assumption", "Locality of Change"]
+    if route.get("risk") in {"high", "critical"} or any(word in text for word in ("security", "auth", "permission", "secret")):
+        selected += ["Security by Default", "Fail Fast and Explicitly", "Least Knowledge"]
+    if route.get("mode") in {"debug", "poc"} or any(word in text for word in ("concurrency", "timeout", "performance", "scale", "retry")):
+        selected += ["Resource and Failure Awareness", "Observability"]
+    if route.get("risk") in {"high", "critical"} or any(word in text for word in ("migration", "breaking", "production", "rollout")):
+        selected += ["Reversibility", "Make Illegal States Hard to Represent"]
+    return list(dict.fromkeys(selected))
 
 
 def heuristic_route(task: str) -> dict[str, Any]:
@@ -186,8 +198,7 @@ def parse_route_output(output: str) -> dict[str, Any] | None:
         return None
     if not isinstance(value, dict):
         return None
-    caps = [c for c in value.get("capabilities", []) if c in CAPABILITIES]
-    value["capabilities"] = list(dict.fromkeys(caps))
+    value["capabilities"] = list(dict.fromkeys([cap for cap in value.get("capabilities", []) if cap in CAPABILITIES]))
     value["mode"] = str(value.get("mode", "implement"))
     value["risk"] = str(value.get("risk", "low"))
     value["uncertainty"] = str(value.get("uncertainty", "known"))
@@ -207,14 +218,10 @@ def make_run_dir() -> Path:
 
 
 def provider_command(provider: dict[str, Any], prompt_file: Path, phase: str, run_dir: Path) -> tuple[list[str], Path]:
-    values = {
-        "{prompt_file}": str(prompt_file),
-        "{workspace}": str(ROOT),
-        "{phase}": phase,
-        "{run_dir}": str(run_dir),
-    }
-    command = [values.get(v, v) for v in provider["command"]]
-    cwd = Path(values.get(provider.get("working_directory", "{workspace}"), provider.get("working_directory", str(ROOT))))
+    values = {"{prompt_file}": str(prompt_file), "{workspace}": str(ROOT), "{phase}": phase, "{run_dir}": str(run_dir)}
+    command = [values.get(value, value) for value in provider["command"]]
+    working = provider.get("working_directory", "{workspace}")
+    cwd = Path(values.get(working, working))
     return command, cwd
 
 
@@ -241,15 +248,22 @@ def invoke(provider: dict[str, Any], prompt_file: Path, phase: str, run_dir: Pat
 def render_prompt(phase: str, task: str, source: str, jira: str | None, route: dict[str, Any], context: str, memory: str, history: str) -> str:
     phase_path = PROMPTS / f"{phase}.md"
     phase_rules = phase_path.read_text(encoding="utf-8") if phase_path.exists() else ""
+    principles = load_principles()
+    selected = applicable_principles(task, route)
     return f"""# AI Coding Harness
 
-You are operating inside an existing repository. Inspect before changing code. Keep outputs concise and factual.
+You are operating inside an existing repository. The rules are language-neutral. Adapt them to the language, runtime, architecture, and conventions already present. Do not introduce framework-specific patterns merely to satisfy a principle name.
+
+## Engineering principles
+
+Applicable principles for this task: {', '.join(selected)}
+
+{principles}
 
 ## Input
 Source: {source}
 Jira: {jira or 'none'}
-Task:
-{task}
+Task:\n{task}
 
 ## Route
 {json.dumps(route, indent=2)}
@@ -275,7 +289,7 @@ Use the smallest amount of context needed. Prefer targeted file reads over broad
 
 
 def route_task(provider: dict[str, Any], task: str, source: str, jira: str | None, memory: str, repo_map: str, run_dir: Path, dry_run: bool) -> dict[str, Any]:
-    prompt = f"""Route this software-engineering request. Do not modify files.
+    prompt = f"""Route this software-engineering request. Do not modify files. Keep the result language-neutral.
 
 Return exactly one line starting with ROUTE_JSON: followed by JSON with:
 mode: one of implement, debug, research, poc, review
@@ -283,7 +297,10 @@ capabilities: zero or more of research, poc, grill
 risk: low, medium, high, critical
 uncertainty: known, moderate, unknown
 scope: file, component, service, repository, cross-repository
+principles: array containing the principle names that materially constrain the task
 reason: <= 300 characters
+
+Apply these principles while routing: DRY, YAGNI, KISS, DI / Dependency Inversion, SOLID, separation of concerns, high cohesion / low coupling, composition over inheritance, least knowledge, fail fast, single source of truth, compatibility by default, behavior-focused testing, security by default, observability, failure awareness, reversibility, evidence over assumption, locality of change.
 
 Input source: {source}
 Jira key: {jira or 'none'}
@@ -299,11 +316,9 @@ Repository map:
     route_file = run_dir / "route.prompt.md"
     route_file.write_text(prompt, encoding="utf-8")
     output_file = run_dir / "route.output.md"
-    code, output = invoke(provider, route_file, "route", run_dir, output_file, dry_run)
+    _, output = invoke(provider, route_file, "route", run_dir, output_file, dry_run)
     parsed = parse_route_output(output)
-    if parsed:
-        return parsed
-    return heuristic_route(task)
+    return parsed or heuristic_route(task)
 
 
 def validation(config: dict[str, Any], run_dir: Path) -> bool:
@@ -317,6 +332,7 @@ def validation(config: dict[str, Any], run_dir: Path) -> bool:
             result = subprocess.run(command, cwd=ROOT, shell=True, text=True, stdout=out, stderr=subprocess.STDOUT, check=False)
             out.write(f"exit={result.returncode}\n\n")
             if result.returncode != 0:
+                (run_dir / "validation.failed").write_text("failed\n", encoding="utf-8")
                 return False
     return True
 
@@ -347,186 +363,118 @@ def learn_from_run(run_dir: Path, task: str, route: dict[str, Any]) -> None:
     patterns_path, observations_path = memory_paths()
     review = (run_dir / "review.output.md").read_text(encoding="utf-8") if (run_dir / "review.output.md").exists() else ""
     validation_ok = not (run_dir / "validation.failed").exists()
-    lesson_candidates = []
-    if review:
-        lines = [line.strip(" -#") for line in review.splitlines() if line.strip()]
-        for line in lines:
-            if any(word in line.lower() for word in ("lesson", "recommend", "avoid", "prefer", "risk")):
-                lesson_candidates.append(line[:500])
-    observation = {
-        "id": hashlib.sha256(f"{task}|{now_iso()}".encode()).hexdigest()[:12],
-        "created_at": now_iso(),
-        "task": compact(task, 500),
-        "route": route,
-        "success": validation_ok,
-        "lessons": lesson_candidates[:5],
-    }
+    lessons: list[str] = []
+    for line in review.splitlines():
+        clean = line.strip(" -#")
+        if clean and any(word in clean.lower() for word in ("lesson", "recommend", "avoid", "prefer", "risk")):
+            lessons.append(clean[:500])
+    observation = {"id": hashlib.sha256(f"{task}|{now_iso()}".encode()).hexdigest()[:12], "created_at": now_iso(), "task": compact(task, 500), "route": route, "success": validation_ok, "lessons": lessons[:5]}
     append_jsonl(observations_path, observation)
-    for lesson in lesson_candidates[:5]:
-        append_jsonl(patterns_path, {
-            "id": hashlib.sha256(lesson.encode()).hexdigest()[:12],
-            "created_at": now_iso(),
-            "pattern": lesson,
-            "scope": route.get("scope", "repository"),
-            "confidence": 0.55,
-            "observations": 1,
-            "successes": 1 if validation_ok else 0,
-            "source": "run-review",
-        })
+    for lesson in lessons[:5]:
+        append_jsonl(patterns_path, {"id": hashlib.sha256(lesson.encode()).hexdigest()[:12], "created_at": now_iso(), "pattern": lesson, "scope": route.get("scope", "repository"), "confidence": 0.6 if validation_ok else 0.3})
 
 
-def groom(config: dict[str, Any]) -> dict[str, int]:
+def groom_memory() -> None:
     patterns_path, _ = memory_paths()
     items = read_jsonl(patterns_path)
-    grouped: dict[str, dict[str, Any]] = {}
+    latest: dict[str, dict[str, Any]] = {}
     for item in items:
-        key = re.sub(r"\s+", " ", str(item.get("pattern", "")).strip().lower())
-        if not key:
-            continue
-        current = grouped.get(key)
-        if not current:
-            current = dict(item)
-            current["observations"] = 0
-            current["successes"] = 0
-            grouped[key] = current
-        current["observations"] += int(item.get("observations", 1))
-        current["successes"] += int(item.get("successes", 0))
-        current["confidence"] = max(float(current.get("confidence", 0.5)), float(item.get("confidence", 0.5)))
-        current["last_seen"] = item.get("created_at", current.get("last_seen"))
-    min_obs = int(config.get("learning", {}).get("min_observations_for_promotion", 3))
-    min_rate = float(config.get("learning", {}).get("min_success_rate_for_promotion", 0.75))
-    output: list[dict[str, Any]] = []
-    promoted = 0
-    for item in grouped.values():
-        obs = max(1, int(item.get("observations", 1)))
-        rate = int(item.get("successes", 0)) / obs
-        item["success_rate"] = round(rate, 3)
-        item["confidence"] = round(min(0.99, max(item.get("confidence", 0.5), rate)), 3)
-        item["status"] = "trusted" if obs >= min_obs and rate >= min_rate else "observed"
-        if item["status"] == "trusted":
-            promoted += 1
-        output.append(item)
-    output.sort(key=lambda x: (x.get("status") == "trusted", x.get("confidence", 0)), reverse=True)
-    max_items = int(config.get("learning", {}).get("max_memory_items", 250))
-    output = output[:max_items]
-    with patterns_path.open("w", encoding="utf-8") as handle:
-        for item in output:
-            handle.write(json.dumps(item, ensure_ascii=False) + "\n")
-    return {"patterns": len(output), "trusted": promoted}
-
-
-def memory_summary() -> str:
-    patterns, observations = memory_paths()
-    p = read_jsonl(patterns)
-    o = read_jsonl(observations)
-    trusted = [x for x in p if x.get("status") == "trusted"]
-    return json.dumps({"patterns": len(p), "trusted": len(trusted), "observations": len(o), "trusted_items": trusted[:20]}, indent=2, ensure_ascii=False)
+        key = str(item.get("id") or hashlib.sha256(str(item.get("pattern", "")).encode()).hexdigest()[:12])
+        previous = latest.get(key)
+        if previous is None or str(item.get("created_at", "")) > str(previous.get("created_at", "")):
+            latest[key] = item
+    promoted: list[dict[str, Any]] = []
+    for item in latest.values():
+        confidence = float(item.get("confidence", 0.0))
+        item["confidence"] = min(0.99, confidence + 0.05) if confidence >= 0.6 else confidence
+        if item["confidence"] >= 0.8:
+            item["status"] = "trusted"
+        promoted.append(item)
+    promoted.sort(key=lambda x: (float(x.get("confidence", 0)), str(x.get("created_at", ""))), reverse=True)
+    patterns_path.write_text("".join(json.dumps(item, ensure_ascii=False) + "\n" for item in promoted[:500]), encoding="utf-8")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Adaptive provider-neutral AI coding harness")
-    sub = parser.add_subparsers(dest="command", required=True)
+    parser = argparse.ArgumentParser(description="Adaptive language-neutral AI coding harness")
+    sub = parser.add_subparsers(dest="action", required=True)
+
     sub.add_parser("providers")
-    sub.add_parser("capabilities")
+    sub.add_parser("principles")
     sub.add_parser("memory")
     sub.add_parser("groom")
-    sub.add_parser("context")
+    context = sub.add_parser("context")
+    context.add_argument("--output", default=".ai-harness/repository-map.md")
+
     run = sub.add_parser("run")
-    run.add_argument("--agent", default=None)
-    run.add_argument("--task", default=None)
-    run.add_argument("--jira", default=None)
-    run.add_argument("--jira-file", default=None)
+    run.add_argument("--agent", default="claude")
+    run.add_argument("--task", required=True)
+    run.add_argument("--jira")
     run.add_argument("--source", default="prompt")
     run.add_argument("--dry-run", action="store_true")
-    run.add_argument("--workflow", default=None)
-    args = parser.parse_args()
 
+    args = parser.parse_args()
     config = load_config()
-    if args.command == "providers":
+
+    if args.action == "providers":
         print("\n".join(config.get("providers", {}).keys()))
         return 0
-    if args.command == "capabilities":
-        print("\n".join(CAPABILITIES))
+    if args.action == "principles":
+        print(PRINCIPLES.read_text(encoding="utf-8"))
         return 0
-    if args.command == "memory":
-        print(memory_summary())
+    if args.action == "memory":
+        patterns, observations = memory_paths()
+        print(f"patterns: {patterns}")
+        print(f"observations: {observations}")
+        print(f"pattern_count: {len(read_jsonl(patterns))}")
+        print(f"observation_count: {len(read_jsonl(observations))}")
         return 0
-    if args.command == "groom":
-        print(json.dumps(groom(config), indent=2))
+    if args.action == "groom":
+        groom_memory()
+        print("Memory groomed")
         return 0
-    if args.command == "context":
-        print(build_repo_map())
+    if args.action == "context":
+        target = ROOT / args.output
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(build_repo_map(), encoding="utf-8")
+        print(target)
         return 0
-
-    if not args.task and not args.jira and not args.jira_file:
-        print("Provide --task, --jira, or --jira-file", file=sys.stderr)
-        return 2
-
-    task = args.task or ""
-    if args.jira_file:
-        path = Path(args.jira_file)
-        task += "\n\nJira content:\n" + path.read_text(encoding="utf-8")
-    if args.jira:
-        task += f"\n\nJira key: {args.jira}\nThe selected AI agent should retrieve the Jira issue through an available Jira/MCP integration when possible."
 
     providers = config.get("providers", {})
-    agent = args.agent or config.get("harness", {}).get("default_provider", "claude")
-    if agent not in providers:
-        print(f"Unknown provider: {agent}. Available: {', '.join(providers)}", file=sys.stderr)
+    if args.agent not in providers:
+        print(f"Unknown agent: {args.agent}. Configured: {', '.join(providers)}", file=sys.stderr)
         return 2
-    provider = dict(providers[agent])
-    provider["name"] = agent
-
+    provider = dict(providers[args.agent])
+    provider["name"] = args.agent
     run_dir = make_run_dir()
     repo_map = build_repo_map()
-    memory = relevant_memory(task, int(config.get("router", {}).get("memory_budget", 900)))
-    route = heuristic_route(task)
-    if config.get("harness", {}).get("auto_route", True) and not args.dry_run:
-        route = route_task(provider, task, args.source, args.jira, memory, repo_map, run_dir, False)
-    if args.workflow and args.workflow in config.get("workflows", {}):
-        route["workflow"] = args.workflow
+    task_memory = relevant_memory(args.task, int(config.get("tokens", {}).get("memory", 1200)))
+    route = route_task(provider, args.task, args.source, args.jira, task_memory, repo_map, run_dir, args.dry_run)
     phases = phase_sequence(route)
-
-    manifest = {
-        "version": 2,
-        "created_at": now_iso(),
-        "agent": agent,
-        "source": args.source,
-        "jira": args.jira,
-        "task": task,
-        "route": route,
-        "phases": phases,
-        "git_initial": git_state(),
-    }
-    (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    metadata = {"agent": args.agent, "source": args.source, "jira": args.jira, "task": args.task, "route": route, "phases": phases, "started_at": now_iso()}
+    (run_dir / "manifest.json").write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     (run_dir / "repository-map.md").write_text(repo_map, encoding="utf-8")
-    (run_dir / "task.txt").write_text(task, encoding="utf-8")
-
+    (run_dir / "task.txt").write_text(args.task, encoding="utf-8")
     history = ""
-    context = compact(repo_map, int(config.get("router", {}).get("context_budget", 1400)))
     for phase in phases:
         if phase == "context":
             continue
-        prompt = render_prompt(phase, task, args.source, args.jira, route, context, memory, compact(history, int(config.get("router", {}).get("max_history_chars", 5000))))
         prompt_file = run_dir / f"{phase}.prompt.md"
-        prompt_file.write_text(prompt, encoding="utf-8")
         output_file = run_dir / f"{phase}.output.md"
+        prompt_file.write_text(render_prompt(phase, args.task, args.source, args.jira, route, repo_map, task_memory, history), encoding="utf-8")
         code, output = invoke(provider, prompt_file, phase, run_dir, output_file, args.dry_run)
-        history += f"\n# {phase}\n{compact(output, 1800)}\n"
         if code != 0:
+            print(f"phase failed: {phase}", file=sys.stderr)
             return code
-        if phase == "validate" and not validation(config, run_dir):
-            (run_dir / "validation.failed").write_text("validation failed\n", encoding="utf-8")
+        if phase == "validate" and not args.dry_run and not validation(config, run_dir):
+            print("validation failed", file=sys.stderr)
             return 1
-
-    manifest["completed_at"] = now_iso()
-    manifest["git_final"] = git_state()
-    (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    if config.get("harness", {}).get("learn_after_run", True) and not args.dry_run:
-        learn_from_run(run_dir, task, route)
-        if config.get("harness", {}).get("auto_groom", True):
-            groom(config)
-    print(f"Run complete: {run_dir}")
+        if phase == "learn" and not args.dry_run:
+            learn_from_run(run_dir, args.task, route)
+        history = compact(output, int(config.get("tokens", {}).get("phase_history", 1800)))
+    metadata["completed_at"] = now_iso()
+    metadata["principles"] = applicable_principles(args.task, route)
+    (run_dir / "manifest.json").write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(run_dir)
     return 0
 
 
