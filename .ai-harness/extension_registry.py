@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,37 @@ def _marker_exists(marker: str) -> bool:
     if not path.is_absolute():
         path = ROOT / path
     return path.exists()
+
+
+def _discover_skill_dirs() -> list[Path]:
+    roots = [
+        ROOT / ".agents" / "skills",
+        ROOT / ".claude" / "skills",
+        Path.home() / ".agents" / "skills",
+        Path.home() / ".claude" / "skills",
+        Path.home() / ".gemini" / "skills",
+    ]
+    result: list[Path] = []
+    for root in roots:
+        if root.exists():
+            result.extend(p for p in root.iterdir() if p.is_dir() and (p / "SKILL.md").exists())
+    return sorted(set(result))
+
+
+def _skill_metadata(path: Path) -> dict[str, str]:
+    text = (path / "SKILL.md").read_text(encoding="utf-8", errors="replace")[:12000]
+    name = re.search(r"^name:\s*(.+)$", text, re.MULTILINE)
+    description = re.search(r"^description:\s*(.+)$", text, re.MULTILINE)
+    return {
+        "name": name.group(1).strip() if name else path.name,
+        "description": description.group(1).strip() if description else "",
+        "path": str(path),
+    }
+
+
+def discover_skills() -> list[dict[str, str]]:
+    """Discover existing skills without deciding to invoke or install them."""
+    return [_skill_metadata(path) for path in _discover_skill_dirs()]
 
 
 def detect_extensions() -> dict[str, dict[str, Any]]:
@@ -41,6 +73,13 @@ def detect_extensions() -> dict[str, dict[str, Any]]:
             "capabilities": spec.get("capabilities", []),
             "policy": spec.get("policy", ""),
         }
+    result["discovered_skills"] = {
+        "available": True,
+        "kind": "agent-skills",
+        "capabilities": ["skill-discovery"],
+        "policy": "discover only; invocation remains task-driven",
+        "skills": discover_skills(),
+    }
     return result
 
 
