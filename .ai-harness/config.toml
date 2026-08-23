@@ -1,6 +1,7 @@
 [workflow]
 default = "coding"
 review_failure_marker = "HARNESS_FIX_REQUIRED"
+max_fix_attempts = 1
 
 # Workflows are selected explicitly. Optional capabilities do not run unless requested.
 [workflows.coding]
