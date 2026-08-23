@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-harness"
-version = 5
+version = 6
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -46,6 +46,15 @@ auto_discover_validation = true
 repair_on_verification_failure = true
 repair_on_review_failure = true
 max_repair_attempts = 2
+
+[observability]
+log_level = "INFO"
+local_telemetry = true
+telemetry_file = "telemetry.jsonl"
+external_export = false
+
+# External telemetry is intentionally opt-in. See .ai-harness/DEPENDENCIES.md.
+# Example future option: OpenTelemetry with an approved backend/exporter.
 
 [worktrees]
 enabled = true
