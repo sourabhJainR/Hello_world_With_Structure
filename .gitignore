@@ -1,4 +1,7 @@
 .ai-harness/runs/
+.ai-harness/worktrees/
+.ai-harness/worktrees.json
 .ai-harness/memory/observations.jsonl
+.ai-harness/memory/patterns.jsonl
 __pycache__/
 *.py[cod]
