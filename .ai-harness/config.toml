@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-harness"
-version = 3
+version = 4
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -17,7 +17,6 @@ minimum_confidence_for_auto_capability = 0.68
 escalate_after_failed_verifications = 2
 
 [model_routing]
-# Provider adapters may map these tiers to their own model/reasoning settings.
 low = { reasoning = "low", purpose = "classification, summarization, simple edits" }
 standard = { reasoning = "medium", purpose = "normal implementation and debugging" }
 high = { reasoning = "high", purpose = "architecture, difficult debugging, risky changes" }
@@ -31,10 +30,17 @@ compress_prior_phase_output = true
 preserve_checkpoints = true
 
 [execution]
-max_retries = 3
+max_phase_retries = 1
+phase_timeout_seconds = 1200
+provider_timeout_seconds = 900
+validation_timeout_seconds = 600
 require_new_evidence_for_retry = true
 inspect_diff_before_complete = true
 run_native_validation = true
+auto_discover_validation = true
+repair_on_verification_failure = true
+repair_on_review_failure = true
+max_repair_attempts = 2
 
 [delegation]
 enabled = true
@@ -97,28 +103,31 @@ phases = ["route", "context", "review", "learn"]
 phases = ["route", "context", "debug", "execute", "validate", "review", "learn"]
 
 [providers.claude]
-command = ["python", ".ai-harness/provider.py", "--prompt-file", "{prompt_file}", "--", "claude", "-p"]
+command = ["{python}", ".ai-harness/provider.py", "--prompt-file", "{prompt_file}", "--", "claude", "-p"]
 working_directory = "{workspace}"
 
 [providers.codex]
-command = ["python", ".ai-harness/provider.py", "--prompt-file", "{prompt_file}", "--", "codex", "exec"]
+command = ["{python}", ".ai-harness/provider.py", "--prompt-file", "{prompt_file}", "--", "codex", "exec"]
 working_directory = "{workspace}"
 
 [providers.gemini]
-command = ["python", ".ai-harness/provider.py", "--prompt-file", "{prompt_file}", "--", "gemini", "-p"]
+command = ["{python}", ".ai-harness/provider.py", "--prompt-file", "{prompt_file}", "--", "gemini", "-p"]
 working_directory = "{workspace}"
 
 # Generic provider example:
 # [providers.my-agent]
-# command = ["python", ".ai-harness/provider.py", "--prompt-file", "{prompt_file}", "--", "my-agent", "--prompt"]
+# command = ["{python}", ".ai-harness/provider.py", "--prompt-file", "{prompt_file}", "--", "my-agent", "--prompt"]
 # working_directory = "{workspace}"
 
 [validation]
-# Add project-specific commands. They run after the execution phase when configured.
+# Commands can be strings or argv arrays. Arrays are preferred because they avoid shell parsing.
 commands = []
+# Example:
+# commands = [["python", "-m", "unittest", "discover", "-s", "tests"]]
+
+auto_discover = true
 
 [evals]
-# Keep a small representative regression set for router/prompt changes.
 enabled = true
 cases_file = ".ai-harness/evals/cases.jsonl"
 require_promotion_evidence = true
