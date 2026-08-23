@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-harness"
-version = 6
+version = 7
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -15,6 +15,12 @@ context_budget = 3200
 max_history_chars = 4000
 minimum_confidence_for_auto_capability = 0.68
 escalate_after_failed_verifications = 2
+
+[orchestration]
+max_passes = 10
+early_exit = true
+mandatory_high_risk_passes = [6, 7, 8, 10]
+policy_file = ".ai-harness/TEN_LOOP_POLICY.md"
 
 [model_routing]
 default_tier = "standard"
@@ -33,6 +39,7 @@ prefer_repository_map = true
 prefer_targeted_reads = true
 compress_prior_phase_output = true
 preserve_checkpoints = true
+policy_file = ".ai-harness/CONTEXT_POLICY.md"
 
 [execution]
 max_phase_retries = 1
@@ -46,15 +53,19 @@ auto_discover_validation = true
 repair_on_verification_failure = true
 repair_on_review_failure = true
 max_repair_attempts = 2
+policy_file = ".ai-harness/EXECUTION_POLICY.md"
+
+[verification]
+policy_file = ".ai-harness/VERIFICATION_POLICY.md"
+require_acceptance_evidence = true
+require_diff_check = true
+require_review_for_high_risk = true
 
 [observability]
 log_level = "INFO"
 local_telemetry = true
 telemetry_file = "telemetry.jsonl"
 external_export = false
-
-# External telemetry is intentionally opt-in. See .ai-harness/DEPENDENCIES.md.
-# Example future option: OpenTelemetry with an approved backend/exporter.
 
 [worktrees]
 enabled = true
@@ -74,6 +85,7 @@ parallel = true
 read_only = true
 timeout_seconds = 900
 require_consensus_for_high_risk = false
+policy_file = ".ai-harness/REVIEW_POLICY.md"
 
 [delegation]
 enabled = true
@@ -90,6 +102,7 @@ record_route_metrics = true
 record_verification_metrics = true
 record_token_metrics_when_available = true
 record_reviewer_findings = true
+policy_file = ".ai-harness/LEARNING_POLICY.md"
 
 default_principles = [
   "DRY",
@@ -115,6 +128,22 @@ default_principles = [
   "locality-of-change",
   "evidence-over-assumption"
 ]
+
+[token]
+policy_file = ".ai-harness/TOKEN_POLICY.md"
+default_budget = 6000
+max_budget = 30000
+prefer_reuse = true
+
+[architecture]
+policy_file = ".ai-harness/ARCHITECTURE_POLICY.md"
+placement_required_for_new_files = true
+
+[provider_contract]
+policy_file = ".ai-harness/PROVIDER_CONTRACT.md"
+
+[quality]
+policy_file = ".ai-harness/QUALITY_GOVERNANCE.md"
 
 [workflow]
 default = "adaptive"
