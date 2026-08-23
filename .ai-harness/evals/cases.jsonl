@@ -1,7 +1,7 @@
 {"id":"simple-edit","prompt":"Rename a private helper method and update its tests","expected_mode":"implement","capabilities":[],"risk":"low"}
 {"id":"unknown-library","prompt":"Evaluate two libraries for distributed locking and recommend one","expected_mode":"research","capabilities":["research"]}
 {"id":"feasibility","prompt":"Can this workload be moved to WebAssembly without unacceptable latency? Build a focused proof of concept.","expected_mode":"poc","capabilities":["research","poc"]}
-{"id":"intermittent-bug","prompt":"Investigate an intermittent export timeout and fix the root cause","expected_mode":"debug","capabilities":["grill"]}
+{"id":"intermittent-bug","prompt":"Investigate an intermittent export timeout and fix the root cause","expected_mode":"debug","capabilities":[]}
 {"id":"security-change","prompt":"Migrate authentication for the production API without breaking existing clients","expected_mode":"implement","capabilities":["research","grill"]}
 {"id":"review","prompt":"Review the proposed caching change for correctness, performance, security, and regressions","expected_mode":"review","capabilities":["grill"]}
-{"id":"jira-feature","prompt":"JIRA PROJ-1827: Add tenant-level export filtering with backward compatibility and tests","expected_mode":"implement","capabilities":["grill"]}
+{"id":"jira-feature","prompt":"JIRA PROJ-1827: Add tenant-level export filtering with backward compatibility and tests","expected_mode":"implement","capabilities":[]}
