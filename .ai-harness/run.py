@@ -2,6 +2,7 @@
 """Production launcher: one run owns one session and one IO-aware context policy."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import sys
 
@@ -9,10 +10,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import context_engine
 import engine
+import knowledge_fabric
 
 _original_make_run_dir = engine.make_run_dir
 _original_build_prompt = engine.build_prompt
+_original_run_task = engine.run_task
 _session_dir: Path | None = None
+_knowledge: dict = {}
 
 
 def session_make_run_dir() -> Path:
@@ -29,6 +33,49 @@ def optimized_repository_map(limit: int = 500) -> str:
         limit_files=min(limit, 180),
         budget_chars=9000,
     )
+
+
+def _task_from_args(args) -> str:
+    task = str(getattr(args, "task", "") or "").strip()
+    jira_file = getattr(args, "jira_file", None)
+    if jira_file:
+        path = Path(jira_file)
+        if path.is_file():
+            task = (task + "\n\nJira context:\n" + path.read_text(encoding="utf-8")).strip()
+    jira = getattr(args, "jira", None)
+    if not task and jira:
+        task = f"Work on Jira item {jira}"
+    return task
+
+
+def _prepare_knowledge(args, config: dict) -> None:
+    global _knowledge
+    if getattr(args, "resume", None):
+        path = Path(args.resume).resolve() / "knowledge.json"
+        if path.is_file():
+            try:
+                value = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(value, dict):
+                    _knowledge = value
+                    return
+            except json.JSONDecodeError:
+                pass
+    task = _task_from_args(args)
+    if not task:
+        _knowledge = {"sources": [], "evidence": "No task-specific knowledge requested."}
+        return
+    _knowledge = knowledge_fabric.collect(task, config)
+    if _session_dir is not None:
+        ( _session_dir / "knowledge.json").write_text(
+            json.dumps(_knowledge, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        ( _session_dir / "knowledge.md").write_text(
+            "# Knowledge Fabric\n\n"
+            + "Sources: " + ", ".join(_knowledge.get("sources", [])) + "\n\n"
+            + str(_knowledge.get("evidence", "")) + "\n",
+            encoding="utf-8",
+        )
 
 
 def optimized_build_prompt(phase, task, source, jira, route, repo_map, memory, profile, history):
@@ -50,14 +97,22 @@ def optimized_build_prompt(phase, task, source, jira, route, repo_map, memory, p
         profile,
         history_tile,
     )
-    return prompt + f"\n## IO-aware context\n{metadata}\n"
+    knowledge = str(_knowledge.get("evidence", "No external structural knowledge available."))
+    knowledge = knowledge[:6000]
+    sources = ", ".join(_knowledge.get("sources", [])) or "none"
+    return prompt + f"\n## Knowledge fabric\nSources: {sources}\n{knowledge}\n\n## IO-aware context\n{metadata}\n"
 
 
-# The previous coordinator allocated a session in both main() and run_task().
-# The launcher makes allocation idempotent so one invocation owns exactly one directory.
+def optimized_run_task(args, config, logger):
+    _prepare_knowledge(args, config)
+    return _original_run_task(args, config, logger)
+
+
+# One invocation owns exactly one directory. Resume reuses its existing directory.
 engine.make_run_dir = session_make_run_dir
 engine.repository_map = optimized_repository_map
 engine.build_prompt = optimized_build_prompt
+engine.run_task = optimized_run_task
 
 
 if __name__ == "__main__":
