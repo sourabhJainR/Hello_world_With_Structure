@@ -9,7 +9,7 @@ on:
       - 'AGENTS.md'
       - 'CLAUDE.md'
       - 'GEMINI.md'
-      - 'tests/test_ai_harness.py'
+      - 'tests/**'
   pull_request:
     paths:
       - '.ai-harness/**'
@@ -18,7 +18,7 @@ on:
       - 'AGENTS.md'
       - 'CLAUDE.md'
       - 'GEMINI.md'
-      - 'tests/test_ai_harness.py'
+      - 'tests/**'
 
 jobs:
   harness:
@@ -29,10 +29,12 @@ jobs:
         with:
           python-version: '3.11'
       - name: Validate Python harness
-        run: python -m unittest discover -s tests -p 'test_ai_harness.py' -v
-      - name: Compile harness and provider bridge
-        run: python -m py_compile .ai-harness/run.py .ai-harness/provider.py
+        run: python -m unittest discover -s tests -v
+      - name: Compile harness and extensions
+        run: python -m py_compile .ai-harness/run.py .ai-harness/provider.py .ai-harness/worktree.py .ai-harness/review_agents.py
       - name: Validate configuration
         run: python -c "import tomllib; tomllib.load(open('.ai-harness/config.toml','rb'))"
       - name: Run routing regression evaluation
         run: python .ai-harness/run.py eval
+      - name: Check worktree helper
+        run: python .ai-harness/worktree.py list
