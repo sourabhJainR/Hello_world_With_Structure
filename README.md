@@ -6,7 +6,7 @@ Interactive learning platform with code execution, history tracking, and snippet
 
 This repository includes a provider-neutral AI coding orchestrator designed to sit above Claude Code, Codex, Gemini CLI, local agents, or another compatible AI CLI.
 
-The agent should infer the required state from a prompt, task, Jira item, issue, or repository context. Developers do not normally need to select a workflow manually.
+The agent infers the required state from a prompt, task, Jira item, issue, repository context, risk, and uncertainty. Developers normally do not need to select a workflow manually.
 
 ```text
 Input
@@ -16,6 +16,7 @@ Input
   -> Minimum Safe Capabilities
   -> Execute
   -> Validate
+  -> Diff / Verification Gate
   -> Review / Grill when justified
   -> Learn
   -> Groom memory
@@ -33,15 +34,18 @@ python .ai-harness/run.py run --jira PROJ-1827 --task "Implement the requested c
 # Jira content from a local export
 python .ai-harness/run.py run --jira-file ./jira/PROJ-1827.txt
 
-# Research only
+# Research, debugging, POC and review are inferred automatically
 python .ai-harness/run.py run --task "Compare Redis and Valkey for this service"
-
-# Feasibility / POC
+python .ai-harness/run.py run --task "Investigate the intermittent export timeout"
 python .ai-harness/run.py run --task "Can this workload be moved to WebAssembly?"
 
-# Inspect learned knowledge
+# Inspect learned knowledge and routing quality
 python .ai-harness/run.py memory
 python .ai-harness/run.py groom
+python .ai-harness/run.py eval
+
+# Resume an interrupted run from its checkpoint
+python .ai-harness/run.py run --task "..." --resume .ai-harness/runs/<run-id>
 ```
 
 ## Skills
@@ -54,6 +58,10 @@ Claude also has a native entry point under `.claude/skills/ai-coding-orchestrato
 
 The repository-wide instruction surface is `AGENTS.md`.
 
+## Engineering principles
+
+The orchestrator applies language-neutral engineering principles from `.ai-harness/principles.md`, including DRY, YAGNI, KISS, dependency inversion, selective SOLID, cohesion/coupling, security by default, failure awareness, observability, reversibility, compatibility, behavior-focused testing, least privilege, and evidence over assumption.
+
 ## Learning and evolution
 
 The system records compact observations and candidate patterns under `.ai-harness/memory/`.
@@ -63,20 +71,22 @@ Learning is governed:
 - one run can create an observation, not a permanent rule
 - repeated successful observations increase confidence
 - grooming consolidates duplicates and promotes trusted patterns
-- harness code and permanent agent rules are not self-modified from model output
+- harness code, provider permissions, security policy, and permanent rules are not self-modified from model output
 
-This gives the agent a continuous learning loop without allowing a single bad response to corrupt the orchestration layer.
+## Token and context engineering
 
-## Token optimization
+The harness uses a compact repository map, relevance-ranked memory, bounded phase history, stable instructions, and explicit context budgets. It aims to spend tokens on the files and decisions that matter rather than replaying whole transcripts.
 
-The harness uses a compact repository map, relevance-ranked memory, bounded phase history, and explicit context budgets. The goal is to spend tokens on the files and decisions that matter rather than replaying entire transcripts.
+## Recovery and verification
+
+Runs persist checkpoints and phase artifacts. Provider failures and verification failures have bounded repair paths. Validation uses explicit argv commands or safe auto-discovery; shell parsing is avoided for configured validation commands. Completion also performs a final `git diff --check` gate.
 
 ## Providers
 
-Providers are configured in `.ai-harness/config.toml`. The default bridge appends the generated prompt as the final argument to the selected CLI, while custom provider commands can be added using the same pattern.
+Providers are configured in `.ai-harness/config.toml`. The bridge supports a `{python}` placeholder so the same configuration works across environments where the Python executable name differs.
 
-## Validation
+## Regression evaluation
 
-Project-specific commands belong in `[validation]` in `.ai-harness/config.toml`. The harness records validation evidence and does not report success without observed results.
+Representative routing cases live in `.ai-harness/evals/cases.jsonl`. Changes to routing logic should keep `python .ai-harness/run.py eval` passing before promotion.
 
-See `.ai-harness/README.md` for the architecture and operating model.
+See `.ai-harness/README.md` for the detailed architecture and operating model.
