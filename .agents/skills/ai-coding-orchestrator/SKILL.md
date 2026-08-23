@@ -11,14 +11,17 @@ Invoke this skill for every non-trivial software-engineering request before maki
 
 1. Normalize the input into task, source, Jira/issue reference, constraints, acceptance criteria, non-goals, and stopping condition.
 2. Inspect repository state, applicable instructions, nearby patterns, dependency boundaries, and relevant tests.
-3. Retrieve only relevant learned patterns and current evidence.
-4. Classify intent, scope, risk, uncertainty, change surface, and reversibility.
-5. Select the minimum useful capabilities, model tier, tool set, isolation strategy, and review depth.
-6. Execute in a controlled loop: understand -> plan -> change -> verify -> inspect diff -> review -> learn.
-7. On failure, diagnose before retrying. Every retry must add new evidence or change the approach.
-8. Persist a checkpoint for long-running or interrupted work so another session can resume without replaying the full transcript.
-9. Stop when acceptance criteria are satisfied and evidence supports completion.
-10. Never claim commands, tests, Jira data, source material, or tool usage that did not occur.
+3. Run the repository convention profiler before introducing or changing infrastructure: `python .ai-harness/project_profile.py`.
+4. Reuse detected exception handling, logging, telemetry, package management, and testing conventions whenever present. Do not introduce a competing framework because it is newer or more popular.
+5. If the repository is genuinely fresh, use the simplest standard-library baseline first and consult `.ai-harness/DEPENDENCIES.md` before adding any third-party library.
+6. Retrieve only relevant learned patterns and current evidence.
+7. Classify intent, scope, risk, uncertainty, change surface, and reversibility.
+8. Select the minimum useful capabilities, model tier, tool set, isolation strategy, and review depth.
+9. Execute in a controlled loop: understand -> plan -> change -> verify -> inspect diff -> review -> learn.
+10. On failure, diagnose before retrying. Every retry must add new evidence or change the approach.
+11. Persist a checkpoint for long-running or interrupted work so another session can resume without replaying the full transcript.
+12. Stop when acceptance criteria are satisfied and evidence supports completion.
+13. Never claim commands, tests, Jira data, source material, or tool usage that did not occur.
 
 ## Automatic capability routing
 
@@ -31,6 +34,30 @@ Invoke this skill for every non-trivial software-engineering request before maki
 - `learn`: extract evidence-backed lessons and task metrics after completion
 
 Skip capabilities when repository evidence makes them unnecessary. Do not run every capability on every task.
+
+## Existing-convention rule
+
+The repository is the system of record for engineering conventions.
+
+Before creating exception handling, logging, telemetry, testing, dependency injection, configuration, retry, or HTTP/client infrastructure:
+
+1. Search for existing implementations.
+2. Identify the established API and usage pattern.
+3. Reuse it unless there is a demonstrated limitation.
+4. Preserve its configuration, levels, event names, correlation IDs, test helpers, and operational behavior.
+5. Record a deviation when an existing pattern must be replaced.
+
+Never create parallel logging, telemetry, error, or test abstractions just because the harness has its own internal implementation. The harness infrastructure is not a license to impose its conventions on the application being modified.
+
+## Fresh repository rule
+
+If the project profile shows no established convention:
+
+- prefer standard-library or platform-native facilities
+- select the most widely adopted mature framework only when a framework is required
+- do not add a third-party library without an explicit dependency decision
+- document the reason, version policy, security/operational impact, and alternative considered
+- keep the dependency opt-in unless the task explicitly requires it
 
 ## Isolation and worktrees
 
@@ -63,12 +90,7 @@ Escalate when uncertainty is unknown, risk is high/critical, verification fails 
 
 ## Independent review
 
-Use read-only independent reviewers for important changes. Reviewer roles can include:
-
-- correctness
-- security
-- performance
-- architecture
+Use read-only independent reviewers for important changes. Reviewer roles can include correctness, security, performance, and architecture.
 
 For high-risk work prefer more than one review perspective. Reviewers must inspect the actual repository/diff rather than trusting the implementing agent's summary.
 
@@ -114,10 +136,11 @@ For AI-specific work also apply lean prompts, explicit success criteria, bounded
 Use the stable context prefix first:
 
 1. repository instructions
-2. principles and task contract
-3. compact repository map
-4. relevant learned memory
-5. current task and acceptance criteria
+2. project convention profile
+3. principles and task contract
+4. compact repository map
+5. relevant learned memory
+6. current task and acceptance criteria
 
 Then add phase-specific evidence only.
 
@@ -176,6 +199,8 @@ Return:
 - validation evidence
 - independent review evidence when used
 - principles materially applied
+- existing project conventions reused
+- dependency decisions, if any
 - assumptions
 - remaining risks
 - checkpoint or follow-up when work is intentionally incomplete
