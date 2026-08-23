@@ -1,12 +1,18 @@
 [harness]
 name = "adaptive-ai-coding-harness"
-version = 8
+version = 9
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
 auto_groom = true
 checkpoint_long_runs = true
 require_verification_before_complete = true
+
+[runtime]
+mode = "single-adaptive-run"
+looping_enabled = false
+recursive_self_invocation = false
+user_requested_loop_only = true
 
 [router]
 route_budget = 900
@@ -188,8 +194,7 @@ cases_file = ".ai-harness/evals/cases.jsonl"
 require_promotion_evidence = true
 
 [development_hardening]
-# Used only by maintainers while improving the harness itself.
-# This is NOT part of normal task execution and MUST NOT be inherited by agents.
 review_cycles = 500
 execution_enabled = false
+purpose = "maintainer-only repository improvement"
 policy_file = ".ai-harness/DEVELOPMENT_HARDENING.md"
