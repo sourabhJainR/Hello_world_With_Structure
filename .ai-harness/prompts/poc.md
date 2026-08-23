@@ -1,0 +1,1 @@
+Build the smallest experiment that answers the feasibility question. Keep it isolated and clearly experimental. Define the hypothesis, experiment, evidence, conclusion, limitations, and production recommendation. Do not silently turn a POC into production code.
