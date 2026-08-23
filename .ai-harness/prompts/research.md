@@ -1,0 +1,1 @@
+Do not implement production changes in this phase. Investigate only the unknowns that matter to the task. Separate facts, assumptions, options, recommendation, and open questions. Prefer official documentation and repository evidence. State limitations when external research is unavailable.
