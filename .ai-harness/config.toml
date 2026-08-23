@@ -1,6 +1,22 @@
 [workflow]
-phases = ["understand", "plan", "implement", "review", "fix"]
+default = "coding"
 review_failure_marker = "HARNESS_FIX_REQUIRED"
+
+# Workflows are selected explicitly. Optional capabilities do not run unless requested.
+[workflows.coding]
+phases = ["understand", "plan", "implement", "review", "fix"]
+
+[workflows.research]
+phases = ["research"]
+
+[workflows.poc]
+phases = ["understand", "research", "poc"]
+
+[workflows.grill]
+phases = ["grill"]
+
+[workflows.research-coding]
+phases = ["research", "understand", "plan", "implement", "review", "fix"]
 
 [providers.claude]
 command = ["claude", "-p", "{prompt_file}"]
