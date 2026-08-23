@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read a prompt file and append its contents as the final CLI argument."""
+"""Generic bridge: append prompt text to a configured AI CLI command."""
 from __future__ import annotations
 
 import argparse
@@ -11,8 +11,11 @@ from pathlib import Path
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generic AI CLI provider bridge")
     parser.add_argument("--prompt-file", required=True)
-    parser.add_argument("--", dest="separator", nargs="?")
-    args, command = parser.parse_known_args()
+    parser.add_argument("command", nargs=argparse.REMAINDER)
+    args = parser.parse_args()
+    command = list(args.command)
+    if command and command[0] == "--":
+        command = command[1:]
     if not command:
         print("No provider command supplied", file=sys.stderr)
         return 2
