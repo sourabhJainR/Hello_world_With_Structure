@@ -2,9 +2,9 @@
 
 A provider-neutral orchestration layer for Claude Code, Codex, Gemini CLI, local agents, and custom AI coding CLIs.
 
-## Design
+The design borrows useful patterns from mature coding-agent projects: always-loaded repository instructions and triggerable skills from OpenHands, focused token-bounded repository maps from Aider, and reproducible run evidence from SWE-agent.
 
-The harness uses patterns drawn from mature coding-agent systems: durable repository instructions and triggerable skills, focused repository maps, bounded context, repeatable execution evidence, and trajectory-based learning. OpenHands documents always-loaded context plus trigger-based AgentSkills and progressive disclosure; Aider uses a relevance-ranked repository map constrained by a token budget; SWE-agent records reproducible trajectories and configuration for repeatable runs. citeturn774253search2turn774253search6turn774253search8
+## Design
 
 ```text
 Prompt / Task / Jira / Issue
@@ -27,7 +27,7 @@ Prompt / Task / Jira / Issue
  Minimum Safe Capability Set
           |
           v
- Execute -> Validate -> Review/Grill
+ Execute -> Validate -> Review / Grill
           |
           v
  Learn -> Groom -> Reuse
@@ -48,7 +48,7 @@ The router chooses from:
 ```text
 research  unknown facts, technologies, APIs, architecture options
 poc       feasibility or major technical uncertainty
-debug     failures, regressions, intermittent behavior, root cause
+debug     failures, regressions, intermittent behavior, root-cause analysis
 review    meaningful code changes
 Grill     high-risk security, migration, performance, production or design decisions
 ```
@@ -80,6 +80,8 @@ Claude-specific entry point:
 ```text
 .claude/skills/ai-coding-orchestrator/SKILL.md
 ```
+
+The repository-wide instruction surface is `AGENTS.md`.
 
 ## State and context
 
@@ -117,7 +119,7 @@ The harness accepts `--jira` and `--jira-file`. For a Jira key, the selected AI 
 
 ## Token optimization
 
-The router has separate budgets for routing, memory, context and phase history. Repository context is built as a compact file/symbol map, and only relevant memory is included. This follows the same principle as Aider's repository-map token budgeting. citeturn774253search6
+The router has separate budgets for routing, memory, context and phase history. Repository context is built as a compact file/symbol map, and only relevant memory is included. This follows the same general token-budget principle as Aider's repository map.
 
 ## Safety
 
