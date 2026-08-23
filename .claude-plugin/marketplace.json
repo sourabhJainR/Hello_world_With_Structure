@@ -11,7 +11,7 @@
     {
       "name": "adaptive-ai-coding-orchestrator",
       "source": "./",
-      "version": "12.0.0",
+      "version": "13.0.0",
       "description": "Adaptive, provider-neutral coding orchestration with repository intelligence, hybrid retrieval, context optimization, verification, review, recovery, and optional extensions.",
       "author": {
         "name": "Sourabh Jain",
