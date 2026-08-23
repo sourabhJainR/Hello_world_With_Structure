@@ -19,10 +19,19 @@ class ExtensionRegistryTests(unittest.TestCase):
         self.assertIn("superpowers", result)
         self.assertIn("ponytail", result)
         self.assertIn("caveman", result)
+        self.assertIn("discovered_skills", result)
         for value in result.values():
             self.assertIn("available", value)
             self.assertIn("capabilities", value)
             self.assertIn("policy", value)
+
+    def test_skill_discovery_is_read_only(self):
+        skills = extension_registry.discover_skills()
+        self.assertIsInstance(skills, list)
+        for skill in skills:
+            self.assertIn("name", skill)
+            self.assertIn("description", skill)
+            self.assertIn("path", skill)
 
 
 if __name__ == "__main__":
