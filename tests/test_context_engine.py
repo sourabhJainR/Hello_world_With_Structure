@@ -37,6 +37,24 @@ class ContextEngineTests(unittest.TestCase):
     def test_launcher_exists_as_public_entrypoint(self):
         self.assertTrue(LAUNCHER.exists())
 
+    def test_session_allocator_is_idempotent(self):
+        spec = importlib.util.spec_from_file_location("run_launcher", LAUNCHER)
+        launcher = importlib.util.module_from_spec(spec)
+        assert spec and spec.loader
+        spec.loader.exec_module(launcher)
+        expected = Path(tempfile.gettempdir()) / "ai-harness-test-session"
+        original = launcher._original_make_run_dir
+        try:
+            launcher._session_dir = None
+            launcher._original_make_run_dir = lambda: expected
+            first = launcher.session_make_run_dir()
+            second = launcher.session_make_run_dir()
+            self.assertEqual(first, expected)
+            self.assertEqual(first, second)
+        finally:
+            launcher._original_make_run_dir = original
+            launcher._session_dir = None
+
 
 if __name__ == "__main__":
     unittest.main()
