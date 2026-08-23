@@ -1,0 +1,1 @@
+Do not modify production code. Extract only evidence-backed lessons from the completed run. Identify what worked, what failed, recurring patterns, useful routing signals, token-saving opportunities, and reusable repository facts. Prefer concise lessons over summaries. A lesson must be scoped and falsifiable.
