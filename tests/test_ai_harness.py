@@ -23,28 +23,24 @@ class AdaptiveHarnessTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(set(result.stdout.split()), {"research", "poc", "grill"})
 
-    def test_heuristic_routing_for_feasibility(self) -> None:
-        result = self.run_cli(
-            "run",
-            "--task",
-            "Can we build a proof of concept to test whether WebAssembly is feasible?",
-            "--dry-run",
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        runs = sorted((ROOT / ".ai-harness" / "runs").glob("*"))
-        manifest = json.loads((runs[-1] / "manifest.json").read_text(encoding="utf-8"))
-        self.assertIn("poc", manifest["route"]["capabilities"])
-        self.assertIn("research", manifest["route"]["capabilities"])
-
-    def test_dry_run_creates_phase_artifacts(self) -> None:
+    def test_dry_run_creates_checkpoint_and_manifest(self) -> None:
         result = self.run_cli("run", "--task", "Add input validation", "--dry-run")
         self.assertEqual(result.returncode, 0, result.stderr)
         runs = sorted((ROOT / ".ai-harness" / "runs").glob("*"))
         run_dir = runs[-1]
         manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], 2)
+        self.assertEqual(manifest["version"], 4)
+        self.assertIn("route", manifest)
+        self.assertTrue((run_dir / "checkpoint.json").exists())
         self.assertTrue((run_dir / "repository-map.md").exists())
-        self.assertTrue((run_dir / "implement.prompt.md").exists())
+        self.assertTrue((run_dir / "execute.prompt.md").exists())
+
+    def test_eval_regression_suite(self) -> None:
+        result = self.run_cli("eval")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertGreaterEqual(payload["cases"], 7)
+        self.assertEqual(payload["failed"], 0, payload)
 
     def test_memory_and_groom_commands(self) -> None:
         self.assertEqual(self.run_cli("memory").returncode, 0)
@@ -53,6 +49,15 @@ class AdaptiveHarnessTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertIn("patterns", payload)
         self.assertIn("trusted", payload)
+
+    def test_jira_file_is_accepted(self) -> None:
+        fixture = ROOT / ".ai-harness" / "evals" / "_test_jira.txt"
+        fixture.write_text("PROJ-1: Add tenant filtering\nAcceptance: preserve existing behavior", encoding="utf-8")
+        try:
+            result = self.run_cli("run", "--jira-file", str(fixture), "--dry-run")
+            self.assertEqual(result.returncode, 0, result.stderr)
+        finally:
+            fixture.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
