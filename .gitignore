@@ -1,5 +1,4 @@
 .ai-harness/runs/
 .ai-harness/memory/observations.jsonl
-.ai-harness/memory/patterns.jsonl
 __pycache__/
 *.py[cod]
