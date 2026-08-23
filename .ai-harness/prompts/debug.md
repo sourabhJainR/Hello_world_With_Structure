@@ -1,0 +1,1 @@
+Diagnose before changing code. Reproduce where practical, distinguish symptoms from root cause, inspect logs/errors and existing tests, and keep the change focused on the proven cause. Record evidence and remaining uncertainty.
