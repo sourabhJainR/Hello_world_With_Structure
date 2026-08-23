@@ -1,23 +1,79 @@
 [harness]
 name = "adaptive-ai-coding-harness"
-version = 2
+version = 3
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
 auto_groom = true
+checkpoint_long_runs = true
+require_verification_before_complete = true
 
 [router]
-route_budget = 1200
+route_budget = 900
 memory_budget = 900
-context_budget = 1400
-max_history_chars = 5000
+context_budget = 3200
+max_history_chars = 4000
 minimum_confidence_for_auto_capability = 0.68
+escalate_after_failed_verifications = 2
+
+[model_routing]
+# Provider adapters may map these tiers to their own model/reasoning settings.
+low = { reasoning = "low", purpose = "classification, summarization, simple edits" }
+standard = { reasoning = "medium", purpose = "normal implementation and debugging" }
+high = { reasoning = "high", purpose = "architecture, difficult debugging, risky changes" }
+critical = { reasoning = "xhigh", purpose = "hardest long-horizon or high-risk tasks" }
+
+[context]
+stable_prefix = true
+prefer_repository_map = true
+prefer_targeted_reads = true
+compress_prior_phase_output = true
+preserve_checkpoints = true
+
+[execution]
+max_retries = 3
+require_new_evidence_for_retry = true
+inspect_diff_before_complete = true
+run_native_validation = true
+
+[delegation]
+enabled = true
+parallelize_only_independent_work = true
+never_parallel_edit_same_file = true
 
 [learning]
 min_observations_for_promotion = 3
 min_success_rate_for_promotion = 0.75
 stale_after_days = 120
 max_memory_items = 250
+record_route_metrics = true
+record_verification_metrics = true
+record_token_metrics_when_available = true
+
+default_principles = [
+  "DRY",
+  "YAGNI",
+  "KISS",
+  "DI",
+  "SOLID",
+  "separation-of-concerns",
+  "high-cohesion-low-coupling",
+  "composition-over-inheritance",
+  "least-knowledge",
+  "fail-fast",
+  "single-source-of-truth",
+  "least-surprise",
+  "illegal-states-hard-to-represent",
+  "compatibility-by-default",
+  "behavior-focused-testing",
+  "security-by-default",
+  "failure-awareness",
+  "observability",
+  "reversibility",
+  "least-privilege",
+  "locality-of-change",
+  "evidence-over-assumption"
+]
 
 [workflow]
 default = "adaptive"
@@ -29,10 +85,16 @@ phases = ["route", "context", "execute", "validate", "review", "learn"]
 phases = ["route", "context", "research", "learn"]
 
 [workflows.poc]
-phases = ["route", "context", "research", "poc", "learn"]
+phases = ["route", "context", "research", "poc", "validate", "learn"]
 
 [workflows.grill]
 phases = ["route", "context", "grill", "learn"]
+
+[workflows.review]
+phases = ["route", "context", "review", "learn"]
+
+[workflows.debug]
+phases = ["route", "context", "debug", "execute", "validate", "review", "learn"]
 
 [providers.claude]
 command = ["python", ".ai-harness/provider.py", "--prompt-file", "{prompt_file}", "--", "claude", "-p"]
@@ -54,3 +116,9 @@ working_directory = "{workspace}"
 [validation]
 # Add project-specific commands. They run after the execution phase when configured.
 commands = []
+
+[evals]
+# Keep a small representative regression set for router/prompt changes.
+enabled = true
+cases_file = ".ai-harness/evals/cases.jsonl"
+require_promotion_evidence = true
