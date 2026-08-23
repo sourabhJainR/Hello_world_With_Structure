@@ -1,0 +1,1 @@
+Build only the context needed for the task. Use the repository map to identify relevant files and then inspect targeted files. Avoid dumping unrelated files. Record important architecture facts and assumptions for downstream phases.
