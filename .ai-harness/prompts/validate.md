@@ -1,0 +1,1 @@
+Run only the project checks relevant to the changed area. Prefer fast targeted checks first, then broader checks when justified. Report exact commands and observed results. A failed validation is evidence, not something to explain away.
