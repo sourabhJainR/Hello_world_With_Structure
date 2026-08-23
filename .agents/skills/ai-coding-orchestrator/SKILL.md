@@ -1,6 +1,6 @@
 ---
 name: ai-coding-orchestrator
-description: Automatically determine the engineering state, required context, capabilities, risk controls, verification strategy, model/tool budget, isolation strategy, review strategy, and stopping condition for prompts, tasks, Jira items, issues, and coding requests. Use the minimum safe workflow that achieves a verified outcome.
+description: Automatically determine the engineering state, required context, capabilities, risk controls, verification strategy, model/tool budget, isolation strategy, review strategy, code placement, and stopping condition for prompts, tasks, Jira items, issues, and coding requests. Use the minimum safe workflow that achieves a verified outcome.
 ---
 
 # AI Coding Orchestrator
@@ -14,14 +14,16 @@ Invoke this skill for every non-trivial software-engineering request before maki
 3. Run the repository convention profiler before introducing or changing infrastructure: `python .ai-harness/project_profile.py`.
 4. Reuse detected exception handling, logging, telemetry, package management, and testing conventions whenever present. Do not introduce a competing framework because it is newer or more popular.
 5. If the repository is genuinely fresh, use the simplest standard-library baseline first and consult `.ai-harness/DEPENDENCIES.md` before adding any third-party library.
-6. Retrieve only relevant learned patterns and current evidence.
-7. Classify intent, scope, risk, uncertainty, change surface, and reversibility.
-8. Select the minimum useful capabilities, model tier, tool set, isolation strategy, and review depth.
-9. Execute in a controlled loop: understand -> plan -> change -> verify -> inspect diff -> review -> learn.
-10. On failure, diagnose before retrying. Every retry must add new evidence or change the approach.
-11. Persist a checkpoint for long-running or interrupted work so another session can resume without replaying the full transcript.
-12. Stop when acceptance criteria are satisfied and evidence supports completion.
-13. Never claim commands, tests, Jira data, source material, or tool usage that did not occur.
+6. Analyze code placement before creating a new interface, class, constant, configuration, test, adapter, utility, or module. Use `python .ai-harness/placement.py <file-names>` when a new file is required.
+7. If multiple locations are candidates, select the one with the strongest combination of domain cohesion, dependency direction, namespace/module consistency, sibling-code proximity, test alignment, and reuse potential. Prefer an existing cohesive location over creating a new folder or shared/common bucket.
+8. Retrieve only relevant learned patterns and current evidence.
+9. Classify intent, scope, risk, uncertainty, change surface, and reversibility.
+10. Select the minimum useful capabilities, model tier, tool set, isolation strategy, review depth, and placement strategy.
+11. Execute in a controlled loop: understand -> plan -> place -> change -> verify -> inspect diff -> review -> learn.
+12. On failure, diagnose before retrying. Every retry must add new evidence or change the approach.
+13. Persist a checkpoint for long-running or interrupted work so another session can resume without replaying the full transcript.
+14. Stop when acceptance criteria are satisfied and evidence supports completion.
+15. Never claim commands, tests, Jira data, source material, or tool usage that did not occur.
 
 ## Automatic capability routing
 
@@ -39,15 +41,35 @@ Skip capabilities when repository evidence makes them unnecessary. Do not run ev
 
 The repository is the system of record for engineering conventions.
 
-Before creating exception handling, logging, telemetry, testing, dependency injection, configuration, retry, or HTTP/client infrastructure:
+Before creating exception handling, logging, telemetry, testing, dependency injection, configuration, retry, HTTP/client infrastructure, or new file categories:
 
-1. Search for existing implementations.
-2. Identify the established API and usage pattern.
+1. Search for existing implementations and sibling locations.
+2. Identify the established API, folder/module/package segregation, namespace/import pattern, and usage convention.
 3. Reuse it unless there is a demonstrated limitation.
-4. Preserve its configuration, levels, event names, correlation IDs, test helpers, and operational behavior.
+4. Preserve its configuration, levels, event names, correlation IDs, test helpers, naming, and operational behavior.
 5. Record a deviation when an existing pattern must be replaced.
 
-Never create parallel logging, telemetry, error, or test abstractions just because the harness has its own internal implementation. The harness infrastructure is not a license to impose its conventions on the application being modified.
+Never create parallel logging, telemetry, error, test, common, shared, or utility abstractions merely because the harness has its own internal implementation. The harness infrastructure is not a license to impose its conventions on the application being modified.
+
+## Code placement and segregation
+
+New files must be placed according to the repository's current code organization.
+
+For every new interface, class, constant, configuration file, test, adapter, client, or utility:
+
+- inspect related types and their sibling files first
+- identify the dominant folder/module/package pattern for that responsibility
+- prefer the closest cohesive bounded context or feature
+- keep contracts/interfaces near their owner unless the repository clearly has a dedicated contracts/ports layer
+- keep constants near the owning domain unless they are genuinely cross-cutting and the repository has an established shared-constants pattern
+- keep tests where the repository normally keeps tests and mirror production structure when that is the convention
+- do not create `Common`, `Shared`, `Utils`, `Helpers`, or similar catch-all locations just for convenience
+- do not create a new layer/folder when an existing location already serves the responsibility
+- preserve language-specific namespace/package/module alignment with the chosen directory
+- when two or more locations are plausible, evaluate both and choose the best architectural fit rather than the shortest path
+- record the selected location and concise placement rationale in the run evidence
+
+Placement is part of the design, not a post-processing cleanup step.
 
 ## Fresh repository rule
 
@@ -58,6 +80,7 @@ If the project profile shows no established convention:
 - do not add a third-party library without an explicit dependency decision
 - document the reason, version policy, security/operational impact, and alternative considered
 - keep the dependency opt-in unless the task explicitly requires it
+- establish a small, coherent source/test segregation before adding multiple new files
 
 ## Isolation and worktrees
 
@@ -137,10 +160,11 @@ Use the stable context prefix first:
 
 1. repository instructions
 2. project convention profile
-3. principles and task contract
-4. compact repository map
-5. relevant learned memory
-6. current task and acceptance criteria
+3. code placement/segregation profile when new files are needed
+4. principles and task contract
+5. compact repository map
+6. relevant learned memory
+7. current task and acceptance criteria
 
 Then add phase-specific evidence only.
 
@@ -165,13 +189,14 @@ Before completion, verify as appropriate:
 - performance implications
 - compatibility and migration safety
 - final diff cleanliness
+- file placement and segregation consistency
 - independent review findings for important changes
 
 A model's statement that the work is complete is not evidence.
 
 ## Learning contract
 
-After a completed run, record evidence-backed observations, route quality, verification result, useful lessons, failures, reviewer findings, model/provider choice, retries, and token/tool metrics when available. Promote durable patterns only after repeated successful observations.
+After a completed run, record evidence-backed observations, route quality, verification result, useful lessons, failures, reviewer findings, model/provider choice, retries, token/tool metrics when available, and placement decisions for new files. Promote durable patterns only after repeated successful observations.
 
 Never allow one model response to rewrite harness code, security policy, provider permissions, or permanent engineering rules automatically. Self-improvement changes knowledge and routing candidates first; durable system changes require normal review and validation.
 
@@ -188,7 +213,7 @@ Never allow one model response to rewrite harness code, security policy, provide
 
 ## Token discipline
 
-Carry conclusions, decisions, failures, open questions, checkpoints, and targeted evidence. Do not carry full transcripts unless required to recover missing context.
+Carry conclusions, decisions, failures, open questions, checkpoints, placement decisions, and targeted evidence. Do not carry full transcripts unless required to recover missing context.
 
 ## Completion format
 
@@ -198,6 +223,7 @@ Return:
 - files changed
 - validation evidence
 - independent review evidence when used
+- placement decisions and rationale for new files
 - principles materially applied
 - existing project conventions reused
 - dependency decisions, if any
