@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-harness"
-version = 10
+version = 11
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -57,6 +57,33 @@ memory_budget_chars = 2000
 history_budget_chars = 2400
 preserve_verification_evidence = true
 third_party_dependency = false
+
+[knowledge]
+enabled = true
+policy_file = ".ai-harness/KNOWLEDGE_FABRIC_POLICY.md"
+budget_chars = 6000
+prefer_structural = true
+prefer_graph = true
+prefer_exact_search = true
+prefer_semantic_when_available = true
+require_fresh_index_for_high_risk = false
+
+[knowledge.graphify]
+enabled = true
+command = "graphify"
+artifact_paths = ["graphify-out/graph.json", ".graphify/graph.json"]
+ownership = "external-tool"
+
+[knowledge.code_memory]
+enabled = true
+command = "codebase-memory-mcp"
+artifact_paths = [".codebase-memory/graph.json"]
+ownership = "external-tool"
+
+[knowledge.semantic_reranker]
+enabled = false
+command = []
+provider = "opt-in"
 
 [execution]
 max_phase_retries = 1
