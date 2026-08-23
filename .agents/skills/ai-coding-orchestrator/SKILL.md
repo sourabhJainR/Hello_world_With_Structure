@@ -1,6 +1,6 @@
 ---
 name: ai-coding-orchestrator
-description: Automatically determine the engineering state, required context, capabilities, risk controls, verification strategy, model/tool budget, and stopping condition for prompts, tasks, Jira items, issues, and coding requests. Use the minimum safe workflow that achieves a verified outcome.
+description: Automatically determine the engineering state, required context, capabilities, risk controls, verification strategy, model/tool budget, isolation strategy, review strategy, and stopping condition for prompts, tasks, Jira items, issues, and coding requests. Use the minimum safe workflow that achieves a verified outcome.
 ---
 
 # AI Coding Orchestrator
@@ -13,7 +13,7 @@ Invoke this skill for every non-trivial software-engineering request before maki
 2. Inspect repository state, applicable instructions, nearby patterns, dependency boundaries, and relevant tests.
 3. Retrieve only relevant learned patterns and current evidence.
 4. Classify intent, scope, risk, uncertainty, change surface, and reversibility.
-5. Select the minimum useful capabilities and model/tool budget.
+5. Select the minimum useful capabilities, model tier, tool set, isolation strategy, and review depth.
 6. Execute in a controlled loop: understand -> plan -> change -> verify -> inspect diff -> review -> learn.
 7. On failure, diagnose before retrying. Every retry must add new evidence or change the approach.
 8. Persist a checkpoint for long-running or interrupted work so another session can resume without replaying the full transcript.
@@ -31,6 +31,52 @@ Invoke this skill for every non-trivial software-engineering request before maki
 - `learn`: extract evidence-backed lessons and task metrics after completion
 
 Skip capabilities when repository evidence makes them unnecessary. Do not run every capability on every task.
+
+## Isolation and worktrees
+
+Use isolated Git worktrees for:
+
+- high or critical risk changes
+- long-running tasks
+- parallel mutating agents
+- experiments that should not touch the primary working tree
+- recovery from uncertain or failed changes
+
+The worktree helper is:
+
+`python .ai-harness/worktree.py create <name>`
+
+Keep failed worktrees for inspection. Remove successful worktrees only after the branch or changes are safely preserved.
+
+Never allow two mutating agents to edit the same files concurrently without an explicit merge strategy.
+
+## Model routing
+
+Use the least capable model and reasoning effort that safely solves the current phase.
+
+- low: routing, summarization, trivial edits
+- standard: normal implementation, debugging, tests
+- high: architecture, hard debugging, high-risk changes
+- critical: long-horizon, cross-repository, or severe production/security work
+
+Escalate when uncertainty is unknown, risk is high/critical, verification fails repeatedly, or the task crosses significant boundaries.
+
+## Independent review
+
+Use read-only independent reviewers for important changes. Reviewer roles can include:
+
+- correctness
+- security
+- performance
+- architecture
+
+For high-risk work prefer more than one review perspective. Reviewers must inspect the actual repository/diff rather than trusting the implementing agent's summary.
+
+The reviewer helper is:
+
+`python .ai-harness/review_agents.py --agent claude --run-dir <run> --task "..." --review correctness --review security`
+
+Reviewers must not modify files. Findings are evidence for the final verification gate.
 
 ## Engineering principles
 
@@ -61,7 +107,7 @@ Core principles include:
 - locality of change
 - evidence over assumption
 
-For AI-specific work also apply lean prompts, explicit success criteria, bounded tool sets, minimum capable model/reasoning effort, structured checkpoints, controlled delegation, verification gates, and evidence-based learning. These align with current agent guidance emphasizing lean prompts, explicit stopping criteria, relevant tools, deliberate reasoning effort, context management, and safe multi-agent delegation. citeturn817632search0turn817632search2
+For AI-specific work also apply lean prompts, explicit success criteria, bounded tool sets, minimum capable model/reasoning effort, structured checkpoints, controlled delegation, isolated execution for risky changes, independent verification, and evidence-based learning.
 
 ## Context engineering
 
@@ -77,22 +123,11 @@ Then add phase-specific evidence only.
 
 Prefer targeted searches and summaries over full repository dumps or full previous transcripts. Preserve stable prefixes so providers that support caching can reuse them.
 
-## Model and tool routing
-
-Use the least capable model and reasoning effort that can safely solve the current phase. Escalate when:
-
-- uncertainty is high
-- debugging remains unresolved
-- security or production risk is high
-- changes cross boundaries or repositories
-- verification fails repeatedly
-- the task becomes long-horizon or highly coupled
-
-Expose only the tools needed for the phase. Use read-only investigation before mutation when possible. Prefer isolated worktrees or sandboxes for risky or parallel work.
-
 ## Delegation
 
-Delegate only work that is genuinely independent: parallel repository investigations, alternative design research, independent reviews, test planning, or security review. Do not delegate simultaneous edits to the same files without an explicit merge plan.
+Delegate only genuinely independent work: parallel repository investigations, alternative design research, independent reviews, test planning, or security review.
+
+Use separate worktrees for mutating parallel work. Do not parallelize edits to the same files without an explicit merge strategy.
 
 ## Verification gate
 
@@ -107,23 +142,25 @@ Before completion, verify as appropriate:
 - performance implications
 - compatibility and migration safety
 - final diff cleanliness
+- independent review findings for important changes
 
 A model's statement that the work is complete is not evidence.
 
 ## Learning contract
 
-After a completed run, record evidence-backed observations, route quality, verification result, useful lessons, failures, and token/tool metrics when available. Promote durable patterns only after repeated successful observations.
+After a completed run, record evidence-backed observations, route quality, verification result, useful lessons, failures, reviewer findings, model/provider choice, retries, and token/tool metrics when available. Promote durable patterns only after repeated successful observations.
 
 Never allow one model response to rewrite harness code, security policy, provider permissions, or permanent engineering rules automatically. Self-improvement changes knowledge and routing candidates first; durable system changes require normal review and validation.
 
 ## Expected route examples
 
-- simple edit: context -> implement -> validate -> review
-- small bug: context -> debug -> implement -> validate -> review
-- unknown library: research -> context -> implement -> validate -> review
+- simple edit: context -> execute -> validate -> review
+- small bug: context -> debug -> execute -> validate -> review
+- unknown library: research -> context -> execute -> validate -> review
 - feasibility question: research -> poc -> validate -> learn
-- intermittent production bug: context -> debug -> implement -> validate -> review -> learn
-- security or migration change: research -> context -> implement -> validate -> grill -> review -> learn
+- intermittent production bug: isolated context -> debug -> execute -> validate -> independent review -> learn
+- security or migration change: isolated research -> context -> execute -> validate -> security/architecture review -> grill -> learn
+- parallel design options: isolated research agents -> compare -> choose -> execute in one controlled worktree -> validate
 - Jira feature: retrieve available Jira context, normalize acceptance criteria, then route normally
 
 ## Token discipline
@@ -137,6 +174,7 @@ Return:
 - outcome
 - files changed
 - validation evidence
+- independent review evidence when used
 - principles materially applied
 - assumptions
 - remaining risks
