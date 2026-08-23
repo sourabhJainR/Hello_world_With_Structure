@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Adaptive, provider-neutral AI coding harness."""
+"""Adaptive, provider-neutral AI coding harness.
+
+The harness routes a request, builds compact context, executes a configured AI
+CLI, verifies the result, records checkpoints, and learns from evidence.
+It is language-neutral and never self-edits its executable code or security policy.
+"""
 from __future__ import annotations
 
 import argparse
@@ -16,7 +21,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from observability import ConfigurationError, HarnessError, ProviderError, configure_logging, emit_event, exception_summary
+from observability import HarnessError, ConfigurationError, configure_logging, emit_event, exception_summary
 
 ROOT = Path(__file__).resolve().parent.parent
 HARNESS = ROOT / ".ai-harness"
@@ -274,14 +279,15 @@ def provider_command(provider: dict[str, Any], prompt_file: Path, phase: str, ru
     return command, cwd
 
 
-def invoke(provider: dict[str, Any], prompt_file: Path, phase: str, run_dir: Path, output_file: Path, timeout: int, dry_run: bool, logger) -> tuple[int, str, float]:
+def invoke(provider: dict[str, Any], prompt_file: Path, phase: str, run_dir: Path, output_file: Path, timeout: int, dry_run: bool, logger=None) -> tuple[int, str, float]:
     command, cwd = provider_command(provider, prompt_file, phase, run_dir)
     env = os.environ.copy()
     env.update({"AI_HARNESS_RUN_DIR": str(run_dir), "AI_HARNESS_PHASE": phase, "AI_HARNESS_AGENT": str(provider.get("name", "unknown"))})
     output_file.parent.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
     emit_event(run_dir, "provider.start", phase=phase, provider=provider.get("name"), command=command)
-    logger.info("phase=%s provider=%s started", phase, provider.get("name"))
+    if logger:
+        logger.info("phase=%s provider=%s started", phase, provider.get("name"))
     if dry_run:
         output = "DRY RUN\n$ " + shlex.join(command)
         output_file.write_text(output + "\n", encoding="utf-8")
@@ -295,43 +301,325 @@ def invoke(provider: dict[str, Any], prompt_file: Path, phase: str, run_dir: Pat
         output_file.write_text(output + "\n", encoding="utf-8")
         duration = time.monotonic() - started
         emit_event(run_dir, "provider.finish", phase=phase, exit_code=124, duration_seconds=round(duration, 3), error="timeout")
-        logger.error("phase=%s provider=%s timed out after %ss", phase, provider.get("name"), timeout)
+        if logger:
+            logger.error("phase=%s provider=%s timed out after %ss", phase, provider.get("name"), timeout)
         return 124, output, duration
     except OSError as exc:
         output = f"ERROR: {exc}"
         output_file.write_text(output + "\n", encoding="utf-8")
         duration = time.monotonic() - started
         emit_event(run_dir, "provider.finish", phase=phase, exit_code=127, duration_seconds=round(duration, 3), error=str(exc))
-        logger.error("phase=%s provider=%s failed to start: %s", phase, provider.get("name"), exc)
+        if logger:
+            logger.error("phase=%s provider=%s failed to start: %s", phase, provider.get("name"), exc)
         return 127, output, duration
     output = (result.stdout or "") + (("\n" + result.stderr) if result.stderr else "")
     output_file.write_text(output, encoding="utf-8")
     duration = time.monotonic() - started
     emit_event(run_dir, "provider.finish", phase=phase, exit_code=result.returncode, duration_seconds=round(duration, 3))
-    logger.info("phase=%s provider=%s finished exit=%s", phase, provider.get("name"), result.returncode)
+    if logger:
+        logger.info("phase=%s provider=%s finished exit=%s", phase, provider.get("name"), result.returncode)
     return result.returncode, output, duration
 
-# The remaining orchestration functions are intentionally unchanged from the existing
-# harness implementation. They now receive the configured logger through main and use
-# the standard-library observability helpers above rather than creating a new framework.
+
+def validation_commands(config: dict[str, Any]) -> list[list[str]]:
+    raw = config.get("validation", {}).get("commands", [])
+    commands: list[list[str]] = []
+    for item in raw:
+        if isinstance(item, list) and all(isinstance(value, str) for value in item):
+            commands.append(item)
+        elif isinstance(item, str):
+            commands.append(shlex.split(item, posix=os.name != "nt"))
+    return commands
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Adaptive provider-neutral AI coding harness")
-    sub = parser.add_subparsers(dest="action", required=True)
-    for name in ("providers", "capabilities", "context", "memory", "groom", "eval"):
-        sub.add_parser(name)
-    run = sub.add_parser("run")
-    run.add_argument("--task", default="")
-    run.add_argument("--jira")
-    run.add_argument("--jira-file")
-    run.add_argument("--agent")
-    run.add_argument("--workflow")
-    run.add_argument("--dry-run", action="store_true")
-    run.add_argument("--resume")
-    args = parser.parse_args()
-    config = load_config()
+def discover_validation_commands() -> list[list[str]]:
+    commands: list[list[str]] = []
+    package = ROOT / "package.json"
+    if package.exists():
+        try:
+            data = json.loads(package.read_text(encoding="utf-8"))
+            scripts = data.get("scripts", {})
+            if "test" in scripts:
+                commands.append(["npm", "test", "--if-present"])
+        except (OSError, json.JSONDecodeError):
+            pass
+    if (ROOT / "pyproject.toml").exists() or (ROOT / "pytest.ini").exists():
+        if list(ROOT.rglob("test_*.py")) or list(ROOT.rglob("*_test.py")):
+            commands.append([sys.executable, "-m", "pytest", "-q"])
+    if (ROOT / "go.mod").exists():
+        commands.append(["go", "test", "./..."])
+    if (ROOT / "Cargo.toml").exists():
+        commands.append(["cargo", "test"])
+    if list(ROOT.glob("*.sln")) or list(ROOT.glob("*.csproj")):
+        commands.append(["dotnet", "test", "--nologo"])
+    if (ROOT / "Makefile").exists():
+        commands.append(["make", "test"])
+    unique: list[list[str]] = []
+    seen: set[tuple[str, ...]] = set()
+    for command in commands:
+        key = tuple(command)
+        if key not in seen:
+            seen.add(key)
+            unique.append(command)
+    return unique[:5]
 
+
+def validation(config: dict[str, Any], run_dir: Path, timeout: int) -> tuple[bool, list[dict[str, Any]]]:
+    commands = validation_commands(config)
+    if not commands and bool(config.get("validation", {}).get("auto_discover", False)):
+        commands = discover_validation_commands()
+    if not commands:
+        return True, []
+    results: list[dict[str, Any]] = []
+    log = run_dir / "validation.log"
+    with log.open("w", encoding="utf-8") as out:
+        for command in commands:
+            out.write(f"$ {shlex.join(command)}\n")
+            started = time.monotonic()
+            try:
+                result = subprocess.run(command, cwd=ROOT, text=True, stdout=out, stderr=subprocess.STDOUT, check=False, timeout=timeout)
+                code = result.returncode
+                status = "passed" if code == 0 else "failed"
+            except subprocess.TimeoutExpired:
+                code = 124
+                status = "timeout"
+            out.write(f"status={status} exit={code}\n\n")
+            results.append({"command": command, "status": status, "exit_code": code, "duration_seconds": round(time.monotonic() - started, 3)})
+            emit_event(run_dir, "validation.command", command=command, status=status, exit_code=code, duration_seconds=round(time.monotonic() - started, 3))
+            if code != 0:
+                (run_dir / "validation.failed").write_text("failed\n", encoding="utf-8")
+                return False, results
+    return True, results
+
+
+def render_prompt(phase: str, task: str, source: str, jira: str | None, route: dict[str, Any], context: str, memory: str, history: str) -> str:
+    phase_file = PROMPTS / f"{phase}.md"
+    phase_rules = phase_file.read_text(encoding="utf-8") if phase_file.exists() else ""
+    selected = applicable_principles(task, route)
+    return f"""# AI Coding Harness
+
+Operate in an existing repository. The rules are language-neutral. Adapt them to the language, runtime, architecture, and conventions already present. Do not introduce framework-specific patterns merely to satisfy a principle name.
+
+## Applicable principles
+{', '.join(selected)}
+
+{load_principles()}
+
+## Input
+Source: {source}
+Jira: {jira or 'none'}
+Task:\n{task}
+
+## Route
+{json.dumps(route, indent=2)}
+
+## Relevant memory
+{memory}
+
+## Repository state
+{git_state()}
+
+## Repository map
+{context}
+
+## Prior phase evidence
+{compact(history or 'none', 5000)}
+
+## Phase rules
+{phase_rules}
+
+## Verification contract
+Do not claim success based on model confidence. Use command output, tests, repository evidence, or other explicit verification. Inspect the final diff. If verification fails, diagnose before retrying and do not repeat an unchanged failed action.
+
+## Token discipline
+Use only the context needed for the current phase. Prefer targeted file reads, current command output, compact summaries, and relevant memory over full transcripts.
+"""
+
+
+def route_task(provider: dict[str, Any], config: dict[str, Any], task: str, source: str, jira: str | None, memory: str, repo_map: str, run_dir: Path, dry_run: bool, logger=None) -> dict[str, Any]:
+    prompt = f"""Route this software-engineering request. Do not modify files. Keep the result language-neutral.
+
+Return exactly one line starting with ROUTE_JSON: followed by a JSON object with:
+mode: implement | debug | research | poc | review
+capabilities: zero or more of research | poc | grill
+risk: low | medium | high | critical
+uncertainty: known | moderate | unknown
+scope: file | component | service | repository | cross-repository
+principles: array of materially relevant engineering principles
+reason: <= 300 characters
+confidence: 0.0 to 1.0
+
+Use the smallest safe route. Escalate for high risk, high uncertainty, long-horizon work, cross-boundary changes, or repeated verification failures.
+
+Task source: {source}
+Jira key: {jira or 'none'}
+Task:\n{task}
+
+Relevant memory:\n{compact(memory, int(config.get('router', {}).get('memory_budget', 900)))}
+
+Repository map:\n{compact(repo_map, int(config.get('router', {}).get('context_budget', 1400)))}
+"""
+    prompt_file = run_dir / "route.prompt.md"
+    prompt_file.write_text(prompt, encoding="utf-8")
+    output_file = run_dir / "route.output.md"
+    timeout = int(config.get("execution", {}).get("provider_timeout_seconds", 900))
+    _, output, duration = invoke(provider, prompt_file, "route", run_dir, output_file, timeout, dry_run, logger)
+    route = parse_route_output(output) or heuristic_route(task)
+    route["router_duration_seconds"] = round(duration, 3)
+    return route
+
+
+def phase_sequence(route: dict[str, Any]) -> list[str]:
+    mode = route.get("mode", "implement")
+    caps = list(route.get("capabilities", []))
+    phases = ["context"]
+    if "research" in caps or mode == "research":
+        phases.append("research")
+    if "poc" in caps or mode == "poc":
+        phases.append("poc")
+    if mode == "debug":
+        phases.append("debug")
+    if mode in {"implement", "debug"}:
+        phases.extend(["execute", "validate"])
+    if mode == "review":
+        phases.append("review")
+    if "grill" in caps:
+        phases.append("grill")
+    if mode in {"implement", "debug", "poc"}:
+        phases.append("review")
+    phases.append("learn")
+    return list(dict.fromkeys(phases))
+
+
+def checkpoint(run_dir: Path, manifest: dict[str, Any], phase: str, status: str, next_phase: str | None) -> None:
+    write_json(run_dir / "checkpoint.json", {
+        "run_id": manifest["run_id"],
+        "updated_at": now_iso(),
+        "phase": phase,
+        "status": status,
+        "next_phase": next_phase,
+        "completed_phases": manifest.get("completed_phases", []),
+        "route": manifest.get("route", {}),
+    })
+
+
+def repair_after_failure(config: dict[str, Any], provider: dict[str, Any], run_dir: Path, manifest: dict[str, Any], task: str, source: str, jira: str | None, route: dict[str, Any], history: list[str], dry_run: bool, logger=None) -> bool:
+    max_attempts = int(config.get("execution", {}).get("max_repair_attempts", 2))
+    timeout = int(config.get("execution", {}).get("phase_timeout_seconds", 1200))
+    context = (run_dir / "repository-map.md").read_text(encoding="utf-8")
+    for attempt in range(1, max_attempts + 1):
+        manifest["retries"] += 1
+        prompt_file = run_dir / f"repair-{attempt}.prompt.md"
+        prompt_file.write_text(render_prompt("repair", task, source, jira, route, context, relevant_memory(task, 700), "\n\n".join(history) + "\nVerification failed. Diagnose the failure before modifying anything. Make the smallest corrective change."), encoding="utf-8")
+        output_file = run_dir / f"repair-{attempt}.output.md"
+        code, output, duration = invoke(provider, prompt_file, "repair", run_dir, output_file, timeout, dry_run, logger)
+        history.append(compact(f"repair attempt {attempt}: {output}", 2500))
+        manifest.setdefault("phase_metrics", {})[f"repair-{attempt}"] = {"duration_seconds": round(duration, 3), "exit_code": code}
+        if code != 0:
+            continue
+        passed, results = validation(config, run_dir, int(config.get("execution", {}).get("validation_timeout_seconds", 600)))
+        manifest["validation"] = {"passed": passed, "results": results}
+        if passed:
+            return True
+    return False
+
+
+def review_requires_fix(output: str) -> bool:
+    marker = "HARNESS_FIX_REQUIRED"
+    return marker in output or re.search(r"\b(?:blocking|critical|must fix|regression)\b", output, re.IGNORECASE) is not None
+
+
+def learn_from_run(run_dir: Path, task: str, route: dict[str, Any], manifest: dict[str, Any]) -> None:
+    review = (run_dir / "review.output.md").read_text(encoding="utf-8") if (run_dir / "review.output.md").exists() else ""
+    validation_ok = bool(manifest.get("validation", {}).get("passed", True))
+    lessons: list[str] = []
+    for line in review.splitlines():
+        clean = line.strip(" -#")
+        lower = clean.lower()
+        if clean and any(word in lower for word in ("lesson", "recommend", "avoid", "prefer", "risk", "root cause")):
+            lessons.append(compact(clean, 500))
+    append_jsonl(MEMORY / "observations.jsonl", {
+        "id": hashlib.sha256(f"{task}|{now_iso()}".encode()).hexdigest()[:12],
+        "created_at": now_iso(),
+        "task": compact(task, 500),
+        "route": route,
+        "provider": manifest.get("provider"),
+        "validation_passed": validation_ok,
+        "retries": manifest.get("retries", 0),
+        "lessons": lessons[:5],
+    })
+    for lesson in lessons[:5]:
+        append_jsonl(MEMORY / "patterns.jsonl", {
+            "id": hashlib.sha256(lesson.encode()).hexdigest()[:12],
+            "created_at": now_iso(),
+            "pattern": lesson,
+            "scope": route.get("scope", "repository"),
+            "confidence": 0.6 if validation_ok else 0.35,
+            "success": validation_ok,
+        })
+
+
+def groom_memory(config: dict[str, Any]) -> dict[str, Any]:
+    patterns_path = MEMORY / "patterns.jsonl"
+    observations_path = MEMORY / "observations.jsonl"
+    items = read_jsonl(patterns_path)
+    observations = read_jsonl(observations_path)
+    max_items = int(config.get("learning", {}).get("max_memory_items", 250))
+    min_obs = int(config.get("learning", {}).get("min_observations_for_promotion", 3))
+    success_floor = float(config.get("learning", {}).get("min_success_rate_for_promotion", 0.75))
+    counts: dict[str, list[bool]] = {}
+    for item in observations:
+        for lesson in item.get("lessons", []):
+            counts.setdefault(str(lesson), []).append(bool(item.get("validation_passed", False)))
+    trusted: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in items:
+        key = str(item.get("pattern", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        history = counts.get(key, [])
+        if len(history) >= min_obs and (sum(history) / len(history)) >= success_floor:
+            promoted = dict(item)
+            promoted["status"] = "trusted"
+            promoted["observations"] = len(history)
+            promoted["success_rate"] = round(sum(history) / len(history), 3)
+            promoted["confidence"] = min(0.99, max(float(item.get("confidence", 0.5)), promoted["success_rate"]))
+            trusted.append(promoted)
+        if len(trusted) >= max_items:
+            break
+    if trusted:
+        patterns_path.write_text("".join(json.dumps(item, ensure_ascii=False) + "\n" for item in trusted), encoding="utf-8")
+    return {"patterns": len(items), "trusted": len(trusted)}
+
+
+def load_eval_cases() -> list[dict[str, Any]]:
+    return read_jsonl(EVALS)
+
+
+def run_evals() -> dict[str, Any]:
+    cases = load_eval_cases()
+    results = []
+    for case in cases:
+        text = str(case.get("task") or case.get("prompt") or "")
+        route = heuristic_route(text)
+        expected_mode = case.get("expected_mode")
+        expected_caps = set(case.get("capabilities", case.get("must_include", [])))
+        observed_caps = set(route.get("capabilities", []))
+        results.append({"id": case.get("id"), "passed": route.get("mode") == expected_mode and expected_caps.issubset(observed_caps), "expected_mode": expected_mode, "observed_mode": route.get("mode"), "expected_capabilities": sorted(expected_caps), "observed_capabilities": sorted(observed_caps)})
+    passed = sum(1 for item in results if item["passed"])
+    return {"cases": len(results), "passed": passed, "failed": len(results) - passed, "results": results}
+
+
+def final_verification(manifest: dict[str, Any]) -> tuple[bool, dict[str, Any]]:
+    diff_ok, diff_output = diff_check()
+    files = diff_files()
+    validation_ok = bool(manifest.get("validation", {}).get("passed", True))
+    evidence = {"validation_passed": validation_ok, "diff_check_passed": diff_ok, "changed_files": files, "diff_check": diff_output}
+    return validation_ok and diff_ok, evidence
+
+
+def run_main(args: argparse.Namespace, config: dict[str, Any], logger) -> int:
     if args.action == "providers":
         print("\n".join(config.get("providers", {}).keys()))
         return 0
@@ -341,6 +629,7 @@ def main() -> int:
     if args.action == "context":
         target = HARNESS / "repository-map.md"
         target.write_text(build_repo_map(), encoding="utf-8")
+        print(target)
         return 0
     if args.action == "memory":
         for path in (MEMORY / "patterns.jsonl", MEMORY / "observations.jsonl"):
@@ -375,18 +664,26 @@ def main() -> int:
     if not task:
         raise ConfigurationError("A task, Jira key, or Jira file is required")
 
-    run_dir = make_run_dir()
-    logger = configure_logging(run_dir, str(config.get("observability", {}).get("log_level", "INFO")))
-    emit_event(run_dir, "run.start", provider=provider_name, source=source)
-
-    try:
-        # Existing route / phase orchestration remains the source of truth.
-        # The observability layer wraps it without adding a second exception or telemetry framework.
+    if args.resume:
+        run_dir = Path(args.resume).resolve()
+        checkpoint_path = run_dir / "checkpoint.json"
+        manifest_path = run_dir / "manifest.json"
+        if not checkpoint_path.exists() or not manifest_path.exists():
+            raise ConfigurationError("Resume requires checkpoint.json and manifest.json")
+        checkpoint_data = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        route = normalize_route(manifest["route"])
+        phases = list(manifest.get("phases", phase_sequence(route)))
+        next_phase = checkpoint_data.get("next_phase")
+        phases = phases[phases.index(next_phase):] if next_phase in phases else []
+    else:
+        run_dir = make_run_dir()
         repo_map = build_repo_map()
         memory = relevant_memory(task, int(config.get("router", {}).get("memory_budget", 900)))
-        route = normalize_route(heuristic_route(task))
+        route = normalize_route(route_task(provider, config, task, source, args.jira, memory, repo_map, run_dir, args.dry_run, logger))
+        phases = phase_sequence(route)
         manifest = {
-            "version": 5,
+            "version": 4,
             "run_id": run_dir.name,
             "started_at": now_iso(),
             "provider": provider_name,
@@ -394,21 +691,133 @@ def main() -> int:
             "source": source,
             "jira": args.jira,
             "route": route,
+            "applicable_principles": applicable_principles(task, route),
+            "phases": phases,
+            "completed_phases": [],
+            "retries": 0,
+            "initial_git": git_state(),
             "observability": {"logging": "stdlib", "telemetry": "local-jsonl"},
         }
         write_json(run_dir / "manifest.json", manifest)
         (run_dir / "task.txt").write_text(task, encoding="utf-8")
         (run_dir / "repository-map.md").write_text(repo_map, encoding="utf-8")
-        emit_event(run_dir, "route.selected", mode=route["mode"], risk=route["risk"], uncertainty=route["uncertainty"], capabilities=route["capabilities"])
-        logger.info("run=%s route=%s risk=%s uncertainty=%s", run_dir.name, route["mode"], route["risk"], route["uncertainty"])
-        print(f"Run initialized: {run_dir}")
-        return 0
+        checkpoint(run_dir, manifest, "route", "completed", phases[0] if phases else None)
+
+    history: list[str] = []
+    phase_timeout = int(config.get("execution", {}).get("phase_timeout_seconds", 1200))
+    validation_timeout = int(config.get("execution", {}).get("validation_timeout_seconds", 600))
+    max_retries = int(config.get("execution", {}).get("max_phase_retries", 1))
+
+    for index, phase in enumerate(phases):
+        next_phase = phases[index + 1] if index + 1 < len(phases) else None
+        emit_event(run_dir, "phase.start", phase=phase)
+        if phase == "context":
+            manifest["completed_phases"].append(phase)
+            checkpoint(run_dir, manifest, phase, "completed", next_phase)
+            continue
+        if phase == "learn":
+            learn_from_run(run_dir, task, route, manifest)
+            manifest["completed_phases"].append(phase)
+            checkpoint(run_dir, manifest, phase, "completed", next_phase)
+            continue
+        if phase == "validate":
+            passed, results = validation(config, run_dir, validation_timeout)
+            manifest["validation"] = {"passed": passed, "results": results}
+            manifest["completed_phases"].append(phase)
+            write_json(run_dir / "manifest.json", manifest)
+            if not passed and bool(config.get("execution", {}).get("repair_on_verification_failure", True)):
+                if not repair_after_failure(config, provider, run_dir, manifest, task, source, args.jira, route, history, args.dry_run, logger):
+                    checkpoint(run_dir, manifest, phase, "blocked", "repair")
+                    write_json(run_dir / "manifest.json", manifest)
+                    return 1
+            checkpoint(run_dir, manifest, phase, "completed", next_phase)
+            emit_event(run_dir, "phase.finish", phase=phase, status="completed", validation_passed=passed)
+            continue
+        if phase == "review" and route.get("mode") != "review" and not any(p in manifest["completed_phases"] for p in ("execute", "debug", "poc")):
+            continue
+        prompt_file = run_dir / f"{phase}.prompt.md"
+        context = (run_dir / "repository-map.md").read_text(encoding="utf-8")
+        memory = relevant_memory(task, int(config.get("router", {}).get("memory_budget", 900)))
+        prompt_file.write_text(render_prompt(phase, task, source, args.jira, route, context, memory, "\n\n".join(history)), encoding="utf-8")
+        output_file = run_dir / f"{phase}.output.md"
+        succeeded = False
+        for attempt in range(max_retries + 1):
+            if attempt:
+                manifest["retries"] += 1
+                prompt_file.write_text(render_prompt(phase, task, source, args.jira, route, context, memory, "\n\n".join(history) + "\nPrevious attempt failed. Diagnose before retrying and change the approach or evidence."), encoding="utf-8")
+            code, output, duration = invoke(provider, prompt_file, phase, run_dir, output_file, phase_timeout, args.dry_run, logger)
+            history.append(compact(f"[{phase}] {output}", 2500))
+            manifest.setdefault("phase_metrics", {})[phase] = {"duration_seconds": round(duration, 3), "exit_code": code, "attempt": attempt}
+            if code == 0:
+                succeeded = True
+                break
+        if not succeeded:
+            manifest["status"] = "failed"
+            write_json(run_dir / "manifest.json", manifest)
+            checkpoint(run_dir, manifest, phase, "failed", phase)
+            emit_event(run_dir, "phase.finish", phase=phase, status="failed")
+            return 1
+        if phase in {"execute", "debug", "poc", "research", "grill", "review"}:
+            manifest.setdefault("git_evidence", {})[phase] = git_diff_summary()
+        if phase == "review" and review_requires_fix(output) and bool(config.get("execution", {}).get("repair_on_review_failure", True)):
+            if not repair_after_failure(config, provider, run_dir, manifest, task, source, args.jira, route, history, args.dry_run, logger):
+                manifest["status"] = "blocked_by_review"
+                write_json(run_dir / "manifest.json", manifest)
+                checkpoint(run_dir, manifest, phase, "blocked", "repair")
+                return 1
+        manifest["completed_phases"].append(phase)
+        write_json(run_dir / "manifest.json", manifest)
+        checkpoint(run_dir, manifest, phase, "completed", next_phase)
+        emit_event(run_dir, "phase.finish", phase=phase, status="completed")
+
+    final_ok, verification = final_verification(manifest)
+    manifest["verification"] = verification
+    manifest["git_final"] = git_state()
+    manifest["git_diff"] = git_diff_summary()
+    manifest["completed_at"] = now_iso()
+    manifest["status"] = "completed" if final_ok else "blocked_by_verification"
+    write_json(run_dir / "manifest.json", manifest)
+    checkpoint(run_dir, manifest, "complete", manifest["status"], None)
+    emit_event(run_dir, "run.finish", status=manifest["status"], verification=verification)
+    if not final_ok and bool(config.get("harness", {}).get("require_verification_before_complete", True)):
+        return 1
+    print(f"Run complete: {run_dir}")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Adaptive provider-neutral AI coding harness")
+    sub = parser.add_subparsers(dest="action", required=True)
+    for name in ("providers", "capabilities", "context", "memory", "groom", "eval"):
+        sub.add_parser(name)
+    run = sub.add_parser("run")
+    run.add_argument("--task", default="")
+    run.add_argument("--jira")
+    run.add_argument("--jira-file")
+    run.add_argument("--agent")
+    run.add_argument("--workflow")
+    run.add_argument("--dry-run", action="store_true")
+    run.add_argument("--resume")
+    args = parser.parse_args()
+    config = load_config()
+    run_dir: Path | None = None
+    logger = configure_logging(None, str(config.get("observability", {}).get("log_level", "INFO")))
+    try:
+        if args.action != "run":
+            return run_main(args, config, logger)
+        run_dir = make_run_dir()
+        logger = configure_logging(run_dir, str(config.get("observability", {}).get("log_level", "INFO")))
+        emit_event(run_dir, "run.start", action=args.action)
+        result = run_main(args, config, logger)
+        return result
     except HarnessError as exc:
-        emit_event(run_dir, "run.error", **exception_summary(exc))
-        logger.error("run failed: %s", exc)
+        if run_dir:
+            emit_event(run_dir, "run.error", **exception_summary(exc))
+        logger.error("harness error: %s", exc)
         return 2
     except Exception as exc:  # last-resort crash boundary
-        emit_event(run_dir, "run.crash", **exception_summary(exc))
+        if run_dir:
+            emit_event(run_dir, "run.crash", **exception_summary(exc))
         logger.exception("unhandled harness failure")
         return 1
 
