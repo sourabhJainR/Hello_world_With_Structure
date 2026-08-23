@@ -12,7 +12,7 @@ The default implementation uses only the Python standard library:
 - `unittest` for unit testing
 - `tomllib`, `argparse`, `subprocess`, `pathlib`, and other standard modules for infrastructure
 
-No new third-party dependency is required for the baseline harness.
+No new third-party Python dependency is required for the baseline harness.
 
 ## Optional third-party libraries
 
@@ -27,6 +27,17 @@ These are documented but are NOT incorporated by default:
 
 Before introducing any optional library, create or update an explicit dependency decision in the repository and document the reason, scope, version policy, and operational impact.
 
+## Optional external code-intelligence tools
+
+These are integrations, not Python runtime dependencies of this repository:
+
+| Tool | Purpose | Status | Ownership | License/source note |
+|---|---|---|---|---|
+| Graphify (`graphifyy`) | Local AST/knowledge graph, graph traversal, code/document relationships | Opt-in | External tool | Official Graphify source is Apache-2.0; verify the exact release before adoption |
+| codebase-memory-mcp | Local persistent code graph, AST/LSP-aware structural search, impact analysis | Opt-in | External tool | Official repository currently documents MIT licensing; verify the exact release before adoption |
+
+The harness does not install, upgrade, configure, or silently activate either tool. If present, it can query them through the provider-neutral knowledge fabric. MCP lifecycle/configuration remains owned by the user's agent/MCP client.
+
 ## Existing-project rule
 
 For a non-fresh repository, agents MUST first detect and reuse the existing:
@@ -36,6 +47,7 @@ For a non-fresh repository, agents MUST first detect and reuse the existing:
 - telemetry/tracing/metrics implementation
 - unit/integration test framework, fixtures, helpers, and naming conventions
 - dependency/package management system
+- AST/index/search/graph tooling already present
 
 Do not introduce a competing framework merely because it is newer or more capable.
 
