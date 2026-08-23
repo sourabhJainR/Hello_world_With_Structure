@@ -1,6 +1,6 @@
 [harness]
-name = "adaptive-ai-coding-harness"
-version = 12
+name = "adaptive-ai-coding-orchestrator"
+version = 13
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
