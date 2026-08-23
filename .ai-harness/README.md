@@ -2,8 +2,6 @@
 
 A provider-neutral orchestration layer for Claude Code, Codex, Gemini CLI, local agents, and custom AI coding CLIs.
 
-The design borrows useful patterns from mature coding-agent projects: triggerable skills, focused token-bounded repository maps, reusable skills, controlled delegation, and reproducible run evidence.
-
 ## Design
 
 ```text
@@ -21,16 +19,22 @@ Prompt / Task / Jira / Issue
  Relevant Memory + Repository Context
           |
           v
- Token Budget / Context Planner
+ Token Budget + Model Tier + Tool Policy
           |
           v
- Model + Tool + Capability Routing
+ Minimum Safe Capability Set
+          |
+          v
+ Worktree Isolation when needed
           |
           v
  Understand -> Plan -> Execute
           |
           v
- Verify -> Diff Review -> Grill when needed
+ Validate -> Independent Review -> Grill when needed
+          |
+          v
+ Diff / Evidence Gate
           |
           v
  Learn -> Groom -> Reuse
@@ -50,17 +54,17 @@ The router chooses from:
 
 ```text
 research  unknown facts, technologies, APIs, architecture options
-a poc      feasibility or major technical uncertainty
+poc       feasibility or major technical uncertainty
 debug     failures, regressions, intermittent behavior, root-cause analysis
 review    meaningful code changes
 Grill     high-risk security, migration, performance, production or design decisions
 ```
 
-Simple tasks stay simple. High-risk or uncertain tasks get more reasoning, stronger verification, or adversarial review.
+Simple tasks stay simple. High-risk or uncertain tasks get stronger reasoning, stronger verification, isolation, or adversarial review.
 
 ## Engineering operating system
 
-The harness applies two complementary policy layers:
+The harness applies:
 
 ```text
 .ai-harness/principles.md
@@ -68,9 +72,39 @@ The harness applies two complementary policy layers:
 .ai-harness/agent-extensions.md
 ```
 
-They encode language-neutral practices including DRY, YAGNI, KISS, DI/dependency inversion, selective SOLID, cohesion/coupling, security by default, failure-aware design, observability, reversibility, behavior-focused testing, compatibility, least privilege, and evidence-based decision making.
+These encode language-neutral engineering practices including DRY, YAGNI, KISS, DI/dependency inversion, selective SOLID, cohesion/coupling, security by default, failure-aware design, observability, reversibility, behavior-focused testing, compatibility, least privilege, and evidence-based decision making.
 
-The AI-specific playbook adds context engineering, model/effort routing, bounded tools, controlled multi-agent delegation, recovery guidance, verification gates, diff discipline, explicit stopping conditions, and governed self-improvement.
+The AI-specific policy adds context engineering, model/effort routing, bounded tools, controlled delegation, checkpointing, recovery, worktree isolation, independent review, verification gates, explicit stopping conditions, diff discipline, and governed self-improvement.
+
+## Isolated worktrees
+
+Use a separate Git worktree for risky or parallel mutating work:
+
+```bash
+python .ai-harness/worktree.py create feature-auth
+python .ai-harness/worktree.py list
+python .ai-harness/worktree.py remove feature-auth
+```
+
+Worktree policy is configured under `[worktrees]` in `config.toml`. High and critical risk work is eligible for automatic isolation when the orchestration layer is integrated with a worktree-capable provider.
+
+Failed worktrees are kept by default so the failure can be inspected. Successful worktrees are not deleted automatically until their branch or changes are safely preserved.
+
+## Independent review agents
+
+Use independent, read-only review perspectives after meaningful changes:
+
+```bash
+python .ai-harness/review_agents.py \
+  --agent claude \
+  --run-dir .ai-harness/runs/<run> \
+  --task "Review the implemented change" \
+  --review correctness \
+  --review security \
+  --review architecture
+```
+
+Reviewer roles are intentionally independent of the implementing agent. They inspect the current repository and diff and produce evidence-backed findings without modifying files.
 
 ## Commands
 
@@ -80,6 +114,7 @@ python .ai-harness/run.py capabilities
 python .ai-harness/run.py context
 python .ai-harness/run.py memory
 python .ai-harness/run.py groom
+python .ai-harness/run.py eval
 python .ai-harness/run.py run --task "..."
 python .ai-harness/run.py run --task "..." --dry-run
 ```
@@ -102,13 +137,13 @@ The repository-wide instruction surface is `AGENTS.md`.
 
 ## Run state and context
 
-Each run captures route state, repository context, prompts, phase outputs, validation evidence, and final git state under:
+Each run captures route state, repository context, prompts, phase outputs, validation evidence, checkpoints, and final git state under:
 
 ```text
 .ai-harness/runs/<timestamp>/
 ```
 
-Long-running work should use the orchestrator's checkpoint/recovery guidance and preserve compact state rather than replaying a full transcript.
+Long-running work should preserve compact checkpoints rather than replaying the full transcript.
 
 ## Learning and evaluation
 
@@ -120,15 +155,15 @@ Memory is split into observations and patterns:
   patterns.jsonl
 ```
 
-Representative routing tasks live under `.ai-harness/evals/cases.jsonl`. Changes to routing, prompts, principles, or model policy should be compared against representative tasks before promotion.
+Representative routing tasks live under `.ai-harness/evals/cases.jsonl`. Changes to routing, prompts, principles, model policy, or review policy should be compared against representative tasks before promotion.
 
 A run can add observations and candidate lessons. Grooming merges repeated lessons and promotes patterns only after configurable evidence and success-rate thresholds. Model output never edits harness code, provider permissions, or permanent rules directly.
 
 ## Model and tool routing
 
-The harness supports model/effort tiers through provider-neutral configuration. The policy is to use the least capable model and reasoning effort that safely solves the current phase, escalating when uncertainty, risk, failed verification, or task horizon increases.
+The harness supports provider-neutral model/effort tiers. The policy is to use the least capable model and reasoning effort that safely solves the current phase, escalating when uncertainty, risk, failed verification, or task horizon increases.
 
-Tool access follows the same rule: expose only the tools relevant to the current phase, prefer read-only investigation before mutation, and use isolated worktrees or sandboxes for risky or parallel work where supported.
+Tool access follows the same rule: expose only the tools relevant to the current phase, prefer read-only investigation before mutation, and use isolated worktrees or sandboxes for risky or parallel work.
 
 ## Jira
 
