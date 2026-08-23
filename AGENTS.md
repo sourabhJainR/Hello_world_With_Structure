@@ -1,44 +1,47 @@
 # Repository AI Agent Instructions
 
-This file is the shared durable instruction surface for AI coding agents.
+This repository uses an adaptive, provider-neutral AI coding orchestrator.
 
-## Mission
+## Default behavior
 
-Use the repository's AI harness under `.ai-harness/` for structured work when practical.
+For every non-trivial software task, first infer the required engineering state from the prompt, task, Jira/issue reference, repository state, risk, and uncertainty. Use the minimum safe workflow. Do not make the user choose Research, POC, Grill, Debug, Review, or other capabilities manually unless they ask for a specific mode.
 
-## Before changing code
+The canonical skill is:
 
-1. Inspect the relevant repository structure and existing patterns.
-2. Read applicable instructions under `.ai-harness/`.
-3. Build a focused understanding of the smallest set of files needed.
-4. State assumptions when requirements are incomplete.
+`.agents/skills/ai-coding-orchestrator/SKILL.md`
 
-## Capability routing
+The executable harness is:
 
-Use capabilities only when useful:
+`python .ai-harness/run.py`
 
-- `research`: unknown technology, external dependency, competing approaches, current facts, or architecture decisions.
-- `poc`: feasibility or technical uncertainty that should be tested before production implementation.
-- `grill`: high-risk design, security, performance, migration, or important production changes that benefit from adversarial review.
-- `review`: normal code-quality and regression review.
+## Automatic capability routing
 
-Do not run optional capabilities by default for trivial changes.
+- research: unknown technology, external facts, competing options, architecture decisions
+- poc: feasibility or unresolved technical uncertainty
+- debug: failures, regressions, intermittent behavior, root-cause analysis
+- grill: meaningful security, migration, performance, production, or high-risk design work
+- review: meaningful code changes and release-impacting changes
+
+Skip optional capabilities when repository evidence already makes them unnecessary.
+
+## Context and tokens
+
+Use repository maps and targeted file reads. Carry compact summaries, decisions, failures, and open questions rather than full transcripts. Retrieve only relevant learned memory.
+
+## Learning
+
+Every completed run may contribute evidence-backed lessons to `.ai-harness/memory/`. Lessons are promoted only after repeated successful observations. Never allow one model response to modify harness code or permanent rules automatically.
 
 ## Coding rules
 
-- Keep changes focused.
-- Reuse existing abstractions and dependencies.
-- Preserve compatibility unless the task says otherwise.
+- Inspect before changing code.
+- Prefer the smallest correct change.
+- Reuse existing patterns and dependencies.
 - Do not modify unrelated files.
-- Add or update tests where appropriate.
-- Never claim a command was run unless it was run and its result is known.
+- Add or update focused tests.
+- Preserve compatibility unless the task says otherwise.
+- Never claim commands, tests, Jira data, or research sources that were not accessed.
 
 ## Completion
 
-Report:
-
-- What changed
-- Files changed
-- Validation performed
-- Important assumptions
-- Remaining risks or follow-up work
+Report what changed, files changed, validation performed, important assumptions, and remaining risks.
