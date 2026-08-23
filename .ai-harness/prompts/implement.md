@@ -1,0 +1,1 @@
+Implement the approved smallest correct change. Preserve existing architecture and patterns. Avoid unrelated refactoring. Add or update targeted tests. Before finishing, inspect the diff and validate the changed behavior.
