@@ -1,131 +1,95 @@
-# Hello World With Structure
+# Adaptive AI Coding Orchestrator
 
-Interactive learning platform with code execution, history tracking, and snippet management across multiple programming languages.
+Provider-neutral AI software engineering orchestration designed to sit above Claude Code, Codex, Gemini CLI, local agents, and other compatible coding-agent environments.
 
-## Adaptive AI Coding System
+The repository is distributed as a deployable Agent Skill and Claude Code plugin. Its intended product identity is `adaptive-ai-coding-orchestrator`; the GitHub repository name is retained temporarily for history compatibility.
 
-This repository includes a provider-neutral AI coding orchestrator designed to sit above Claude Code, Codex, Gemini CLI, local agents, or another compatible AI CLI.
-
-The deployable skill can be installed globally so it is available when working in any repository. The normal runtime is one adaptive run per task; recursive execution is never automatic.
+## What it provides
 
 ```text
-Input
-  -> Repository profile + extension discovery
-  -> State + Intent + Risk + Uncertainty
-  -> Graph / AST / exact / semantic evidence
-  -> Flash-style bounded context
-  -> Minimum Safe Capabilities
-  -> Execute
-  -> Validate
-  -> Diff / Verification Gate
-  -> Review / Grill when justified
-  -> Learn
+User task / Jira / issue
+  -> repository rules + state
+  -> extension discovery
+  -> AST / graph / exact / semantic evidence
+  -> FlashAttention-inspired bounded context
+  -> adaptive workflow selection
+  -> implementation / research / POC / debug / grill / review
+  -> repository-native verification
+  -> independent review and repair
+  -> evidence-backed learning
 ```
 
-## Deploy the skill
+Core principles:
 
-For a detected local coding-agent environment:
+- Repository conventions before generic conventions.
+- Verification over model claims.
+- Least privilege and isolated execution for risky work.
+- Optional integrations, never mandatory dependencies.
+- One adaptive runtime run by default; loops require explicit user intent.
+- Stable context plus targeted evidence instead of full-repository prompting.
+- Language and framework neutrality.
+
+## Install for Claude Code
+
+From Claude Code:
+
+```text
+/plugin marketplace add sourabhJainR/Hello_world_With_Structure
+/plugin install adaptive-ai-coding-orchestrator@adaptive-ai-engineering
+```
+
+For local plugin development:
+
+```text
+/plugin marketplace add .
+/plugin install adaptive-ai-coding-orchestrator@adaptive-ai-engineering
+```
+
+## Install on a developer box
 
 ```bash
-python scripts/install_skill.py --auto
+./install.sh
 ```
 
-For explicit global installation across Claude Code, generic Agent Skills, and Gemini:
+or:
 
 ```bash
-python scripts/install_skill.py --global
+python3 scripts/install_skill.py --auto
 ```
 
-The installer is idempotent and backup-aware. It does not install third-party tools, change MCP configuration, grant permissions, or overwrite user instructions without a backup. Restart the coding agent after installation.
+The installer detects supported agent environments and installs the skill with backups. It does not install third-party tools, modify MCP configuration, grant permissions, or silently change external integrations.
 
-The canonical deployable skill is:
+## Optional intelligence extensions
 
-`skills/ai-coding-orchestrator/SKILL.md`
+The orchestrator can use these when already installed and enabled:
 
-The Claude plugin manifest is:
+- Graphify for deterministic AST and relationship graphs.
+- code-mem / codebase-memory-mcp for persistent codebase memory, structural search, semantic retrieval, call tracing and impact analysis.
+- Superpowers for planning, TDD, systematic debugging and execution discipline.
+- Ponytail for YAGNI and minimal-change discipline.
+- Caveman for compact context/output handling.
+- Other compatible Agent Skills and MCP servers discovered at runtime.
 
-`.claude-plugin/plugin.json`
+No extension is required for core operation.
 
-See `docs/DEPLOYMENT.md` for project-scoped and provider-specific setup.
+## Architecture
 
-## Optional extensions
+See `docs/PLUGIN_ARCHITECTURE.md` and `docs/MARKETPLACE.md` for packaging, extension contracts, installation and release guidance.
 
-The orchestrator uses optional extensions when already installed and enabled. None are mandatory:
+## Safety
 
-- Graphify: AST/knowledge graph and relationship/impact evidence.
-- code-mem / codebase-memory-mcp: persistent code graph, semantic search, call tracing and impact analysis.
-- Superpowers: brainstorming, TDD, systematic debugging, planning and execution skills.
-- Ponytail: YAGNI/minimal-change discipline.
-- Caveman: compact communication and token-efficient subagent output.
-- Other Agent Skills and MCP servers: task-specific capabilities.
+The orchestrator never silently installs tools, modifies permissions, connects to production, merges changes, or promotes learned behavior into executable policy. Repository and organization instructions remain authoritative.
 
-Availability is detected without installation or mutation:
+## Development
+
+Run the repository tests:
 
 ```bash
-python .ai-harness/extension_registry.py
+python -m unittest discover -s tests -v
 ```
 
-Extension conflict precedence is repository instructions, security/permissions, acceptance criteria, local architecture, verification, orchestrator, extension guidance, then model preference.
-
-## Examples
+Validate the distributable package:
 
 ```bash
-# Adaptive coding task
-python .ai-harness/run.py run --task "Add validation to the export flow"
-
-# Jira task
-python .ai-harness/run.py run --jira PROJ-1827 --task "Implement the requested change"
-
-# Jira content from a local export
-python .ai-harness/run.py run --jira-file ./jira/PROJ-1827.txt
-
-# Research, debugging, POC and review are inferred automatically
-python .ai-harness/run.py run --task "Compare Redis and Valkey for this service"
-python .ai-harness/run.py run --task "Investigate the intermittent export timeout"
-python .ai-harness/run.py run --task "Can this workload be moved to WebAssembly?"
-
-# Inspect learned knowledge and routing quality
-python .ai-harness/run.py memory
-python .ai-harness/run.py groom
-python .ai-harness/run.py eval
-
-# Resume an interrupted run from its checkpoint
-python .ai-harness/run.py run --task "..." --resume .ai-harness/runs/<run-id>
+python scripts/validate_plugin.py
 ```
-
-## Engineering principles
-
-The orchestrator applies language-neutral engineering principles from `.ai-harness/principles.md`, including DRY, YAGNI, KISS, dependency inversion, selective SOLID, cohesion/coupling, security by default, failure awareness, observability, reversibility, compatibility, behavior-focused testing, least privilege, and evidence over assumption.
-
-## Repository-first coding style
-
-New interfaces, classes, constants, services, adapters, tests, and other files must follow the existing repository's segregation, naming and coding style. When multiple local patterns exist, the orchestrator selects the most mature compatible and scalable pattern. Only when no local convention exists does it fall back to a current mature ecosystem convention.
-
-## Learning and evolution
-
-The system records compact observations and candidate patterns under `.ai-harness/memory/`.
-
-Learning is governed:
-
-- one run can create an observation, not a permanent rule
-- repeated successful observations increase confidence
-- grooming consolidates duplicates and promotes trusted patterns
-- harness code, provider permissions, security policy, and permanent rules are not self-modified from model output
-
-## Token and context engineering
-
-The harness uses structural retrieval, relevance ranking, stable context, bounded evidence, tiled context, compact history and explicit context budgets. The FlashAttention reference is an IO/context-engineering principle, not a dependency on the FlashAttention library.
-
-## Recovery and verification
-
-Runs persist checkpoints and phase artifacts. Provider failures and verification failures have bounded repair paths. Validation uses explicit argv commands or safe auto-discovery; shell parsing is avoided for configured validation commands. Completion also performs a final `git diff --check` gate.
-
-## Providers
-
-Providers are configured in `.ai-harness/config.toml`. The bridge supports a `{python}` placeholder so the same configuration works across environments where the Python executable name differs.
-
-## Regression evaluation
-
-Representative routing cases live in `.ai-harness/evals/cases.jsonl`. Changes to routing logic should keep `python .ai-harness/run.py eval` passing before promotion.
-
-See `.ai-harness/README.md` and `docs/DEPLOYMENT.md` for the detailed architecture and operating model.
