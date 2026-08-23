@@ -1,14 +1,13 @@
-"""Install the harness skill into detected agent skill locations.
+"""Install the harness skill into user-level agent skill locations.
 
-The installer is intentionally opt-in, idempotent, backup-aware, and does not
-install third-party tools or modify MCP configuration.
+The installer is idempotent, backup-aware, and never installs third-party
+tools, modifies MCP configuration, or changes permissions.
 """
 
 from __future__ import annotations
 
 import argparse
 import shutil
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,28 +48,37 @@ def command_exists(name: str) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Install AI Coding Orchestrator skills")
-    parser.add_argument("--global", dest="global_install", action="store_true", help="Install to user-level agent locations")
+    parser.add_argument("--auto", action="store_true", help="Install only for detected agent CLIs plus generic Agent Skills")
+    parser.add_argument("--global", dest="global_install", action="store_true", help="Install for Claude, generic Agent Skills, and Gemini")
     parser.add_argument("--claude", action="store_true", help="Install Claude Code skill and global CLAUDE.md bootstrap")
     parser.add_argument("--agents", action="store_true", help="Install generic Agent Skills location")
     parser.add_argument("--gemini", action="store_true", help="Install Gemini skill and global GEMINI.md bootstrap")
     args = parser.parse_args()
 
-    if not (args.global_install or args.claude or args.agents or args.gemini):
-        args.global_install = True
+    if not (args.auto or args.global_install or args.claude or args.agents or args.gemini):
+        args.auto = True
 
     home = Path.home()
     installed: list[Path] = []
 
-    if args.global_install or args.claude:
-        installed.append(install_skill(home / ".claude" / "skills"))
-        append_bootstrap(home / ".claude" / "CLAUDE.md")
-
-    if args.global_install or args.agents:
+    if args.auto:
+        # Generic Agent Skills is harmless and is the portability baseline.
         installed.append(install_skill(home / ".agents" / "skills"))
-
-    if args.global_install or args.gemini:
-        installed.append(install_skill(home / ".gemini" / "skills"))
-        append_bootstrap(home / ".gemini" / "GEMINI.md")
+        if command_exists("claude"):
+            installed.append(install_skill(home / ".claude" / "skills"))
+            append_bootstrap(home / ".claude" / "CLAUDE.md")
+        if command_exists("gemini"):
+            installed.append(install_skill(home / ".gemini" / "skills"))
+            append_bootstrap(home / ".gemini" / "GEMINI.md")
+    else:
+        if args.global_install or args.claude:
+            installed.append(install_skill(home / ".claude" / "skills"))
+            append_bootstrap(home / ".claude" / "CLAUDE.md")
+        if args.global_install or args.agents:
+            installed.append(install_skill(home / ".agents" / "skills"))
+        if args.global_install or args.gemini:
+            installed.append(install_skill(home / ".gemini" / "skills"))
+            append_bootstrap(home / ".gemini" / "GEMINI.md")
 
     print("Installed AI Coding Orchestrator:")
     for path in installed:
