@@ -1,0 +1,25 @@
+[workflow]
+phases = ["understand", "plan", "implement", "review", "fix"]
+review_failure_marker = "HARNESS_FIX_REQUIRED"
+
+[providers.claude]
+command = ["claude", "-p", "{prompt_file}"]
+working_directory = "{workspace}"
+
+[providers.codex]
+command = ["codex", "exec", "{prompt_file}"]
+working_directory = "{workspace}"
+
+[providers.gemini]
+command = ["gemini", "-p", "{prompt_file}"]
+working_directory = "{workspace}"
+
+# Add any compatible CLI here. Example:
+# [providers.local]
+# command = ["my-agent", "--instructions", "{prompt_file}"]
+# working_directory = "{workspace}"
+
+[validation]
+# Commands are optional and project-specific.
+# They run after implementation and after a fix.
+commands = []
