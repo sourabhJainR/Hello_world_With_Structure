@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-harness"
-version = 9
+version = 10
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -46,6 +46,17 @@ prefer_targeted_reads = true
 compress_prior_phase_output = true
 preserve_checkpoints = true
 policy_file = ".ai-harness/CONTEXT_POLICY.md"
+
+[flash_context]
+enabled = true
+policy_file = ".ai-harness/FLASH_CONTEXT_POLICY.md"
+strategy = "stable-prefix + tiled-context + relevance-ranking + bounded-evidence"
+budget_chars = 12000
+repository_budget_chars = 9000
+memory_budget_chars = 2000
+history_budget_chars = 2400
+preserve_verification_evidence = true
+third_party_dependency = false
 
 [execution]
 max_phase_retries = 1
