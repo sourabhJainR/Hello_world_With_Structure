@@ -2,41 +2,33 @@
 
 This repository uses an adaptive, provider-neutral AI coding orchestrator. These instructions apply to Claude Code, Codex, Gemini, local agents, and other compatible AI coding tools.
 
-## 1. Default workflow
+Canonical control plane: `.agents/skills/ai-coding-orchestrator/SKILL.md`.
+Core orchestration contract: `.ai-harness/ORCHESTRATION_SPEC.md`.
+Ten-pass review loop: `.ai-harness/TEN_LOOP_POLICY.md`.
+
+## Default workflow
 
 For every non-trivial software-engineering task:
 
 1. Understand the request, source, Jira or issue context, constraints, acceptance criteria, non-goals, and stopping condition.
 2. Inspect repository structure, instructions, dependencies, tests, nearby implementations, and current git state before changing code.
-3. Run the repository convention profiler when introducing or changing infrastructure or when the repository pattern is unclear:
-   `python .ai-harness/project_profile.py`
+3. Run the repository convention profiler when introducing or changing infrastructure or when the repository pattern is unclear.
 4. Infer the minimum safe capabilities needed. Research, POC, Debug, Grill, Review, Validation, and Learning are selected automatically when useful.
-5. Select the smallest safe model/tool/reasoning budget and escalate only when risk, uncertainty, scope, or failed verification warrants it.
-6. Implement using the repository's established architecture, naming, coding style, segregation, exception handling, logging, telemetry, dependency, and testing patterns.
-7. Verify using repository-native evidence, inspect the final diff, and use independent review for meaningful or high-risk changes.
-8. Learn only from evidence-backed outcomes. Never silently rewrite harness code, security policy, provider permissions, or permanent engineering rules.
+5. Select the smallest safe model, tool, context, and reasoning budget and escalate only when risk, uncertainty, scope, or failed verification warrants it.
+6. Follow the ten-pass loop: intake, profile, context/placement, design/risk, implementation, verification, adversarial review, repair/regression, optimization/cleanup, final acceptance/learning. Early exit is allowed only when policy permits it.
+7. Implement using the repository's established architecture, naming, coding style, segregation, exception handling, logging, telemetry, dependency, and testing patterns.
+8. Verify using repository-native evidence, inspect the final diff, and use independent review for meaningful or high-risk changes.
+9. Learn only from evidence-backed outcomes. Never silently rewrite harness code, security policy, provider permissions, or permanent engineering rules.
 
-## 2. Existing repository conventions are authoritative
+## Existing repository conventions are authoritative
 
 The repository is the system of record for engineering conventions.
 
-Before creating or changing any of the following, search for existing implementations and reuse them:
-
-- exception handling
-- logging
-- telemetry and tracing
-- testing frameworks and fixtures
-- dependency injection
-- configuration
-- retries
-- HTTP or external clients
-- serialization and validation
-- error/result types
-- build and packaging
+Before creating or changing exception handling, logging, telemetry, testing frameworks, dependency injection, configuration, retries, HTTP/external clients, serialization, validation, error/result types, build, or packaging, search for existing implementations and reuse them.
 
 Do not introduce a competing framework because it is newer, fashionable, or familiar to the agent.
 
-## 3. Naming and coding-style precedence
+## Naming and coding-style precedence
 
 When naming files, types, functions, variables, tests, modules, namespaces, packages, or configuration:
 
@@ -48,7 +40,7 @@ When naming files, types, functions, variables, tests, modules, namespaces, pack
 
 Do not mix naming styles merely for consistency with an external framework. Local consistency and compatibility take precedence.
 
-## 4. File placement and segregation
+## File placement and segregation
 
 New interfaces, classes, constants, services, handlers, models, adapters, clients, configuration, and tests must be placed according to the current repository segregation.
 
@@ -65,16 +57,15 @@ Before creating a new file:
 9. Do not create generic Common, Shared, Utils, Helpers, Misc, or similar locations merely for convenience.
 10. Record the placement decision and rationale in run evidence.
 
-Use the placement analyzer when candidate locations are ambiguous:
-`python .ai-harness/placement.py <new-file-names>`
+Use the placement analyzer when candidate locations are ambiguous: `python .ai-harness/placement.py <new-file-names>`.
 
-## 5. Language neutrality
+## Language neutrality
 
 Apply principles in terms of behavior, contracts, dependencies, state, data, risk, and architecture. Adapt the implementation to the language and ecosystem already present.
 
 Do not impose language-specific patterns, interfaces, constructors, module layouts, asynchronous models, dependency-injection frameworks, or testing libraries when the repository already has a better equivalent.
 
-## 6. Engineering principles
+## Engineering principles
 
 Apply these proportionally, not as rituals:
 
@@ -101,18 +92,18 @@ Apply these proportionally, not as rituals:
 - Locality of Change
 - Evidence Over Assumption
 
-## 7. Fresh repository and third-party dependencies
+## Fresh repository and third-party dependencies
 
 If the project has no established implementation pattern:
 
-- prefer standard-library or platform-native capabilities first
-- use a mature, widely adopted framework only when a framework is warranted
-- do not add third-party dependencies silently
-- check `.ai-harness/DEPENDENCIES.md` before introducing one
-- document purpose, scope, version policy, operational/security impact, and alternatives considered
-- keep optional capabilities opt-in unless the task requires them
+- prefer standard-library or platform-native capabilities first;
+- use a mature, widely adopted framework only when a framework is warranted;
+- do not add third-party dependencies silently;
+- check `.ai-harness/DEPENDENCIES.md` before introducing one;
+- document purpose, scope, version policy, operational/security impact, and alternatives considered;
+- keep optional capabilities opt-in unless the task requires them.
 
-## 8. Isolation and safety
+## Isolation and safety
 
 Use isolated Git worktrees for high-risk, critical, long-running, experimental, or parallel mutating work.
 
@@ -120,53 +111,26 @@ Never allow multiple mutating agents to edit the same files concurrently without
 
 Research and Grill are read-only by contract. POCs are experimental. Production modifications happen only in controlled execution phases.
 
-## 9. Verification
+## Verification
 
 A model's statement that work is complete is not evidence.
 
-Before completion, use appropriate repository-native verification such as:
-
-- acceptance criteria
-- focused unit tests
-- integration tests
-- build/type/lint checks
-- static analysis
-- contract checks
-- error and failure paths
-- security checks
-- performance checks where relevant
-- migration/compatibility checks
-- final git diff and whitespace validation
-- independent review for meaningful or high-risk changes
+Before completion, use appropriate repository-native verification such as acceptance criteria, focused tests, integration tests, build/type/lint checks, static analysis, contract checks, error/failure paths, security checks, performance checks, migration/compatibility checks, final git diff and whitespace validation, and independent review for meaningful or high-risk changes.
 
 Every retry must add new evidence or materially change the approach.
 
-## 10. Context and token discipline
+## Context and token discipline
 
 Use stable repository instructions and compact context first. Prefer targeted reads, repository maps, relevant memory, current command output, and compact phase summaries over full repository dumps or full transcripts.
 
 Carry conclusions, decisions, failures, open questions, checkpoints, and evidence. Do not carry irrelevant history.
 
-## 11. Self-improvement
+## Self-improvement
 
 Record evidence-backed observations, useful lessons, route quality, verification outcomes, review findings, retries, and available token/tool metrics.
 
-Promote durable patterns only after repeated successful observations.
+Promote durable patterns only after repeated successful observations. Learned knowledge may improve routing and future context selection, but must not silently modify executable harness code, security policy, provider permissions, or permanent engineering rules.
 
-Learned knowledge may improve routing and future context selection. It must not silently modify executable harness code, security policy, provider permissions, or permanent engineering rules.
+## Completion report
 
-## 12. Completion report
-
-Report:
-
-- outcome
-- files changed
-- validation evidence
-- independent review evidence when used
-- existing repository conventions reused
-- placement decisions
-- dependency decisions
-- principles materially applied
-- assumptions
-- remaining risks
-- checkpoint or next action when intentionally incomplete
+Report outcome, files changed, validation evidence, independent review evidence when used, existing repository conventions reused, placement decisions, dependency decisions, principles materially applied, assumptions, remaining risks, and checkpoint or next action when intentionally incomplete.
