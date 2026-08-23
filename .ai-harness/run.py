@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -20,6 +19,7 @@ HARNESS = ROOT / ".ai-harness"
 CONFIG_PATH = HARNESS / "config.toml"
 PROMPTS = HARNESS / "prompts"
 RUNS = HARNESS / "runs"
+VALIDATION_PHASES = {"implement", "fix"}
 
 
 def load_config() -> dict:
@@ -42,15 +42,25 @@ def git_state() -> str:
 
 
 def make_run_dir() -> Path:
-    run_id = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
-    path = RUNS / run_id
-    path.mkdir(parents=True, exist_ok=False)
+    base_id = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
+    path = RUNS / base_id
+    suffix = 1
+    while path.exists():
+        path = RUNS / f"{base_id}-{suffix}"
+        suffix += 1
+    path.mkdir(parents=True)
     return path
+
+
+def phase_prompt(phase: str) -> str:
+    path = PROMPTS / "phases" / f"{phase}.md"
+    if not path.exists():
+        raise ValueError(f"No prompt found for phase: {phase}")
+    return path.read_text(encoding="utf-8")
 
 
 def render_prompt(phase: str, task: str, history: dict[str, str]) -> str:
     system = (PROMPTS / "system.md").read_text(encoding="utf-8")
-    phase_prompt = (PROMPTS / "phases" / f"{phase}.md").read_text(encoding="utf-8")
     previous = "\n\n".join(
         f"# Previous phase: {name}\n{value}" for name, value in history.items()
     ) or "No previous phase output."
@@ -68,7 +78,7 @@ def render_prompt(phase: str, task: str, history: dict[str, str]) -> str:
 # Previous phase output
 {previous}
 
-{phase_prompt}
+{phase_prompt(phase)}
 """
 
 
@@ -109,22 +119,61 @@ def validate(config: dict, run_dir: Path, label: str) -> bool:
     with log.open("w", encoding="utf-8") as output:
         for command in commands:
             output.write(f"$ {command}\n")
-            result = subprocess.run(command, cwd=ROOT, shell=True, text=True,
-                                    stdout=output, stderr=subprocess.STDOUT)
+            result = subprocess.run(
+                command,
+                cwd=ROOT,
+                shell=True,
+                text=True,
+                stdout=output,
+                stderr=subprocess.STDOUT,
+            )
             output.write(f"exit={result.returncode}\n\n")
             if result.returncode != 0:
                 return False
     return True
 
 
+def resolve_phases(config: dict, workflow: str, capabilities: list[str], from_phase: str | None) -> list[str]:
+    workflows = config.get("workflows", {})
+    if workflow not in workflows:
+        raise ValueError(f"Unknown workflow: {workflow}")
+
+    phases = list(workflows[workflow].get("phases", []))
+    if not phases:
+        raise ValueError(f"Workflow has no phases: {workflow}")
+
+    # Optional capabilities are inserted before implementation when possible.
+    for capability in capabilities:
+        if capability in phases:
+            continue
+        insert_at = phases.index("implement") if "implement" in phases else len(phases)
+        phases.insert(insert_at, capability)
+
+    if from_phase:
+        if from_phase not in phases:
+            raise ValueError(f"Phase '{from_phase}' is not part of this run")
+        phases = phases[phases.index(from_phase):]
+    return phases
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Provider-neutral AI coding harness")
     subparsers = parser.add_subparsers(dest="action", required=True)
     subparsers.add_parser("providers", help="List configured AI providers")
-    run_parser = subparsers.add_parser("run", help="Run the coding workflow")
+    subparsers.add_parser("workflows", help="List workflows and their phases")
+
+    run_parser = subparsers.add_parser("run", help="Run a selected workflow")
     run_parser.add_argument("--agent", required=True, help="Provider name from config.toml")
-    run_parser.add_argument("--task", required=True, help="Coding task")
-    run_parser.add_argument("--from-phase", choices=["understand", "plan", "implement", "review", "fix"])
+    run_parser.add_argument("--task", required=True, help="Task or technical question")
+    run_parser.add_argument("--workflow", help="Workflow name from config.toml")
+    run_parser.add_argument(
+        "--capability",
+        action="append",
+        choices=["research", "poc", "grill"],
+        default=[],
+        help="Optional capability. Repeat to compose multiple capabilities.",
+    )
+    run_parser.add_argument("--from-phase", help="Start from a phase in the resolved workflow")
     run_parser.add_argument("--dry-run", action="store_true")
 
     args = parser.parse_args()
@@ -135,10 +184,22 @@ def main() -> int:
             print(name)
         return 0
 
+    if args.action == "workflows":
+        for name, workflow in config.get("workflows", {}).items():
+            print(f"{name}: {' -> '.join(workflow.get('phases', []))}")
+        return 0
+
     providers = config.get("providers", {})
     if args.agent not in providers:
         print(f"Unknown agent: {args.agent}", file=sys.stderr)
         print("Configured agents: " + ", ".join(providers), file=sys.stderr)
+        return 2
+
+    workflow = args.workflow or config.get("workflow", {}).get("default", "coding")
+    try:
+        phases = resolve_phases(config, workflow, args.capability, args.from_phase)
+    except ValueError as error:
+        print(str(error), file=sys.stderr)
         return 2
 
     executable = providers[args.agent]["command"][0]
@@ -148,19 +209,24 @@ def main() -> int:
 
     run_dir = make_run_dir()
     (run_dir / "task.txt").write_text(args.task, encoding="utf-8")
-    (run_dir / "metadata.json").write_text(json.dumps({
-        "agent": args.agent,
-        "started_at": dt.datetime.now(dt.UTC).isoformat(),
-        "workspace": str(ROOT),
-    }, indent=2), encoding="utf-8")
-
-    phases = config["workflow"]["phases"]
-    if args.from_phase:
-        phases = phases[phases.index(args.from_phase):]
+    (run_dir / "metadata.json").write_text(
+        json.dumps(
+            {
+                "agent": args.agent,
+                "workflow": workflow,
+                "capabilities": args.capability,
+                "phases": phases,
+                "started_at": dt.datetime.now(dt.UTC).isoformat(),
+                "workspace": str(ROOT),
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
     history: dict[str, str] = {}
     provider = providers[args.agent]
-    fix_marker = config["workflow"].get("review_failure_marker", "HARNESS_FIX_REQUIRED")
+    fix_marker = config.get("workflow", {}).get("review_failure_marker", "HARNESS_FIX_REQUIRED")
 
     for phase in phases:
         if phase == "fix":
@@ -187,13 +253,9 @@ def main() -> int:
             print(f"Phase failed: {phase}; exit code {code}", file=sys.stderr)
             return code
 
-        if phase == "implement":
-            if not validate(config, run_dir, "after-implement"):
-                print("Validation failed after implementation", file=sys.stderr)
-                return 1
-        if phase == "fix":
-            if not validate(config, run_dir, "after-fix"):
-                print("Validation failed after fix", file=sys.stderr)
+        if phase in VALIDATION_PHASES:
+            if not validate(config, run_dir, f"after-{phase}"):
+                print(f"Validation failed after {phase}", file=sys.stderr)
                 return 1
 
     (run_dir / "git-state-final.txt").write_text(git_state(), encoding="utf-8")
