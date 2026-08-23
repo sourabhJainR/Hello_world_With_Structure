@@ -36,7 +36,7 @@ class AdaptiveHarnessTests(unittest.TestCase):
         self.assertIn("poc", manifest["route"]["capabilities"])
         self.assertIn("research", manifest["route"]["capabilities"])
 
-    def test_dry_run_creates_route_and_phase_artifacts(self) -> None:
+    def test_dry_run_creates_phase_artifacts(self) -> None:
         result = self.run_cli("run", "--task", "Add input validation", "--dry-run")
         self.assertEqual(result.returncode, 0, result.stderr)
         runs = sorted((ROOT / ".ai-harness" / "runs").glob("*"))
@@ -44,7 +44,6 @@ class AdaptiveHarnessTests(unittest.TestCase):
         manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["version"], 2)
         self.assertTrue((run_dir / "repository-map.md").exists())
-        self.assertTrue((run_dir / "route.prompt.md").exists())
         self.assertTrue((run_dir / "implement.prompt.md").exists())
 
     def test_memory_and_groom_commands(self) -> None:
