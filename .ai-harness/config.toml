@@ -1,41 +1,56 @@
-[workflow]
-default = "coding"
-review_failure_marker = "HARNESS_FIX_REQUIRED"
+[harness]
+name = "adaptive-ai-coding-harness"
+version = 2
+default_provider = "claude"
+auto_route = true
+learn_after_run = true
+auto_groom = true
 
-# Workflows are selected explicitly. Optional capabilities do not run unless requested.
-[workflows.coding]
-phases = ["understand", "plan", "implement", "review", "fix"]
+[router]
+route_budget = 1200
+memory_budget = 900
+context_budget = 1400
+max_history_chars = 5000
+minimum_confidence_for_auto_capability = 0.68
+
+[learning]
+min_observations_for_promotion = 3
+min_success_rate_for_promotion = 0.75
+stale_after_days = 120
+max_memory_items = 250
+
+[workflow]
+default = "adaptive"
+
+[workflows.adaptive]
+phases = ["route", "context", "execute", "validate", "review", "learn"]
 
 [workflows.research]
-phases = ["research"]
+phases = ["route", "context", "research", "learn"]
 
 [workflows.poc]
-phases = ["understand", "research", "poc"]
+phases = ["route", "context", "research", "poc", "learn"]
 
 [workflows.grill]
-phases = ["grill"]
-
-[workflows.research-coding]
-phases = ["research", "understand", "plan", "implement", "review", "fix"]
+phases = ["route", "context", "grill", "learn"]
 
 [providers.claude]
-command = ["claude", "-p", "{prompt_file}"]
+command = ["python", ".ai-harness/provider.py", "--prompt-file", "{prompt_file}", "--", "claude", "-p"]
 working_directory = "{workspace}"
 
 [providers.codex]
-command = ["codex", "exec", "{prompt_file}"]
+command = ["python", ".ai-harness/provider.py", "--prompt-file", "{prompt_file}", "--", "codex", "exec"]
 working_directory = "{workspace}"
 
 [providers.gemini]
-command = ["gemini", "-p", "{prompt_file}"]
+command = ["python", ".ai-harness/provider.py", "--prompt-file", "{prompt_file}", "--", "gemini", "-p"]
 working_directory = "{workspace}"
 
-# Add any compatible CLI here. Example:
-# [providers.local]
-# command = ["my-agent", "--instructions", "{prompt_file}"]
+# Generic provider example:
+# [providers.my-agent]
+# command = ["python", ".ai-harness/provider.py", "--prompt-file", "{prompt_file}", "--", "my-agent", "--prompt"]
 # working_directory = "{workspace}"
 
 [validation]
-# Commands are optional and project-specific.
-# They run after implementation and after a fix.
+# Add project-specific commands. They run after the execution phase when configured.
 commands = []
