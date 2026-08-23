@@ -2,9 +2,13 @@
 
 This repository uses an adaptive, provider-neutral AI coding orchestrator. These instructions apply to Claude Code, Codex, Gemini, local agents, and other compatible AI coding tools.
 
-Canonical control plane: `.agents/skills/ai-coding-orchestrator/SKILL.md`.
+Canonical deployable skill: `skills/ai-coding-orchestrator/SKILL.md`.
+Generic runtime skill: `.agents/skills/ai-coding-orchestrator/SKILL.md`.
+Claude plugin manifest: `.claude-plugin/plugin.json`.
 Core orchestration contract: `.ai-harness/ORCHESTRATION_SPEC.md`.
 Knowledge fabric: `.ai-harness/KNOWLEDGE_FABRIC_POLICY.md`.
+Optional extension registry: `.ai-harness/extension_registry.toml`.
+Deployment guide: `docs/DEPLOYMENT.md`.
 
 ## Default workflow
 
@@ -14,11 +18,38 @@ For every non-trivial software-engineering task:
 2. Inspect repository structure, instructions, dependencies, tests, nearby implementations, and current git state before changing code.
 3. Run the repository convention profiler when introducing or changing infrastructure or when the repository pattern is unclear.
 4. Inspect available code intelligence before broad file exploration. Prefer repository AST/symbol indexes, Graphify, codebase-memory-mcp, and other already-installed structural sources when available; fall back cleanly when they are not.
-5. Infer the minimum safe capabilities needed. Research, POC, Debug, Grill, Review, Validation, and Learning are selected automatically when useful.
-6. Select the smallest safe model, tool, context, and reasoning budget and escalate only when risk, uncertainty, scope, or failed verification warrants it.
-7. Implement using the repository's established architecture, naming, coding style, segregation, exception handling, logging, telemetry, dependency, and testing patterns.
-8. Verify using repository-native evidence, inspect the final diff, and use independent review for meaningful or high-risk changes.
-9. Learn only from evidence-backed outcomes. Never silently rewrite harness code, security policy, provider permissions, or permanent engineering rules.
+5. Detect relevant optional process/context skills such as Superpowers, Ponytail, Caveman, and other Agent Skills when available. Use their best applicable capability without making them mandatory or duplicating their full workflow.
+6. Infer the minimum safe capabilities needed. Research, POC, Debug, Grill, Review, Validation, and Learning are selected automatically when useful.
+7. Select the smallest safe model, tool, context, and reasoning budget and escalate only when risk, uncertainty, scope, or failed verification warrants it.
+8. Implement using the repository's established architecture, naming, coding style, segregation, exception handling, logging, telemetry, dependency, and testing patterns.
+9. Verify using repository-native evidence, inspect the final diff, and use independent review for meaningful or high-risk changes.
+10. Learn only from evidence-backed outcomes. Never silently rewrite harness code, security policy, provider permissions, or permanent engineering rules.
+
+The normal runtime is a single adaptive run. Recursive or repeated execution is never automatic; it requires an explicit user request.
+
+## Optional extension model
+
+Extensions are capabilities, not dependencies. They are detected but never installed, upgraded, enabled, disabled, or mutated automatically.
+
+- Graphify: AST/knowledge graph and relationship/impact evidence.
+- code-mem / codebase-memory-mcp: persistent structural graph, semantic search, call tracing, impact analysis.
+- Superpowers: process skills such as brainstorming, TDD, systematic debugging, planning, execution, and skill development.
+- Ponytail: YAGNI/minimal-change discipline.
+- Caveman: compact communication and token-efficient subagent output.
+- Other Agent Skills/MCP servers: task-specific capabilities when explicitly configured.
+
+Extension conflict precedence:
+
+1. Repository/team instructions.
+2. Security and permission boundaries.
+3. Acceptance criteria.
+4. Existing repository architecture and conventions.
+5. Verification requirements.
+6. AI Coding Orchestrator.
+7. Optional extension guidance.
+8. Model preference.
+
+Use the narrowest useful capability from each extension. Never let a compression or minimalism extension remove required safety, correctness, acceptance criteria, error handling, or verification.
 
 ## Knowledge fabric and Code-RAG
 
@@ -107,7 +138,7 @@ If the project has no established implementation pattern:
 - document purpose, scope, version policy, operational/security impact, and alternatives considered;
 - keep optional capabilities opt-in unless the task requires them.
 
-Graphify and codebase-memory-mcp are external tool integrations, not runtime Python dependencies of this repository. They remain opt-in and externally owned.
+Graphify, codebase-memory-mcp, Superpowers, Ponytail, and Caveman are external integrations, not runtime Python dependencies of this repository. They remain optional and externally owned.
 
 ## Isolation and safety
 
@@ -133,6 +164,8 @@ Use stable repository instructions and compact context first. Prefer targeted st
 
 Apply the FlashAttention-inspired principle operationally: keep stable context small and reusable, tile task evidence, rank before inclusion, and minimize unnecessary memory movement. This is a context-engineering principle, not a dependency on the FlashAttention library.
 
+Caveman-style compression may be used for communication when available, but never compress away source, commands, errors, acceptance criteria, security constraints, or verification evidence.
+
 Carry conclusions, decisions, failures, open questions, checkpoints, and evidence. Do not carry irrelevant history.
 
 ## Self-improvement
@@ -143,4 +176,4 @@ Promote durable patterns only after repeated successful observations. Learned kn
 
 ## Completion report
 
-Report outcome, files changed, validation evidence, independent review evidence when used, knowledge sources used, repository conventions reused, placement decisions, dependency decisions, principles materially applied, assumptions, remaining risks, and checkpoint or next action when intentionally incomplete.
+Report outcome, files changed, validation evidence, independent review evidence when used, knowledge sources and extensions actually used, repository conventions reused, placement decisions, dependency decisions, principles materially applied, assumptions, remaining risks, and checkpoint or next action when intentionally incomplete.
