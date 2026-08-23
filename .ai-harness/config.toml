@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-harness"
-version = 7
+version = 8
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -17,10 +17,10 @@ minimum_confidence_for_auto_capability = 0.68
 escalate_after_failed_verifications = 2
 
 [orchestration]
-max_passes = 10
-early_exit = true
-mandatory_high_risk_passes = [6, 7, 8, 10]
-policy_file = ".ai-harness/TEN_LOOP_POLICY.md"
+mode = "adaptive-single-run"
+user_requested_loop = false
+max_autonomous_repair_attempts = 2
+policy_file = ".ai-harness/ORCHESTRATION_SPEC.md"
 
 [model_routing]
 default_tier = "standard"
@@ -186,3 +186,10 @@ auto_discover = true
 enabled = true
 cases_file = ".ai-harness/evals/cases.jsonl"
 require_promotion_evidence = true
+
+[development_hardening]
+# Used only by maintainers while improving the harness itself.
+# This is NOT part of normal task execution and MUST NOT be inherited by agents.
+review_cycles = 500
+execution_enabled = false
+policy_file = ".ai-harness/DEVELOPMENT_HARDENING.md"
