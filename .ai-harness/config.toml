@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-harness"
-version = 4
+version = 5
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -17,10 +17,15 @@ minimum_confidence_for_auto_capability = 0.68
 escalate_after_failed_verifications = 2
 
 [model_routing]
+default_tier = "standard"
 low = { reasoning = "low", purpose = "classification, summarization, simple edits" }
 standard = { reasoning = "medium", purpose = "normal implementation and debugging" }
 high = { reasoning = "high", purpose = "architecture, difficult debugging, risky changes" }
 critical = { reasoning = "xhigh", purpose = "hardest long-horizon or high-risk tasks" }
+auto_escalate = true
+escalate_on_risk = ["high", "critical"]
+escalate_on_uncertainty = ["unknown"]
+escalate_after_failed_verifications = 2
 
 [context]
 stable_prefix = true
@@ -42,10 +47,30 @@ repair_on_verification_failure = true
 repair_on_review_failure = true
 max_repair_attempts = 2
 
+[worktrees]
+enabled = true
+auto_for_risk = ["high", "critical"]
+auto_for_parallel_reviews = true
+base = "HEAD"
+root = ".ai-harness/worktrees"
+keep_on_failure = true
+remove_after_success = false
+require_clean_before_merge = true
+
+[reviewers]
+enabled = true
+default = ["correctness"]
+on_high_risk = ["correctness", "security", "architecture"]
+parallel = true
+read_only = true
+timeout_seconds = 900
+require_consensus_for_high_risk = false
+
 [delegation]
 enabled = true
 parallelize_only_independent_work = true
 never_parallel_edit_same_file = true
+use_worktrees_for_mutating_agents = true
 
 [learning]
 min_observations_for_promotion = 3
@@ -55,6 +80,7 @@ max_memory_items = 250
 record_route_metrics = true
 record_verification_metrics = true
 record_token_metrics_when_available = true
+record_reviewer_findings = true
 
 default_principles = [
   "DRY",
@@ -114,17 +140,8 @@ working_directory = "{workspace}"
 command = ["{python}", ".ai-harness/provider.py", "--prompt-file", "{prompt_file}", "--", "gemini", "-p"]
 working_directory = "{workspace}"
 
-# Generic provider example:
-# [providers.my-agent]
-# command = ["{python}", ".ai-harness/provider.py", "--prompt-file", "{prompt_file}", "--", "my-agent", "--prompt"]
-# working_directory = "{workspace}"
-
 [validation]
-# Commands can be strings or argv arrays. Arrays are preferred because they avoid shell parsing.
 commands = []
-# Example:
-# commands = [["python", "-m", "unittest", "discover", "-s", "tests"]]
-
 auto_discover = true
 
 [evals]
