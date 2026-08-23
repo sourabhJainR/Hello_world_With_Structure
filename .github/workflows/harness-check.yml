@@ -31,11 +31,13 @@ jobs:
       - name: Validate Python harness
         run: python -m unittest discover -s tests -v
       - name: Compile harness and extensions
-        run: python -m py_compile .ai-harness/run.py .ai-harness/engine.py .ai-harness/context_engine.py .ai-harness/provider.py .ai-harness/observability.py .ai-harness/project_profile.py .ai-harness/placement.py .ai-harness/worktree.py .ai-harness/review_agents.py
+        run: python -m py_compile .ai-harness/run.py .ai-harness/engine.py .ai-harness/context_engine.py .ai-harness/knowledge_fabric.py .ai-harness/provider.py .ai-harness/observability.py .ai-harness/project_profile.py .ai-harness/placement.py .ai-harness/worktree.py .ai-harness/review_agents.py
       - name: Validate configuration
         run: python -c "import tomllib; tomllib.load(open('.ai-harness/config.toml','rb'))"
       - name: Validate Flash-context policy
         run: python -c "from pathlib import Path; p=Path('.ai-harness/FLASH_CONTEXT_POLICY.md'); assert p.exists() and 'FlashAttention' in p.read_text(encoding='utf-8')"
+      - name: Validate knowledge fabric policy
+        run: python -c "from pathlib import Path; p=Path('.ai-harness/KNOWLEDGE_FABRIC_POLICY.md'); assert p.exists() and 'Graphify' in p.read_text(encoding='utf-8') and 'codebase-memory-mcp' in p.read_text(encoding='utf-8')"
       - name: Run routing regression evaluation
         run: python .ai-harness/run.py eval
       - name: Check convention profile
