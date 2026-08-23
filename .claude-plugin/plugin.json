@@ -1,0 +1,23 @@
+{
+  "name": "ai-coding-orchestrator",
+  "description": "Provider-neutral AI software engineering control plane with adaptive routing, repository-aware context, optional code intelligence integrations, verification, review, recovery, and governed learning.",
+  "version": "12.0.0",
+  "author": {
+    "name": "Sourabh Jain"
+  },
+  "homepage": "https://github.com/sourabhJainR/Hello_world_With_Structure",
+  "repository": "https://github.com/sourabhJainR/Hello_world_With_Structure",
+  "license": "MIT",
+  "keywords": [
+    "ai-coding",
+    "agent",
+    "orchestration",
+    "skills",
+    "code-rag",
+    "verification",
+    "claude-code",
+    "codex",
+    "gemini"
+  ],
+  "skills": "./skills/"
+}
