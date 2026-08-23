@@ -31,9 +31,11 @@ jobs:
       - name: Validate Python harness
         run: python -m unittest discover -s tests -v
       - name: Compile harness and extensions
-        run: python -m py_compile .ai-harness/run.py .ai-harness/provider.py .ai-harness/observability.py .ai-harness/worktree.py .ai-harness/review_agents.py
+        run: python -m py_compile .ai-harness/run.py .ai-harness/provider.py .ai-harness/observability.py .ai-harness/project_profile.py .ai-harness/worktree.py .ai-harness/review_agents.py
       - name: Validate configuration
         run: python -c "import tomllib; tomllib.load(open('.ai-harness/config.toml','rb'))"
+      - name: Validate repository convention profile
+        run: python .ai-harness/project_profile.py
       - name: Run routing regression evaluation
         run: python .ai-harness/run.py eval
       - name: Check worktree helper
