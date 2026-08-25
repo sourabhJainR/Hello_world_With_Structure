@@ -45,20 +45,22 @@ jobs:
       - name: Validate Python harness
         run: python -m unittest discover -s tests -v
       - name: Compile harness, extensions and installer
-        run: python -m py_compile .ai-harness/run.py .ai-harness/engine.py .ai-harness/context_engine.py .ai-harness/knowledge_fabric.py .ai-harness/extension_registry.py .ai-harness/provider.py .ai-harness/observability.py .ai-harness/project_profile.py .ai-harness/placement.py .ai-harness/worktree.py .ai-harness/review_agents.py scripts/install_skill.py scripts/validate_plugin.py
+        run: python -m py_compile .ai-harness/run.py .ai-harness/engine.py .ai-harness/context_engine.py .ai-harness/knowledge_fabric.py .ai-harness/extension_registry.py .ai-harness/provider.py .ai-harness/observability.py .ai-harness/project_profile.py .ai-harness/placement.py .ai-harness/worktree.py .ai-harness/review_agents.py scripts/install_skill.py scripts/validate_plugin.py scripts/run_evals.py
       - name: Validate configuration
         run: python -c "import tomllib; tomllib.load(open('.ai-harness/config.toml','rb')); tomllib.load(open('.ai-harness/extension_registry.toml','rb'))"
       - name: Validate plugin and marketplace manifests
         run: python scripts/validate_plugin.py
-      - name: Validate deployable skill
-        run: python -c "from pathlib import Path; p=Path('skills/ai-coding-orchestrator/SKILL.md'); assert p.exists() and 'Optional extension orchestration' in p.read_text(encoding='utf-8')"
+      - name: Validate deployable skill metadata
+        run: python -c "from pathlib import Path; import re; paths=[Path('skills/ai-coding-orchestrator/SKILL.md'),Path('.agents/skills/ai-coding-orchestrator/SKILL.md'),Path('.claude/skills/ai-coding-orchestrator/SKILL.md')]; assert all(p.exists() and re.search(r'(?m)^name:\\s*ai-coding-orchestrator\\s*$',p.read_text(encoding='utf-8')) and re.search(r'(?m)^description:\\s*\\S',p.read_text(encoding='utf-8')) and len(p.read_text(encoding='utf-8')) <= 9000 for p in paths)"
       - name: Validate Flash-context policy
         run: python -c "from pathlib import Path; p=Path('.ai-harness/FLASH_CONTEXT_POLICY.md'); assert p.exists() and 'FlashAttention' in p.read_text(encoding='utf-8')"
       - name: Validate knowledge fabric policy
         run: python -c "from pathlib import Path; p=Path('.ai-harness/KNOWLEDGE_FABRIC_POLICY.md'); assert p.exists() and 'Graphify' in p.read_text(encoding='utf-8') and 'codebase-memory-mcp' in p.read_text(encoding='utf-8')"
       - name: Detect optional extensions
         run: python .ai-harness/extension_registry.py
-      - name: Run routing regression evaluation
+      - name: Run deterministic eval suite
+        run: python scripts/run_evals.py
+      - name: Run harness evaluation suite
         run: python .ai-harness/run.py eval
       - name: Check convention profile
         run: python .ai-harness/project_profile.py
