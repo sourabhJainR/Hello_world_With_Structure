@@ -1,7 +1,7 @@
 {
   "name": "adaptive-ai-coding-orchestrator",
-  "description": "Provider-neutral AI software engineering control plane with adaptive routing, repository-aware context, optional code intelligence integrations, verification, review, recovery, and governed learning.",
-  "version": "13.0.0",
+  "description": "Adaptive repository-aware engineering control plane for coding, debugging, research, POCs, reviews, and safe changes, with bounded context and optional code-intelligence extensions.",
+  "version": "14.0.0",
   "author": {
     "name": "Sourabh Jain",
     "url": "https://github.com/sourabhJainR"
@@ -18,9 +18,9 @@
     "code-rag",
     "graph-rag",
     "verification",
-    "claude-code",
-    "codex",
-    "gemini"
+    "evals",
+    "context-engineering",
+    "claude-code"
   ],
   "skills": "./skills/"
 }
