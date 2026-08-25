@@ -10,16 +10,19 @@ The product identity is `adaptive-ai-coding-orchestrator`; the GitHub repository
 User task / Jira / issue
         |
         v
-Repository rules + state
+Repository rules + session state
         |
         v
-Optional extension discovery
+Task classification + risk
+        |
+        v
+Optional capability discovery
         |
         v
 AST / graph / exact / semantic evidence
         |
         v
-Bounded context and task routing
+Bounded context and adaptive workflow
         |
         +--> research
         +--> POC
@@ -34,19 +37,25 @@ Repository-native verification
 Independent review -> repair when needed
         |
         v
-Evidence-backed completion and learning
+Evidence-backed completion
+        |
+        v
+Evaluation + safe learning signals
 ```
 
-Core principles:
+## Design principles
 
 - Repository conventions before generic conventions.
 - Verification over model claims.
+- Evidence before inference.
 - Least privilege and isolated execution for risky work.
 - Optional integrations, never mandatory dependencies.
 - One adaptive runtime run by default; loops require explicit user intent.
 - Progressive disclosure and targeted retrieval instead of full-repository prompting.
 - Language and framework neutrality.
 - New dependencies require an explicit decision and disclosure.
+- Provider failure must degrade gracefully.
+- Learned behavior must be evaluated before becoming executable policy.
 
 ## Install for Claude Code
 
@@ -143,7 +152,7 @@ If no local conventions exist, the orchestrator establishes a mature compatible 
 
 ## Optional intelligence extensions
 
-The core works without extensions. When already installed, enabled, and relevant, the orchestrator can use:
+The core works without extensions. When already installed, enabled, healthy enough, and relevant, the orchestrator can use:
 
 - **Graphify** for AST and deterministic relationship/impact evidence.
 - **code-mem / codebase-memory-mcp** for persistent code graph, semantic/structural search, call tracing, and impact analysis.
@@ -152,17 +161,19 @@ The core works without extensions. When already installed, enabled, and relevant
 - **Caveman** for compact output/context handling.
 - Other compatible Agent Skills and MCP servers discovered at runtime.
 
-Extensions are capabilities, not dependencies. The orchestrator does not install or modify them without explicit approval and avoids duplicate queries when providers return the same evidence.
+Extensions are capabilities, not dependencies. The orchestrator does not install or modify them without explicit approval. Provider output is bounded and ranked before entering model context.
 
 ## Context efficiency
 
-The context engine uses a FlashAttention-inspired IO strategy: keep stable instructions small, retrieve evidence in bounded tiles, rank before inclusion, reuse stable context, and preserve verification evidence losslessly.
+The context engine uses a FlashAttention-inspired IO strategy: keep stable instructions small, retrieve evidence in bounded tiles, rank before inclusion, reuse stable context, deduplicate overlap, and preserve verification evidence losslessly.
 
 Detailed operating guidance is loaded progressively from `skills/ai-coding-orchestrator/references/` rather than putting the entire policy set into every model prompt.
 
+See `docs/CONTEXT_BUDGET.md` and `docs/EXTENSION_CONTRACT.md` for the governing rules.
+
 ## Evaluation
 
-The repository contains a dependency-free deterministic eval suite covering routing, unnecessary capability selection, policy invariants, and skill metadata/context budgets.
+The repository contains a dependency-free deterministic eval suite covering routing, unnecessary capability selection, policy invariants, skill metadata/context budgets, extension degradation, and future-readiness cases.
 
 Run it with:
 
@@ -184,40 +195,50 @@ python scripts/validate_plugin.py
 
 Add a regression eval whenever a routing, context, extension, safety, or skill-discovery defect is found. Provider-backed/model evals are optional and never required for core installation.
 
-## Architecture
+## Future-ready architecture
+
+The core is intentionally separated from host agents and optional providers:
 
 ```text
-                     AI Coding Orchestrator
-                              |
-          +-------------------+-------------------+
-          |                   |                   |
-       Core engine        Knowledge fabric     Context engine
-          |                   |                   |
-       routing           AST / graph / RAG    bounded evidence
-          |                   |                   |
-          +-------------------+-------------------+
-                              |
-                       Optional extensions
-                  /          |          |          \
-             Graphify    code-mem  Superpowers  other MCP/skills
-                              |
-                              v
-                    Execute -> Verify -> Review
-                              |
-                           Learn
+                    Claude / Codex / Gemini / other agent
+                                  |
+                              adapter
+                                  |
+                    Adaptive AI Coding Orchestrator
+                                  |
+        +-------------------------+-------------------------+
+        |                         |                         |
+   Policy + routing         Knowledge fabric          Context engine
+        |                         |                         |
+   task/risk/state         AST / graph / RAG        bounded evidence
+        |                         |                         |
+        +-------------------------+-------------------------+
+                                  |
+                           Capability providers
+                 /          |          |          \
+            Graphify    code-mem  Superpowers  other MCP/skills
+                                  |
+                                  v
+                       Execute -> Verify -> Review
+                                  |
+                         Evaluation + learning
 ```
 
-See:
+Provider contracts, state semantics and future maturity gates are documented in `docs/FUTURE_ARCHITECTURE.md`, `docs/AGENT_COMPATIBILITY.md`, and `docs/EXTENSION_CONTRACT.md`.
 
-- `docs/PLUGIN_ARCHITECTURE.md` for plugin boundaries.
-- `docs/MARKETPLACE.md` for distribution.
-- `docs/DEPLOYMENT.md` for developer-machine deployment.
-- `.ai-harness/evals/EVAL_POLICY.md` for evaluation governance.
-- `skills/ai-coding-orchestrator/references/` for progressive-disclosure guidance.
+## Evaluation maturity
+
+The project uses three layers:
+
+1. **Fast deterministic evals** on every change for routing, metadata, context and safety invariants.
+2. **Regression evals** for previously observed failures and extension-degradation cases.
+3. **Provider/model evals** for quality, latency, tool calls and cost when a real model/provider is available.
+
+A model-generated improvement does not become an executable default merely because it scored well once. Changes require reproducible evidence and regression coverage.
 
 ## Safety
 
-The orchestrator never silently installs tools, changes permissions, connects to production, merges changes, or promotes learned behavior into executable policy. Repository and organization instructions remain authoritative.
+The orchestrator never silently installs tools, changes permissions, connects to production, merges changes, or promotes learned behavior into executable policy. Repository and organization instructions remain authoritative. Cancellation, provider failure and partial execution must remain distinguishable from successful completion.
 
 ## Development
 
