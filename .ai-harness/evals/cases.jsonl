@@ -1,7 +1,15 @@
-{"id":"simple-edit","prompt":"Rename a private helper method and update its tests","expected_mode":"implement","capabilities":[],"risk":"low"}
-{"id":"unknown-library","prompt":"Evaluate two libraries for distributed locking and recommend one","expected_mode":"research","capabilities":["research"]}
-{"id":"feasibility","prompt":"Can this workload be moved to WebAssembly without unacceptable latency? Build a focused proof of concept.","expected_mode":"poc","capabilities":["research","poc"]}
-{"id":"intermittent-bug","prompt":"Investigate an intermittent export timeout and fix the root cause","expected_mode":"debug","capabilities":[]}
-{"id":"security-change","prompt":"Migrate authentication for the production API without breaking existing clients","expected_mode":"implement","capabilities":["research","grill"]}
-{"id":"review","prompt":"Review the proposed caching change for correctness, performance, security, and regressions","expected_mode":"review","capabilities":["grill"]}
-{"id":"jira-feature","prompt":"JIRA PROJ-1827: Add tenant-level export filtering with backward compatibility and tests","expected_mode":"implement","capabilities":[]}
+{"id":"simple-edit","prompt":"Rename a private helper method and update its tests","expected_mode":"implement","required_capabilities":[],"forbidden_capabilities":["research","poc","grill"],"risk":"low"}
+{"id":"unknown-library","prompt":"Evaluate two libraries for distributed locking and recommend one","expected_mode":"research","required_capabilities":["research"],"forbidden_capabilities":["poc","grill"],"risk":"low"}
+{"id":"feasibility","prompt":"Can this workload be moved to WebAssembly without unacceptable latency? Build a focused proof of concept.","expected_mode":"poc","required_capabilities":["research","poc"],"forbidden_capabilities":[],"risk":"medium"}
+{"id":"intermittent-bug","prompt":"Investigate an intermittent export timeout and fix the root cause","expected_mode":"debug","required_capabilities":[],"forbidden_capabilities":[],"risk":"medium"}
+{"id":"security-change","prompt":"Migrate authentication for the production API without breaking existing clients","expected_mode":"implement","required_capabilities":["research","grill"],"forbidden_capabilities":[],"risk":"high"}
+{"id":"review","prompt":"Review the proposed caching change for correctness, performance, security, and regressions","expected_mode":"review","required_capabilities":["grill"],"forbidden_capabilities":[],"risk":"high"}
+{"id":"jira-feature","prompt":"JIRA PROJ-1827: Add tenant-level export filtering with backward compatibility and tests","expected_mode":"implement","required_capabilities":[],"forbidden_capabilities":[],"risk":"low"}
+{"id":"explicit-research","prompt":"Research only: compare OAuth providers for this repository. Do not change code.","expected_mode":"research","required_capabilities":["research"],"forbidden_capabilities":["poc","grill"],"risk":"low"}
+{"id":"explicit-review","prompt":"Review only this authentication patch. Do not modify files.","expected_mode":"review","required_capabilities":["grill"],"forbidden_capabilities":[],"risk":"high"}
+{"id":"migration","prompt":"Create a database migration for the production billing schema and preserve backward compatibility","expected_mode":"implement","required_capabilities":["grill"],"forbidden_capabilities":[],"risk":"high"}
+{"id":"performance-investigation","prompt":"Find why the reporting query became 10x slower after the last release and recommend a fix","expected_mode":"debug","required_capabilities":["grill"],"forbidden_capabilities":[],"risk":"high"}
+{"id":"onboarding","prompt":"Explain how multi-tenant data isolation is implemented in this repository. Do not change anything.","expected_mode":"implement","required_capabilities":[],"forbidden_capabilities":["poc"],"risk":"low"}
+{"id":"poc-not-research","prompt":"Build a small spike to test whether the new serializer can handle 1M records","expected_mode":"poc","required_capabilities":["poc"],"forbidden_capabilities":[],"risk":"medium"}
+{"id":"bug-security","prompt":"Diagnose a suspected authorization bypass in the production API and propose the safest fix","expected_mode":"debug","required_capabilities":["grill"],"forbidden_capabilities":[],"risk":"high"}
+{"id":"plain-refactor","prompt":"Refactor the parser to remove duplication without changing behavior","expected_mode":"implement","required_capabilities":[],"forbidden_capabilities":["research","poc"],"risk":"low"}
