@@ -10,7 +10,7 @@ The product identity is `adaptive-ai-coding-orchestrator`; the GitHub repository
 User task / Jira / issue
         |
         v
-Repository rules + session state
+Minimal local contract + session state
         |
         v
 Task classification + risk
@@ -19,10 +19,10 @@ Task classification + risk
 Optional capability discovery
         |
         v
-AST / graph / exact / semantic evidence
+Targeted AST / graph / exact / semantic evidence
         |
         v
-Bounded context and adaptive workflow
+Bounded context + adaptive workflow
         |
         +--> research
         +--> POC
@@ -34,10 +34,10 @@ Bounded context and adaptive workflow
 Repository-native verification
         |
         v
-Independent review -> repair when needed
+Fresh-context review when warranted
         |
         v
-Evidence-backed completion
+Focused entropy check + durable handoff
         |
         v
 Evaluation + safe learning signals
@@ -46,8 +46,15 @@ Evaluation + safe learning signals
 ## Design principles
 
 - Repository conventions before generic conventions.
+- Human-written, non-obvious instructions before generated context inventories.
 - Verification over model claims.
 - Evidence before inference.
+- Retrieve relevant evidence instead of replaying whole repositories, graphs, memories, or transcripts.
+- Optimize verified outcome per total model call/token cost, not token count alone.
+- Fresh-context verification for meaningful/high-risk changes when practical.
+- Small independently verifiable work units for complex tasks.
+- Session handoffs preserve durable state, not full transcripts.
+- Focused entropy cleanup after substantial work without unrelated refactoring.
 - Least privilege and isolated execution for risky work.
 - Optional integrations, never mandatory dependencies.
 - One adaptive runtime run by default; loops require explicit user intent.
@@ -100,7 +107,7 @@ Then use normal engineering language. You do not need to name the harness.
 Implement JIRA-4821. Add tenant-level export filtering, preserve backward compatibility, and add regression tests.
 ```
 
-The orchestrator profiles the repository, finds existing filtering patterns, selects relevant graph/search evidence, implements within local conventions, runs appropriate tests, and reviews the final diff.
+The orchestrator profiles the repository, finds existing filtering patterns, selects only relevant graph/search evidence, implements within local conventions, runs appropriate tests, and reviews the final diff.
 
 ### Investigate before changing code
 
@@ -111,7 +118,7 @@ Investigate why the reporting API is intermittently timing out. Do not change co
 Expected behavior:
 
 ```text
-Debug -> graph/AST evidence -> relevant source -> history -> root-cause candidates -> evidence-backed findings
+Debug -> targeted graph/AST evidence -> relevant source -> history -> root-cause candidates -> evidence-backed findings
 ```
 
 ### Research
@@ -161,19 +168,28 @@ The core works without extensions. When already installed, enabled, healthy enou
 - **Caveman** for compact output/context handling.
 - Other compatible Agent Skills and MCP servers discovered at runtime.
 
-Extensions are capabilities, not dependencies. The orchestrator does not install or modify them without explicit approval. Provider output is bounded and ranked before entering model context.
+Extensions are capabilities, not dependencies. The orchestrator does not install or modify them without explicit approval. Provider output is bounded, ranked, deduplicated, and provenance-aware before entering model context.
 
 ## Context efficiency
 
-The context engine uses a FlashAttention-inspired IO strategy: keep stable instructions small, retrieve evidence in bounded tiles, rank before inclusion, reuse stable context, deduplicate overlap, and preserve verification evidence losslessly.
+The context strategy is inspired by the IO-efficiency idea behind FlashAttention: move less information through the expensive model boundary while retaining the information needed for correctness. It is not an implementation of FlashAttention.
 
-Detailed operating guidance is loaded progressively from `skills/ai-coding-orchestrator/references/` rather than putting the entire policy set into every model prompt.
+Key rules:
 
-See `docs/CONTEXT_BUDGET.md` and `docs/EXTENSION_CONTRACT.md` for the governing rules.
+1. Keep always-loaded instructions short and human-curated.
+2. Retrieve rather than replay.
+3. Rank and deduplicate evidence before prompt inclusion.
+4. Budget context separately for discovery, planning, implementation, verification, and review.
+5. Reuse stable evidence when the repository/provider state has not changed.
+6. Use compact session handoffs instead of copying transcripts across contexts.
+7. Prefer fresh verification context over giving the verifier the author's full reasoning.
+8. Measure retries, tool calls, latency, cache usage, and verification failures alongside tokens.
+
+See `docs/CONTEXT_EFFICIENCY.md`, `docs/CONTEXT_BUDGET.md`, `docs/SESSION_HANDOFF_AND_ENTROPY.md`, and `docs/VERIFICATION_INDEPENDENCE.md`.
 
 ## Evaluation
 
-The repository contains a dependency-free deterministic eval suite covering routing, unnecessary capability selection, policy invariants, skill metadata/context budgets, extension degradation, and future-readiness cases.
+The repository contains dependency-free deterministic evals covering routing, unnecessary capability selection, policy invariants, skill metadata/context budgets, extension degradation, future readiness, and context-efficiency behaviors.
 
 Run it with:
 
@@ -193,7 +209,7 @@ Validate plugin packaging with:
 python scripts/validate_plugin.py
 ```
 
-Add a regression eval whenever a routing, context, extension, safety, or skill-discovery defect is found. Provider-backed/model evals are optional and never required for core installation.
+Add a regression eval whenever a routing, context, extension, safety, verification, or skill-discovery defect is found. Provider-backed/model evals are optional and never required for core installation.
 
 ## Future-ready architecture
 
@@ -238,7 +254,7 @@ A model-generated improvement does not become an executable default merely becau
 
 ## Safety
 
-The orchestrator never silently installs tools, changes permissions, connects to production, merges changes, or promotes learned behavior into executable policy. Repository and organization instructions remain authoritative. Cancellation, provider failure and partial execution must remain distinguishable from successful completion.
+The orchestrator never silently installs tools, changes permissions, connects to production, merges changes, or promotes learned behavior into executable policy. Repository and organization instructions remain authoritative. Cancellation, provider failure, partial execution, and successful completion must remain distinguishable.
 
 ## Development
 
