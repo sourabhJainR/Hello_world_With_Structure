@@ -92,6 +92,35 @@ After editing, explicitly check for regressions in other flows. Use the smallest
 
 A change is not "minimal" merely because its diff is small. It is minimal when it changes the fewest necessary behaviors and introduces the fewest new assumptions.
 
+## Fact-based research and flow analysis
+
+When the task is **research**, **investigation**, **analysis**, or asks for an application/code **flow**, switch from implementation mode to evidence-first mode.
+
+Do not present guesses, inferred behavior, or plausible explanations as facts. Label conclusions by evidence:
+
+- **Fact:** directly supported by source code, tests, logs, telemetry, documentation, tickets, command output, or authoritative external sources.
+- **Inference:** reasoned from facts; explain the chain briefly.
+- **Unknown:** insufficient evidence; state what would prove or disprove it.
+- **Recommendation:** proposed action, clearly separated from observed facts.
+
+For repository flow analysis, trace the real path through relevant entry points, callers, data transformations, dependencies, side effects, error paths, asynchronous/concurrent boundaries, persistence, and external integrations. Use AST/graph evidence when available, but verify important paths against source.
+
+A detailed research/flow response should normally include:
+
+1. Scope and question being answered.
+2. Evidence examined and its provenance.
+3. Step-by-step flow or findings.
+4. Relevant components/files/symbols and their responsibilities.
+5. Data/control-flow transitions and important branches.
+6. Error, boundary, and failure behavior.
+7. Facts versus inferences.
+8. Unknowns, gaps, and confidence limits.
+9. Risks, implications, and recommendations when requested.
+
+Prefer primary evidence and current authoritative sources. For external research, capture source provenance and distinguish current facts from historical information. Do not use detailed language to hide weak evidence; depth must come from investigation, not speculation.
+
+Keep the response detailed when requested, but retrieve and cite only evidence relevant to the question. Compress repeated background, not supporting facts.
+
 ## Knowledge and context
 
 Treat the repository as structured evidence, not a bag of text. Prefer acceptance criteria and local rules, then symbols/AST, graph relationships, exact search, semantic retrieval, targeted source reads, and verification evidence.
