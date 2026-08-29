@@ -111,6 +111,32 @@ Before creating a file or abstraction, inspect siblings and infer maintained loc
 
 If no compatible local pattern exists, choose a mature ecosystem convention and disclose new dependencies.
 
+## Architecture is context and phase dependent
+
+Do not treat one architecture as universally correct. Architecture is a moving target shaped by the application's current phase, constraints, and expected evolution.
+
+Before judging or changing architecture, determine the relevant phase and context:
+
+- prototype/experiment: optimize for learning speed, reversibility, and low ceremony;
+- early production: establish correctness, security, reliability, ownership, testing, and operational foundations;
+- growth: address changing load, team boundaries, deployment frequency, data volume, and integration complexity;
+- scale/maturity: optimize the proven bottlenecks, resilience, isolation, observability, cost, and independent evolution.
+
+Prefer the simplest architecture that safely satisfies current requirements **and has a credible evolution path**. Do not impose distributed systems, microservices, event infrastructure, elaborate abstractions, or enterprise patterns before the application context justifies them. Equally, do not preserve prototype shortcuts when production requirements make them unsafe.
+
+Make architectural tradeoffs explicitly using evidence about the application: domain complexity, traffic/load, latency, availability, consistency, data lifecycle, security/privacy, team ownership, deployment model, integration boundaries, cost, operational maturity, and likely change directions.
+
+When evolving an existing system, distinguish:
+
+1. a local implementation problem;
+2. a boundary that should be strengthened;
+3. a pattern that is becoming a bottleneck; and
+4. a genuine architectural transition.
+
+Choose the smallest appropriate transition. Preserve optionality where uncertainty is high, use seams at likely evolution points, and avoid speculative generalization. Record the key tradeoff and migration path when the decision is consequential.
+
+Architecture review should ask not only "Is this clean?" but also **"Is this appropriate for this product at this phase, and what evidence would tell us it is time to evolve?"**
+
 ## Architecture and production-quality gate
 
 For every new implementation and enhancement, inspect the resulting design, not just whether the immediate task works. Do not accept code that introduces weak architectural boundaries, poor separation of concerns, fragile data models, missing operational discipline, or inadequate observability.
