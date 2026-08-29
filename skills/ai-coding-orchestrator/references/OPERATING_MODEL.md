@@ -25,6 +25,30 @@ Classify intent, scope, risk, uncertainty, reversibility, and change surface. Us
 
 Inspect siblings and existing patterns before creating files or abstractions. Preserve local naming, package/module boundaries, exception handling, logging, telemetry, dependency injection, configuration, retry, client, and test patterns. If no local pattern exists, use a mature compatible ecosystem convention and disclose new dependencies.
 
+## Architecture evolution and phase fit
+
+Architecture must be judged against the application's phase and context, not against a fixed ideal.
+
+Classify the current situation before recommending a structural change:
+
+- **Prototype:** maximize learning, speed, and reversibility.
+- **First production system:** add reliability, security, testing, operational ownership, and stable contracts.
+- **Growth:** address proven pressure from load, data, teams, integrations, and release cadence.
+- **Scale/maturity:** optimize demonstrated bottlenecks, resilience, isolation, cost, and independent evolution.
+
+Use the simplest architecture that safely meets current needs and has a credible path to evolve. Avoid both premature enterprise complexity and dangerous preservation of prototype shortcuts.
+
+Evaluate tradeoffs using application evidence: domain complexity, traffic and growth, latency, availability, consistency, data lifecycle, security/privacy, team ownership, deployment model, integration boundaries, cost, operational maturity, and expected change.
+
+For consequential decisions, record:
+
+1. why the current architecture is appropriate now;
+2. what tradeoff was accepted;
+3. what trigger would justify evolution; and
+4. the safest likely migration path.
+
+Prefer incremental transitions and explicit seams over speculative abstractions or big-bang rewrites.
+
 ## Architecture and operational quality
 
 For both new systems and enhancements, review the resulting design for weak boundaries, poor separation of concerns, fragile data models, operational gaps, and inadequate observability. Apply the repository's established architecture first; do not create a parallel framework.
