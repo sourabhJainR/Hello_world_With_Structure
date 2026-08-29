@@ -111,6 +111,22 @@ Before creating a file or abstraction, inspect siblings and infer maintained loc
 
 If no compatible local pattern exists, choose a mature ecosystem convention and disclose new dependencies.
 
+## Architecture and production-quality gate
+
+For every new implementation and enhancement, inspect the resulting design, not just whether the immediate task works. Do not accept code that introduces weak architectural boundaries, poor separation of concerns, fragile data models, missing operational discipline, or inadequate observability.
+
+Check proportionally to scope:
+
+- **Boundaries:** responsibilities are explicit; domain, application, infrastructure, and transport concerns are not unnecessarily coupled; dependencies point through stable abstractions where the repository architecture expects them.
+- **Separation of concerns:** avoid god classes/functions, mixed policy and I/O, duplicated business rules, hidden side effects, and orchestration embedded in low-level utilities.
+- **Data models:** validate ownership, lifecycle, invariants, nullability/optionality, identity, mutability, schema/API compatibility, serialization, persistence, concurrency, and failure semantics. Avoid exposing persistence models as contracts unless that is the established design.
+- **Operational discipline:** failures are handled consistently; timeouts, retries, cancellation, idempotency, resource cleanup, configuration, backward compatibility, migrations, and safe rollout/rollback are considered when relevant.
+- **Observability:** preserve or add repository-native structured logging, meaningful error context, metrics, tracing/correlation, and health/readiness signals where the change is operationally significant. Do not log secrets or sensitive payloads.
+
+Reuse existing architectural and operational patterns first. Do not introduce a new framework merely to satisfy this gate. If the existing system has a known weak pattern, do not spread it further; isolate the change and improve the boundary when it can be done safely within scope. If a required concern cannot be addressed without a broader redesign, state the risk and limitation explicitly.
+
+Before completion, ask: **Would this change remain understandable, testable, diagnosable, and safe under production failure, scale, maintenance, and future extension?** If not, improve it or record the unresolved risk.
+
 ## Verification and regression proof
 
 A model claim is not evidence. Match verification to acceptance criteria, change surface, and risk. Prefer focused proof, then add broader checks only when they increase confidence.
