@@ -25,6 +25,21 @@ Classify intent, scope, risk, uncertainty, reversibility, and change surface. Us
 
 Inspect siblings and existing patterns before creating files or abstractions. Preserve local naming, package/module boundaries, exception handling, logging, telemetry, dependency injection, configuration, retry, client, and test patterns. If no local pattern exists, use a mature compatible ecosystem convention and disclose new dependencies.
 
+## Architecture and operational quality
+
+For both new systems and enhancements, review the resulting design for weak boundaries, poor separation of concerns, fragile data models, operational gaps, and inadequate observability. Apply the repository's established architecture first; do not create a parallel framework.
+
+Check relevant concerns before completion:
+
+1. Clear responsibility and dependency boundaries.
+2. Cohesive components with explicit side effects and minimal coupling.
+3. Data invariants, lifecycle, compatibility, concurrency, and failure semantics.
+4. Production behavior: errors, timeouts, retries, cancellation, idempotency, cleanup, configuration, migrations, and rollback when relevant.
+5. Diagnostics: repository-native structured logs, actionable metrics, tracing/correlation, and health signals for operationally meaningful changes.
+6. Security and privacy: no secrets or sensitive payloads in logs/telemetry.
+
+A passing test suite is necessary but does not prove architectural or operational quality. If a broader redesign is required but out of scope, keep the local change safe and explicitly report the remaining limitation.
+
 ## Verification
 
 A model assertion is never sufficient. Match verification to acceptance criteria and risk. Every retry must add evidence or materially change the approach.
