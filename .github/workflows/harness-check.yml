@@ -53,7 +53,7 @@ jobs:
           python -m unittest discover -s examples/habit-tracker/tests -v
           python -m unittest discover -s examples/family-financial-register/tests -v
       - name: Compile harness, runtime, extensions and installer
-        run: python -m py_compile .ai-harness/run.py .ai-harness/engine.py .ai-harness/context_engine.py .ai-harness/knowledge_fabric.py .ai-harness/extension_registry.py .ai-harness/provider.py .ai-harness/observability.py .ai-harness/project_profile.py .ai-harness/placement.py .ai-harness/worktree.py .ai-harness/review_agents.py .ai-harness/runtime/p0.py .ai-harness/runtime/p1.py .ai-harness/runtime/p1_pipeline.py .ai-harness/runtime/p2.py .ai-harness/runtime/p2_pipeline.py scripts/install_skill.py scripts/validate_plugin.py scripts/run_evals.py scripts/run_p0_evals.py scripts/run_p2_evals.py scripts/run_full_suite.py .ai-harness/p1_lifecycle.py scripts/run_p1_evals.py examples/habit-tracker/app.py examples/family-financial-register/app.py
+        run: python -m py_compile .ai-harness/run.py .ai-harness/engine.py .ai-harness/context_engine.py .ai-harness/knowledge_fabric.py .ai-harness/extension_registry.py .ai-harness/provider.py .ai-harness/observability.py .ai-harness/project_profile.py .ai-harness/placement.py .ai-harness/worktree.py .ai-harness/review_agents.py .ai-harness/runtime/p0.py .ai-harness/runtime/p1.py .ai-harness/runtime/p1_pipeline.py .ai-harness/runtime/p2.py .ai-harness/runtime/p2_pipeline.py .ai-harness/runtime/legacy.py scripts/install_skill.py scripts/validate_plugin.py scripts/run_evals.py scripts/run_p0_evals.py scripts/run_p2_evals.py scripts/run_full_suite.py .ai-harness/p1_lifecycle.py scripts/run_p1_evals.py examples/habit-tracker/app.py examples/family-financial-register/app.py
       - name: Validate configuration
         run: python -c "import tomllib; tomllib.load(open('.ai-harness/config.toml','rb')); tomllib.load(open('.ai-harness/extension_registry.toml','rb'))"
       - name: Validate P0 state schema
@@ -81,6 +81,8 @@ jobs:
                           hits.append(str(path))
           assert not hits, f'forbidden external linkage: {hits}'
           PY
+      - name: Validate legacy analysis contract
+        run: python -m unittest tests.test_legacy_runtime -v
       - name: Detect optional extensions
         run: python .ai-harness/extension_registry.py
       - name: Run deterministic routing eval suite
