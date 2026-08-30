@@ -197,32 +197,26 @@ def heuristic_route(task: str) -> dict[str, Any]:
     risk = "low"
     uncertainty = "known"
     capabilities: list[str] = []
-    if any(token in text for token in ("compare", "evaluate", "research", "unknown", "which library", "which framework", "architecture", "latest")):
-        capabilities.append("research")
-        uncertainty = "moderate"
-    if any(token in text for token in ("poc", "proof of concept", "feasibility", "spike", "prototype", "experiment")):
-        capabilities.append("poc")
-        uncertainty = "unknown"
-    if any(token in text for token in ("security", "authentication", "authorization", "production", "migration", "breaking", "performance", "scale", "release")):
-        capabilities.append("grill")
-        risk = "high"
-    if any(token in text for token in ("why", "diagnose", "intermittent", "root cause", "failing", "hang", "error", "regression", "broken")):
-        mode = "debug"
-        uncertainty = "moderate"
-    if "research only" in text or "only research" in text:
-        mode = "research"
-    if "review only" in text or "only review" in text:
-        mode = "review"
-    return {
-        "mode": mode,
-        "capabilities": list(dict.fromkeys(capabilities)),
-        "risk": risk,
-        "uncertainty": uncertainty,
-        "scope": "repository",
-        "reason": "heuristic fallback",
-        "confidence": 0.55,
-    }
 
+    if any(token in text for token in ("poc", "proof of concept", "feasibility", "spike", "prototype", "experiment")):
+        mode = "poc"; capabilities.append("poc"); uncertainty = "unknown"
+    elif any(token in text for token in ("review", "assess", "audit")):
+        mode = "review"
+    elif any(token in text for token in ("research", "investigate options", "which library", "which framework", "latest")):
+        mode = "research"; capabilities.append("research"); uncertainty = "moderate"
+    elif any(token in text for token in ("why", "diagnose", "intermittent", "root cause", "failing", "hang", "error", "regression", "broken")):
+        mode = "debug"; uncertainty = "moderate"
+
+    if mode == "implement" and any(token in text for token in ("ambiguous", "unclear requirements", "clarify requirements", "not enough requirements", "undefined behavior")):
+        mode = "grill"; capabilities.append("grill")
+
+    if mode not in ("research", "poc") and any(token in text for token in ("compare", "evaluate", "unknown", "architecture")):
+        capabilities.append("research"); uncertainty = "moderate"
+
+    if any(token in text for token in ("security", "authentication", "authorization", "production", "migration", "breaking", "performance", "scale", "release")):
+        capabilities.append("grill"); risk = "high"
+
+    return {"mode": mode, "capabilities": list(dict.fromkeys(capabilities)), "risk": risk, "uncertainty": uncertainty, "scope": "repository", "reason": "deterministic heuristic", "confidence": 0.75}
 
 def normalize_route(value: dict[str, Any]) -> dict[str, Any]:
     route = dict(value)
