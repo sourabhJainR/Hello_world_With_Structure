@@ -173,6 +173,8 @@ Report:
 
 `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Extensions used | Assumptions | Risks | Incomplete checks | Efficiency metrics`
 
+Control-plane references are loaded progressively, including `ORCHESTRATION_SPEC.md`, `TEN_LOOP_POLICY.md` (opt-in only), `CONTEXT_POLICY.md`, `ARCHITECTURE_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`, `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, and `QUALITY_GOVERNANCE.md`.
+
 Load detailed guidance only when needed:
 
 - `references/OPERATING_MODEL.md`
@@ -182,14 +184,5 @@ Load detailed guidance only when needed:
 - `docs/CONTEXT_EFFICIENCY.md`
 - `docs/SESSION_HANDOFF_AND_ENTROPY.md`
 - `docs/VERIFICATION_INDEPENDENCE.md`
-- `.ai-harness/ORCHESTRATION_SPEC.md`
-- `.ai-harness/ARCHITECTURE_POLICY.md`
-- `.ai-harness/EXECUTION_POLICY.md`
-- `.ai-harness/VERIFICATION_POLICY.md`
-- `.ai-harness/REVIEW_POLICY.md`
-- `.ai-harness/LEARNING_POLICY.md`
-- `.ai-harness/TOKEN_POLICY.md`
-- `.ai-harness/PROVIDER_CONTRACT.md`
-- `.ai-harness/QUALITY_GOVERNANCE.md`
 
 Do not copy these references into every prompt.
