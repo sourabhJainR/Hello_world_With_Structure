@@ -88,8 +88,11 @@ def select_context(task: str, repo_map: str, memory: str, history: str, budget_c
     for name, lines, cap in sections:
         take = "\n".join(lines)
         take = take[: min(len(take), cap, remaining)]
-        output[name] = take or "None."
-        remaining -= len(take)
+        value = take or "None."
+        if len(value) > remaining:
+            value = value[:remaining]
+        output[name] = value
+        remaining -= len(value)
 
     return {
         "repository": output["repository"],
