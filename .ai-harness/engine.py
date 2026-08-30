@@ -208,7 +208,7 @@ def heuristic_route(task: str) -> dict[str, Any]:
         mode = "review"
     elif explicit_research:
         mode = "research"; capabilities.append("research"); uncertainty = "moderate"
-    elif any(token in text for token in debug_signals):
+    elif any(token in text for token in debug_signals) and "do not change anything" not in text and "without changing behavior" not in text and "already agreed constant" not in text:
         mode = "debug"; uncertainty = "moderate"
 
     ambiguous_feature = ("flexible approval workflow" in text or "configurable rules" in text)
