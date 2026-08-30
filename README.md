@@ -171,34 +171,12 @@ The core works without extensions. When already installed, enabled, healthy enou
 
 - **Graphify** for AST and deterministic relationship/impact evidence.
 - **code-mem / codebase-memory-mcp** for persistent code graph, semantic/structural search, call tracing, and impact analysis.
-- **AER** for measured compact structured evidence at AI/MCP context boundaries; it is selected only when the host/model supports it and paired measurements show a benefit.
 - **Superpowers** for TDD, planning, systematic debugging, and execution discipline.
 - **Ponytail** for YAGNI and minimal-change pressure.
 - **Caveman** for compact output/context handling.
 - Other compatible Agent Skills and MCP servers discovered at runtime.
 
 Extensions are capabilities, not dependencies. The orchestrator does not install or modify them without explicit approval. Provider output is bounded, ranked, deduplicated, and provenance-aware before entering model context.
-
-## AER effectiveness measurement
-
-AER is integrated as an optional representation provider, not as the canonical evidence store. The orchestrator should not assume that fewer bytes means fewer model tokens or better engineering outcomes.
-
-The AER repository now contains:
-
-- production-readiness gates;
-- representative MCP/analytics/configuration/irregular-data benchmark workloads;
-- deterministic round-trip fidelity checks;
-- a dedicated AI-effectiveness benchmark runner;
-- an exact-tokenizer adapter contract;
-- package-consumer validation in CI.
-
-See the AER benchmark protocol and integration contract:
-
-`https://github.com/sourabhJainR/AER/blob/main/docs/AI_EFFECTIVENESS_BENCHMARK.md`
-
-`docs/AER_EFFECTIVENESS_INTEGRATION.md`
-
-The real target metric is verified task value per total model/tool cost. AER must be compared against JSON with the same repository, task, agent, model, tools, verification and exact tokenizer configuration where applicable.
 
 ## Context efficiency
 
@@ -219,7 +197,7 @@ See `docs/CONTEXT_EFFICIENCY.md`, `docs/CONTEXT_BUDGET.md`, `docs/SESSION_HANDOF
 
 ## Engineering workflow disciplines
 
-The orchestrator now uses a composable, spec-driven workflow model rather than one large universal prompt:
+The orchestrator uses a composable, spec-driven workflow model rather than one large universal prompt:
 
 `grill -> spec -> independently verifiable slices -> implement -> review`
 
@@ -303,7 +281,7 @@ The core is intentionally separated from host agents and optional providers:
                                   |
                            Capability providers
                  /       |       |       |       \
-            Graphify code-mem   AER  Superpowers  other MCP/skills
+            Graphify code-mem  optional skills  MCP providers
                                   |
                                   v
                        Execute -> Verify -> Review
