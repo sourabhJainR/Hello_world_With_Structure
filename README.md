@@ -206,6 +206,28 @@ Detailed adaptation and licensing review:
 
 `docs/AIHERO_SKILLS_ADAPTATION.md`
 
+## Engineering operating-system model
+
+The harness is designed as a portable software-engineering operating layer rather than a collection of prompts. For non-trivial work it maintains a compact Engineering State Ledger:
+
+`INTENT -> CONTRACT -> REPO_FACTS -> DECISIONS -> EVIDENCE -> CHANGESET -> VERIFY -> OPEN_RISKS -> NEXT`
+
+This lets work survive model, session, and host changes without replaying transcripts.
+
+Before significant actions it uses lightweight gates:
+
+`Understand -> Plan -> Change -> Proof -> Release`
+
+The system also detects non-progressing retries and thrash. Repeated searches, edits, tests, or hypotheses that add no material evidence must stop and change strategy.
+
+The user experience remains outcome-first: describe the goal naturally and the harness infers the workflow. For longer tasks it can expose concise checkpoints:
+
+`UNDERSTOOD -> INVESTIGATING -> PLAN -> CHANGED -> PROVEN -> OPEN_RISKS`
+
+See:
+
+`docs/AGENT_OPERATING_SYSTEM_REVIEW.md`
+
 ## Evaluation
 
 The repository contains dependency-free deterministic evals covering routing, unnecessary capability selection, policy invariants, skill metadata/context budgets, extension degradation, future readiness, and context-efficiency behaviors.
