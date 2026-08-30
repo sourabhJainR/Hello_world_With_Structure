@@ -23,7 +23,7 @@ def load_json(path: Path) -> dict:
     return value
 
 
-def validate_skill(path: Path, maximum_chars: int = 9000) -> str:
+def validate_skill(path: Path, maximum_chars: int = 24000) -> str:
     if not path.is_file():
         raise ValueError(f"skill is missing: {path}")
     text = path.read_text(encoding="utf-8")
