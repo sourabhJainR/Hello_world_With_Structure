@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from p0 import add_decision, add_evidence, evidence, new_state, proof_bundle, risk_controls, risk_level, verification
-from p1 import affected_profile_fields, extension_manifest, negotiate, profile, regression_case
+from p1 import affected_profile_fields, negotiate, profile, regression_case
 
 
 def build_task_state(task_id: str, goal: str, source: str = "user", facts: dict[str, dict[str, Any]] | None = None, changed_paths: list[str] | None = None) -> dict[str, Any]:
@@ -22,7 +22,7 @@ def build_task_state(task_id: str, goal: str, source: str = "user", facts: dict[
 def apply_route(state: dict[str, Any], route: dict[str, Any]) -> dict[str, Any]:
     """Persist route as an evidence-backed decision and derive verification controls."""
     route_text = str(sorted((str(k), str(v)) for k, v in route.items()))
-    ev = evidence("tool", "router", "Selected task route", claim=route_text, confidence="high", provenance="p1_pipeline.apply_route")
+    ev = evidence("tool", "router", route_text, confidence="high", provenance="p1_pipeline.apply_route")
     add_evidence(state, ev)
     add_decision(state, f"route:{route.get('mode', 'implement')} risk={route.get('risk', 'low')}", [ev["id"]])
     state["status"] = "planned"
@@ -39,7 +39,7 @@ def plan_controls(state: dict[str, Any], scores: dict[str, int]) -> dict[str, An
 
 def negotiate_extensions(state: dict[str, Any], required: list[str], available: list[dict[str, Any]]) -> dict[str, Any]:
     result = negotiate(required, available)
-    ev = evidence("tool", "extension-negotiation", "Optional capability negotiation", claim=str(result), confidence="high", provenance="p1_pipeline.negotiate_extensions")
+    ev = evidence("tool", "extension-negotiation", str(result), confidence="high", provenance="p1_pipeline.negotiate_extensions")
     add_evidence(state, ev)
     state["metadata"]["extensions"] = result
     return state
