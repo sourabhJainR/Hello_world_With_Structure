@@ -157,6 +157,14 @@ Build a small REST API for customer subscriptions.
 
 If no local conventions exist, the orchestrator establishes a mature compatible structure, testing, logging, error handling, configuration, and dependency approach instead of pretending an existing pattern exists.
 
+## Detailed usage and platform integration
+
+For installation, Claude Code, Codex CLI, Gemini CLI, unsupported Agent Skills hosts, real-task examples, research/POC/review flows, Jira usage, troubleshooting, safe rollout, and the recommended golden path, see:
+
+`docs/USAGE_AND_PLATFORM_INTEGRATION.md`
+
+The short version is: install/discover the skill, open the target repository, describe the desired outcome and protected behavior, and let the orchestrator infer the minimum workflow. You should not need to know which internal skill, model, graph provider, memory provider, or retrieval strategy it selected.
+
 ## Optional intelligence extensions
 
 The core works without extensions. When already installed, enabled, healthy enough, and relevant, the orchestrator can use:
