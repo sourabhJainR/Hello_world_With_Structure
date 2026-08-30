@@ -23,6 +23,9 @@ minimum_confidence_for_auto_capability = 0.68
 escalate_after_failed_verifications = 2
 
 [orchestration]
+max_passes = 10
+mandatory_high_risk_passes = [6, 7, 8, 10]
+policy_file = ".ai-harness/TEN_LOOP_POLICY.md"
 mode = "adaptive-single-run"
 user_requested_loop = false
 max_autonomous_repair_attempts = 2
