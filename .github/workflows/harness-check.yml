@@ -18,6 +18,7 @@ on:
       - 'install.sh'
       - 'state/**'
       - 'tests/**'
+      - 'examples/**'
   pull_request:
     paths:
       - '.ai-harness/**'
@@ -35,6 +36,7 @@ on:
       - 'install.sh'
       - 'state/**'
       - 'tests/**'
+      - 'examples/**'
 
 jobs:
   harness:
@@ -46,12 +48,16 @@ jobs:
           python-version: '3.11'
       - name: Validate Python harness
         run: python -m unittest discover -s tests -v
+      - name: Validate reference applications
+        run: |
+          python -m unittest discover -s examples/habit-tracker/tests -v
+          python -m unittest discover -s examples/family-financial-register/tests -v
       - name: Compile harness, runtime, extensions and installer
-        run: python -m py_compile .ai-harness/run.py .ai-harness/engine.py .ai-harness/context_engine.py .ai-harness/knowledge_fabric.py .ai-harness/extension_registry.py .ai-harness/provider.py .ai-harness/observability.py .ai-harness/project_profile.py .ai-harness/placement.py .ai-harness/worktree.py .ai-harness/review_agents.py .ai-harness/runtime/p0.py .ai-harness/runtime/p1.py .ai-harness/runtime/p1_pipeline.py .ai-harness/runtime/p2.py .ai-harness/runtime/p2_pipeline.py scripts/install_skill.py scripts/validate_plugin.py scripts/run_evals.py scripts/run_p0_evals.py scripts/run_p2_evals.py scripts/run_full_suite.py .ai-harness/p1_lifecycle.py scripts/run_p1_evals.py
+        run: python -m py_compile .ai-harness/run.py .ai-harness/engine.py .ai-harness/context_engine.py .ai-harness/knowledge_fabric.py .ai-harness/extension_registry.py .ai-harness/provider.py .ai-harness/observability.py .ai-harness/project_profile.py .ai-harness/placement.py .ai-harness/worktree.py .ai-harness/review_agents.py .ai-harness/runtime/p0.py .ai-harness/runtime/p1.py .ai-harness/runtime/p1_pipeline.py .ai-harness/runtime/p2.py .ai-harness/runtime/p2_pipeline.py scripts/install_skill.py scripts/validate_plugin.py scripts/run_evals.py scripts/run_p0_evals.py scripts/run_p2_evals.py scripts/run_full_suite.py .ai-harness/p1_lifecycle.py scripts/run_p1_evals.py examples/habit-tracker/app.py examples/family-financial-register/app.py
       - name: Validate configuration
         run: python -c "import tomllib; tomllib.load(open('.ai-harness/config.toml','rb')); tomllib.load(open('.ai-harness/extension_registry.toml','rb'))"
       - name: Validate P0 state schema
-        run: python -c 'import json; s=json.load(open("state/engineering-state.schema.json")); assert s["$schema"].endswith("/draft/2020-12/schema") and s["$id"].endswith("/schemas/engineering-state/v1") and s["properties"]["schema_version"]["const"]=="1.0"'
+        run: python -c 'import json; s=json.load(open("state/engineering-state.schema.json")); assert s["$schema"].endswith("/draft/2020-12/schema") and s["$id"].endswith("/schemas/engineering-state/v1") and s["properties"]["schema_version"]["const"]=="1.0" and "outcome" in s["properties"]'
       - name: Validate plugin and marketplace manifests
         run: python scripts/validate_plugin.py
       - name: Validate deployable skill metadata
@@ -60,6 +66,20 @@ jobs:
         run: python -c "from pathlib import Path; p=Path('.ai-harness/FLASH_CONTEXT_POLICY.md'); assert p.exists() and 'FlashAttention' in p.read_text(encoding='utf-8')"
       - name: Validate knowledge fabric policy
         run: python -c "from pathlib import Path; p=Path('.ai-harness/KNOWLEDGE_FABRIC_POLICY.md'); assert p.exists() and 'Graphify' in p.read_text(encoding='utf-8') and 'codebase-memory-mcp' in p.read_text(encoding='utf-8')"
+      - name: Validate core has no external AER linkage
+        run: python - <<'PY'
+          from pathlib import Path
+          hits=[]
+          roots=[Path('.ai-harness'),Path('.agents'),Path('.claude'),Path('skills'),Path('state'),Path('scripts'),Path('tests'),Path('docs'),Path('README.md')]
+          for root in roots:
+              files=[root] if root.is_file() else root.rglob('*')
+              for path in files:
+                  if path.is_file() and path.suffix.lower() in {'.md','.py','.toml','.json','.yml','.yaml','.sh'}:
+                      text=path.read_text(encoding='utf-8',errors='ignore').lower()
+                      if 'github.com/sourabhjainr/aer' in text or '\naer effectiveness integration' in text:
+                          hits.append(str(path))
+          assert not hits, f'forbidden external linkage: {hits}'
+          PY
       - name: Detect optional extensions
         run: python .ai-harness/extension_registry.py
       - name: Run deterministic routing eval suite
