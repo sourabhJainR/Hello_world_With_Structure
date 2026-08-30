@@ -218,9 +218,11 @@ Detailed adaptation and licensing review:
 
 The harness is designed as a portable software-engineering operating layer rather than a collection of prompts. For non-trivial work it maintains a compact Engineering State Ledger:
 
-`INTENT -> CONTRACT -> REPO_FACTS -> DECISIONS -> EVIDENCE -> CHANGESET -> VERIFY -> OPEN_RISKS -> NEXT`
+`INTENT -> CONTRACT -> REPO_FACTS -> DECISIONS -> EVIDENCE -> CHANGESET -> VERIFY -> OUTCOME -> OPEN_RISKS -> NEXT`
 
 This lets work survive model, session, and host changes without replaying transcripts.
+
+The ledger now records outcome separately from verification so future learning can distinguish “tests passed” from “the engineering change was accepted and successful.”
 
 Before significant actions it uses lightweight gates:
 
@@ -230,11 +232,20 @@ The system also detects non-progressing retries and thrash. Repeated searches, e
 
 The user experience remains outcome-first: describe the goal naturally and the harness infers the workflow. For longer tasks it can expose concise checkpoints:
 
-`UNDERSTOOD -> INVESTIGATING -> PLAN -> CHANGED -> PROVEN -> OPEN_RISKS`
+`UNDERSTOOD -> INVESTIGATING -> PLAN -> CHANGED -> PROVEN -> OUTCOME -> OPEN_RISKS`
 
-See:
+See `docs/AGENT_OPERATING_SYSTEM_REVIEW.md` and `docs/P0_OPERATING_CONTRACT.md`.
 
-`docs/AGENT_OPERATING_SYSTEM_REVIEW.md`
+## Reference applications
+
+The repository contains isolated reference applications for exercising the orchestrator against ordinary software problems. They are examples only and are not dependencies of the core system.
+
+See `examples/README.md` for:
+
+- `habit-tracker/` — CRUD, validation, streak logic, and regression tests.
+- `family-financial-register/` — a fake-data, offline continuity register for assets, liabilities, documents, and responsible roles. It intentionally excludes credentials and recovery secrets.
+
+The examples are deliberately kept outside `.ai-harness`, `state`, and runtime packages so the core remains domain-neutral.
 
 ## Evaluation
 
@@ -250,6 +261,8 @@ Run the complete tests with:
 
 ```bash
 python -m unittest discover -s tests -v
+python -m unittest discover -s examples/habit-tracker/tests -v
+python -m unittest discover -s examples/family-financial-register/tests -v
 ```
 
 Validate plugin packaging with:
