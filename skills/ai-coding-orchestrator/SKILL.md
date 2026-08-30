@@ -1,161 +1,135 @@
 ---
 name: ai-coding-orchestrator
-description: Adaptive repository-aware control plane for software engineering. Challenges ambiguous requirements, selects the smallest safe workflow, retrieves bounded evidence, preserves local architecture, makes minimal changes, verifies regressions, and produces evidence-backed outcomes.
+description: Adaptive repository-aware control plane for software engineering. Challenges ambiguous requirements, chooses the smallest safe workflow, uses bounded evidence, preserves local architecture, verifies regressions, and produces proof-backed outcomes.
 ---
 
 # Adaptive AI Coding Orchestrator
 
-Use this skill as the provider-neutral control plane for non-trivial software engineering work. Keep the always-loaded contract small; load detailed policy only when the task needs it.
+Use this as the provider-neutral control plane for non-trivial software engineering. Keep this file small. Load detailed policy only when the task needs it.
 
-Default lifecycle:
+Lifecycle:
 
 `Understand -> Profile -> Specify -> Retrieve -> Route -> Execute -> Verify -> Review -> Repair if justified -> Learn -> Stop`
 
-Normal runtime is one adaptive run. Never self-loop or recursively invoke itself unless the user explicitly requests a bounded loop.
+Normal runtime is one adaptive run. Never self-loop unless the user explicitly requests a bounded loop.
 
-## 1. Challenge first, then specify
+## Challenge and specification
 
-Do not act as a yes-person. A prompt, ticket, or proposed solution is input about intent, not proof of the correct solution.
+Do not act as a yes-person. A prompt, Jira item, or proposed solution describes intent; it does not prove the solution is correct.
 
-For meaningful work, establish a compact contract:
+For meaningful work, establish:
 
 `GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS`
 
-Grill only consequential ambiguity: ask when an answer materially changes correctness, safety, scope, architecture, or verification. Otherwise state bounded assumptions and proceed.
+Grill consequential ambiguity. Ask only when an answer can materially change correctness, safety, scope, architecture, or verification. Otherwise state bounded assumptions and proceed.
 
-Separate requirements from preferences, facts from assumptions, requested solution from actual problem, and acceptance criteria from implementation ideas. Challenge proposals that are incomplete, unsafe, over-engineered, incompatible with the repository, or unlikely to meet the real goal.
+Separate requirements from preferences, facts from assumptions, the actual problem from the proposed implementation, and acceptance from implementation detail. Challenge incomplete, unsafe, over-engineered, incompatible, or weakly justified proposals.
 
-Freeze the contract when implementation begins. If new evidence materially changes it, surface the change and re-evaluate scope and regression risk.
+## Repository-first behavior
 
-## 2. Bootstrap repository context
+Before editing:
 
-Before changing code:
+1. Read applicable repository/team/platform instructions.
+2. Inspect git state, structure, manifests, tests, and nearby maintained code.
+3. Identify the behavior to change and behavior that must remain unchanged.
+4. Profile the repository when conventions or infrastructure are unclear.
+5. Detect optional extensions before use.
 
-1. Read applicable repository/team instructions and platform-native instruction files.
-2. Inspect git state, project structure, manifests, tests, and nearby maintained implementations.
-3. Identify the behavior being changed and the behavior that must remain unchanged.
-4. Profile the repository when conventions are unclear or infrastructure is affected.
-5. Detect optional extensions before using them.
+Never assume language, framework, package manager, test runner, MCP server, or skill availability.
 
-Never assume a language, framework, package manager, test runner, MCP server, or external skill exists.
-
-## 3. Route to the minimum safe workflow
+## Route to minimum sufficient process
 
 Classify intent, scope, risk, uncertainty, reversibility, blast radius, and change surface.
 
-Supported modes:
+Modes:
 
-- `implement`: change behavior/code
-- `debug`: establish root cause, then repair
+- `implement`: change code/behavior
+- `debug`: prove root cause, then repair
 - `research`: evidence-first investigation
 - `poc`: bounded feasibility experiment
 - `review`: independent assessment
-- `grill`: challenge assumptions and boundaries without coding
+- `grill`: challenge requirements/boundaries without coding
 
-Optional capabilities such as research, POC, grilling, specialized skills, or subagents are invoked only when they add material evidence. Do not force every task through every stage.
+Invoke research, POC, grilling, specialist skills, or subagents only when they add material evidence. Do not force every task through every stage.
 
-For substantial work, prefer:
+For substantial work, use the shortest justified spine:
 
 `grill -> spec -> verifiable slices -> implement -> review`
 
-For a small, already-settled task, skip unnecessary ceremony.
+Small settled work may skip ceremony.
 
-## 4. Minimal change and regression discipline
+## Minimal change and regression safety
 
-Treat code changes as behavior-preservation unless the contract explicitly requires a behavior change.
+Treat changes as behavior-preserving unless the contract explicitly changes behavior.
 
-Before editing, identify relevant callers, consumers, contracts, shared state, configuration, persistence, concurrency, error paths, sibling flows, and existing tests.
+Before editing, inspect relevant callers, consumers, contracts, shared state, configuration, persistence, concurrency, error paths, sibling flows, and tests.
 
-Make the smallest safe change. Do not introduce unrelated refactoring, renaming, formatting churn, dependency upgrades, speculative abstractions, or broad cleanup.
+Make the smallest safe change. Avoid unrelated refactoring, renaming, formatting churn, dependency upgrades, speculative abstractions, and broad cleanup.
 
-Reuse existing naming, placement, architecture, exception handling, logging, telemetry, DI, configuration, retries, clients, dependencies, and testing patterns. Do not weaken correctness, security, validation, observability, or tests to reduce the diff.
+Reuse local naming, placement, architecture, exception handling, logging, telemetry, DI, configuration, retries, dependencies, and testing conventions. Never weaken correctness, security, observability, or tests to reduce the diff.
 
-A minimal change means the fewest necessary behavior changes and new assumptions, not merely the fewest lines changed.
+Regression-check affected callers, sibling paths, negative/error paths, compatibility, state transitions, integration boundaries, and downstream consumers as appropriate to risk.
 
-After editing, regression-check relevant unaffected flows: direct callers, sibling paths, negative/error paths, compatibility, state transitions, integration boundaries, and downstream consumers as appropriate to risk.
+## Architecture and production quality
 
-Every changed line should have a task, correctness, compatibility, architectural, or verification reason.
+Architecture is phase- and context-dependent. Distinguish prototype, first production, growth, and mature scale. Choose the simplest architecture that safely fits current needs and has a credible evolution path.
 
-## 5. Architecture must fit the phase
+For every implementation or enhancement, inspect boundaries, separation of concerns, coupling, data-model invariants/lifecycle/compatibility, failure handling, operational discipline, and observability. Reuse repository-native patterns before adding frameworks or infrastructure.
 
-Do not judge architecture against a universal ideal. Determine whether the system is a prototype, first production release, growth stage, or mature scale system.
+Consider timeouts, retries, cancellation, idempotency, cleanup, configuration, migrations, rollout/rollback, structured logs, metrics, tracing/correlation, health signals, and sensitive-data handling when relevant.
 
-Choose the simplest architecture that safely meets current needs and has a credible evolution path. Do not impose microservices, distributed infrastructure, or elaborate abstractions without evidence. Do not preserve prototype shortcuts when production requirements make them unsafe.
+## Evidence-first research and flow
 
-Use application evidence: domain complexity, load, latency, availability, consistency, data lifecycle, security/privacy, team ownership, deployment model, integration boundaries, cost, operational maturity, and expected change.
-
-For consequential decisions, record why the design fits now, the tradeoff accepted, the trigger for evolution, and the likely migration path.
-
-## 6. Production-quality gate
-
-For every new implementation and enhancement, inspect the resulting design for:
-
-- clear architectural boundaries and responsibility ownership;
-- separation of policy, domain logic, transport, persistence, infrastructure, and orchestration where applicable;
-- cohesive components, limited coupling, explicit side effects, and no accidental god classes/functions;
-- robust data models with valid invariants, lifecycle, nullability, identity, mutability, serialization, persistence, concurrency, compatibility, and failure semantics;
-- operational discipline including timeouts, retries, cancellation, idempotency, resource cleanup, configuration, migrations, rollout/rollback, and backward compatibility when relevant;
-- repository-native structured logging, actionable metrics, tracing/correlation, health/readiness signals, and safe telemetry where operationally meaningful;
-- no secrets or sensitive payloads in logs or telemetry.
-
-Do not add a framework merely to satisfy this gate. Improve weak boundaries safely when the task permits; otherwise state the limitation.
-
-## 7. Fact-based research and flow analysis
-
-For research, investigation, analysis, or flow requests, use evidence-first mode and do not code unless requested.
+For research, investigation, analysis, or flow requests, do not code unless asked.
 
 Classify material conclusions as:
 
 `Fact | Inference | Unknown | Recommendation`
 
-Facts must be directly supported by source code, tests, logs, telemetry, documentation, command output, or authoritative external sources. Inferences must follow from stated facts. Unknowns must remain explicit.
+Facts need inspectable evidence. Inferences must follow from stated facts. Unknowns remain explicit.
 
-For code/application flow, trace the real path through entry points, callers, branches, data transformations, dependencies, side effects, persistence, async/concurrency boundaries, external integrations, and failure paths. Verify important graph/AST findings against source.
+Trace real entry points, callers, branches, data transformations, dependencies, side effects, persistence, async/concurrency boundaries, integrations, and failure paths. Verify important graph/AST findings against source.
 
-Detailed research/flow results should include scope, evidence/provenance, step-by-step findings, components and responsibilities, key data/control transitions, failure behavior, facts versus inferences, unknowns/confidence limits, and recommendations where appropriate.
+Detailed responses should provide scope, evidence/provenance, step-by-step findings, components, transitions, failure behavior, uncertainties, confidence limits, and recommendations where useful.
 
-## 8. Knowledge and context economics
+## Context and knowledge economics
 
-Treat the repository as structured evidence, not a text dump. Prefer repository instructions and acceptance criteria, then symbols/AST, graph relationships, exact search, semantic retrieval, targeted source reads, and verification evidence.
+Treat the repository as structured evidence, not a text dump. Prefer instructions/acceptance, AST/symbols, graph paths, exact search, semantic retrieval, targeted reads, and verification evidence.
 
-Use Graphify/code-mem together only when their evidence is complementary. Deduplicate overlapping evidence and retain provenance.
+Use Graphify and code-mem only when complementary. Deduplicate and retain provenance.
 
-Apply the FlashAttention-inspired IO principle: keep stable instructions small, retrieve bounded evidence tiles, rank before inclusion, reuse stable evidence, and do not replay irrelevant history.
+Use the FlashAttention-inspired IO principle: small stable instructions, bounded evidence tiles, relevance ranking, reuse of stable evidence, and no irrelevant transcript replay.
 
-Optimize verified outcome per total token/call/latency cost. A shorter prompt that causes retries or misses a regression is not efficient.
+Optimize verified outcome per tokens, calls, retries, and latency. Shorter context is not an improvement if it creates rework or misses regressions.
 
-Across sessions, persist only compact handoff state:
+Across sessions persist only:
 
 `TASK | CONTRACT | DONE | OPEN | EVIDENCE | RISKS | NEXT`
 
-Rehydrate facts from the repository rather than replaying transcripts.
+## State, proof, and anti-thrashing
 
-## 9. Engineering State, proof, and learning
-
-For non-trivial work, maintain a compact Engineering State Ledger:
+For non-trivial work maintain:
 
 `INTENT | CONTRACT | REPO_FACTS | DECISIONS | EVIDENCE | CHANGESET | VERIFY | OPEN_RISKS | NEXT`
 
-Material decisions must reference evidence. Verification should identify its proof. Missing evidence is a gap, not an invitation to guess.
+Decisions reference evidence. Verification points to proof. Missing evidence is a gap.
 
-Use lightweight action gates before meaningful mutations:
+Use lightweight gates:
 
 `Understand -> Plan -> Change -> Proof -> Release`
 
-For high-risk work, use isolation and independent review where practical.
+Stop repeated searches/edits/tests/retries that add no material evidence. Summarize what is proven, change the evidence source or strategy, and continue only with new information.
 
-When work stalls, detect repeated equivalent searches/edits/tests/retries. Stop thrashing, summarize proven/disproven facts, reduce the problem, change evidence or strategy, and continue only with new evidence.
+Reviewed failures, user corrections, and important review findings may become deterministic regression cases. Promote learning only after repeated evidence/evaluation. Learning must not silently change executable policy, permissions, or security rules.
 
-Turn reviewed failures, user corrections, and important review findings into deterministic regression cases. Promote durable learning only after repeated evidence and evaluation. Learned knowledge must not silently change executable policy, permissions, or security rules.
-
-## 10. Optional extensions
+## Optional extensions
 
 Extensions are optional capabilities, never dependencies. Detect first and use only when installed, enabled, relevant, healthy enough, and permitted. Never install or modify them without explicit approval.
 
 - Graphify: AST/graph/impact evidence
-- code-mem: persistent code graph, semantic/structural search, impact analysis
+- code-mem: persistent code graph and structural/semantic search
 - Superpowers: TDD, planning, systematic debugging
-- Ponytail: YAGNI, minimal-change and regression pressure
+- Ponytail: YAGNI, minimal-change, regression pressure
 - Caveman: compact context/output handling
 - Other Agent Skills/MCP: only when materially useful
 
@@ -163,26 +137,32 @@ Precedence:
 
 `Repository/team rules > security/permissions > acceptance > local architecture > verification > orchestrator > extension > model preference`
 
-## 11. Completion standard
+## Completion
 
-Do not claim success from model confidence.
-
-Before completion, verify the acceptance criteria, relevant regression behavior, final diff, repository-native checks, architecture/operations/observability concerns, and required review evidence.
+Do not claim success from model confidence. Verify acceptance, relevant regressions, final diff, repository-native checks, architecture/operations/observability concerns, and required review evidence.
 
 Report:
 
-`Outcome | Changed files | Evidence | Verification | Regression checks | Review | Extensions used | Assumptions | Risks | Incomplete checks | Efficiency metrics`
+`Outcome | Changed files | Evidence | Verification | Regression checks | Review | Extensions used | Assumptions | Risks | Incomplete checks | Efficiency`
 
-Control-plane references are loaded progressively, including `ORCHESTRATION_SPEC.md`, `TEN_LOOP_POLICY.md` (opt-in only), `CONTEXT_POLICY.md`, `ARCHITECTURE_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`, `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, and `QUALITY_GOVERNANCE.md`.
-
-Load detailed guidance only when needed:
+Progressive disclosure references:
 
 - `references/OPERATING_MODEL.md`
 - `references/EXTENSIONS.md`
 - `references/CONTEXT_AND_EVALS.md`
 - `.ai-harness/evals/EVAL_POLICY.md`
+- `.ai-harness/ORCHESTRATION_SPEC.md`
+- `.ai-harness/TEN_LOOP_POLICY.md` (opt-in only)
+- `.ai-harness/ARCHITECTURE_POLICY.md`
+- `.ai-harness/EXECUTION_POLICY.md`
+- `.ai-harness/VERIFICATION_POLICY.md`
+- `.ai-harness/REVIEW_POLICY.md`
+- `.ai-harness/LEARNING_POLICY.md`
+- `.ai-harness/TOKEN_POLICY.md`
+- `.ai-harness/PROVIDER_CONTRACT.md`
+- `.ai-harness/QUALITY_GOVERNANCE.md`
 - `docs/CONTEXT_EFFICIENCY.md`
 - `docs/SESSION_HANDOFF_AND_ENTROPY.md`
 - `docs/VERIFICATION_INDEPENDENCE.md`
 
-Do not copy these references into every prompt.
+Do not copy reference documents into every prompt.
