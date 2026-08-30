@@ -47,7 +47,7 @@ jobs:
       - name: Validate Python harness
         run: python -m unittest discover -s tests -v
       - name: Compile harness, runtime, extensions and installer
-        run: python -m py_compile .ai-harness/run.py .ai-harness/engine.py .ai-harness/context_engine.py .ai-harness/knowledge_fabric.py .ai-harness/extension_registry.py .ai-harness/provider.py .ai-harness/observability.py .ai-harness/project_profile.py .ai-harness/placement.py .ai-harness/worktree.py .ai-harness/review_agents.py .ai-harness/runtime/p0.py .ai-harness/runtime/p1.py .ai-harness/runtime/p1_pipeline.py scripts/install_skill.py scripts/validate_plugin.py scripts/run_evals.py scripts/run_p0_evals.py scripts/run_full_suite.py .ai-harness/p1_lifecycle.py scripts/run_p1_evals.py
+        run: python -m py_compile .ai-harness/run.py .ai-harness/engine.py .ai-harness/context_engine.py .ai-harness/knowledge_fabric.py .ai-harness/extension_registry.py .ai-harness/provider.py .ai-harness/observability.py .ai-harness/project_profile.py .ai-harness/placement.py .ai-harness/worktree.py .ai-harness/review_agents.py .ai-harness/runtime/p0.py .ai-harness/runtime/p1.py .ai-harness/runtime/p2.py .ai-harness/runtime/p1_pipeline.py scripts/install_skill.py scripts/validate_plugin.py scripts/run_evals.py scripts/run_p0_evals.py scripts/run_p2_evals.py scripts/run_full_suite.py .ai-harness/p1_lifecycle.py scripts/run_p1_evals.py
       - name: Validate configuration
         run: python -c "import tomllib; tomllib.load(open('.ai-harness/config.toml','rb')); tomllib.load(open('.ai-harness/extension_registry.toml','rb'))"
       - name: Validate P0 state schema
@@ -68,6 +68,8 @@ jobs:
         run: python scripts/run_p0_evals.py
       - name: Run deterministic P1 integration eval suite
         run: python scripts/run_p1_evals.py
+      - name: Run deterministic P2 capability eval suite
+        run: python scripts/run_p2_evals.py
       - name: Run harness evaluation suite
         run: python .ai-harness/run.py eval
       - name: Check convention profile
