@@ -21,15 +21,6 @@ policy = "prefer for persistent structural retrieval and impact analysis when av
 source = "https://github.com/SuperCodeAgents/code-memory-mcp"
 license = "MIT"
 
-[extensions.aer]
-kind = "context-representation"
-commands = []
-artifacts = []
-capabilities = ["structured-context", "compact-representation", "mcp-context", "benchmarkable-representation"]
-policy = "use only when host/model supports the negotiated AER representation, payload is structured, fidelity is proven, and paired measurements show material benefit"
-source = "https://github.com/sourabhJainR/AER"
-license = "Apache-2.0"
-
 [extensions.superpowers]
 kind = "process-skill"
 markers = ["~/.config/superpowers/skills", "~/.claude/plugins", ".claude-plugin"]
