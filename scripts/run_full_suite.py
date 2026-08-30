@@ -8,6 +8,7 @@ COMMANDS=[
  [sys.executable,"-m","unittest","discover","-s","tests","-v"],
  [sys.executable,"scripts/run_evals.py","--json"],
  [sys.executable,"scripts/run_p0_evals.py"],
+ [sys.executable,"scripts/run_p2_evals.py"],
  [sys.executable,".ai-harness/run.py","eval"],
  [sys.executable,".ai-harness/project_profile.py"],
  [sys.executable,".ai-harness/extension_registry.py"],
