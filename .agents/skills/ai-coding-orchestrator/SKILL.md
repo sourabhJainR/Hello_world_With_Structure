@@ -37,6 +37,24 @@ For new work and enhancements inspect boundaries, separation of concerns, coupli
 
 Consider timeouts, retries, cancellation, idempotency, cleanup, configuration, migrations, rollout/rollback, structured logs, metrics, tracing/correlation, health signals, and sensitive-data handling when relevant.
 
+## Legacy and data-shape-aware engineering
+
+Treat undocumented legacy behavior as a discovery problem, not as permission to guess.
+
+For unfamiliar or mixed legacy/modern systems:
+
+- establish actual entry points and callers from source, runtime traces, tests, logs, history, and graph evidence;
+- map conditional branches, feature/configuration gates, fallback behavior, persistence, integrations, and failure paths;
+- identify data-shape-dependent behavior and inspect representative shapes before changing shared logic;
+- compare empty/null/missing/extra-field, type/ordering, boundary-size, malformed, and legacy-format variants when relevant;
+- distinguish confirmed paths from inferred paths and unknown paths;
+- build a bounded impact closure from changed symbols/components before editing;
+- add characterization/regression tests around undocumented behavior that must remain stable;
+- prefer seam-level changes and compatibility-preserving adapters over broad rewrites;
+- never infer that an undocumented path is unused merely because no caller was found statically.
+
+When runtime evidence is unavailable, state that limitation and increase verification rather than increasing confidence.
+
 ## Evidence-first research and flow
 
 For research, investigation, analysis, or flow requests, do not code unless asked.
@@ -55,15 +73,15 @@ Use the FlashAttention-inspired IO principle: small stable instructions, bounded
 
 Optimize verified outcome per tokens, calls, retries, and latency. Shorter context is not better when it creates rework.
 
-Across sessions persist only `TASK | CONTRACT | DONE | OPEN | EVIDENCE | RISKS | NEXT`.
+Across sessions persist only `TASK | CONTRACT | DONE | OPEN | EVIDENCE | RISKS | NEXT | OUTCOME`.
 
 ## Engineering State Ledger, proof, and anti-thrashing
 
 For non-trivial work maintain the Engineering State Ledger:
 
-`INTENT | CONTRACT | REPO_FACTS | DECISIONS | EVIDENCE | CHANGESET | VERIFY | OPEN_RISKS | NEXT`
+`INTENT | CONTRACT | REPO_FACTS | DECISIONS | EVIDENCE | CHANGESET | VERIFY | OUTCOME | OPEN_RISKS | NEXT`
 
-Material decisions reference evidence; verification identifies proof; missing evidence remains a gap.
+Material decisions reference evidence; verification identifies proof; outcome records accepted/rejected/partial results, review/production feedback, regressions, follow-up, metrics, and evidence.
 
 Use lightweight gates: `Understand -> Plan -> Change -> Proof -> Release`.
 
