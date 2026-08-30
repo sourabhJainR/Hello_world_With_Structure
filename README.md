@@ -187,6 +187,25 @@ Key rules:
 
 See `docs/CONTEXT_EFFICIENCY.md`, `docs/CONTEXT_BUDGET.md`, `docs/SESSION_HANDOFF_AND_ENTROPY.md`, and `docs/VERIFICATION_INDEPENDENCE.md`.
 
+## Engineering workflow disciplines
+
+The orchestrator now uses a composable, spec-driven workflow model rather than one large universal prompt:
+
+`grill -> spec -> independently verifiable slices -> implement -> review`
+
+That spine is adaptive:
+
+- fuzzy/high-impact work starts with grilling and boundary clarification;
+- settled small work can go directly to implementation;
+- long-running work gets durable specification and handoff state;
+- uncertain feasibility uses a disposable POC;
+- hard bugs use reproduce/minimize/hypothesize/instrument/fix/regression-test;
+- review checks both specification fidelity and repository engineering quality.
+
+Detailed adaptation and licensing review:
+
+`docs/AIHERO_SKILLS_ADAPTATION.md`
+
 ## Evaluation
 
 The repository contains dependency-free deterministic evals covering routing, unnecessary capability selection, policy invariants, skill metadata/context budgets, extension degradation, future readiness, and context-efficiency behaviors.
