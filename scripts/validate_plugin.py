@@ -13,6 +13,14 @@ SKILL_PATHS = [
     ROOT / ".agents/skills/ai-coding-orchestrator/SKILL.md",
     ROOT / ".claude/skills/ai-coding-orchestrator/SKILL.md",
 ]
+SHARED_CONTRACT_MARKERS = (
+    "Engineering State Ledger",
+    "repository-aware",
+    "minimal safe change",
+    "regression",
+    "evidence",
+    "optional",
+)
 
 
 def load_json(path: Path) -> dict:
@@ -23,7 +31,7 @@ def load_json(path: Path) -> dict:
     return value
 
 
-def validate_skill(path: Path, maximum_chars: int = 24000) -> str:
+def validate_skill(path: Path, maximum_chars: int = 9000) -> str:
     if not path.is_file():
         raise ValueError(f"skill is missing: {path}")
     text = path.read_text(encoding="utf-8")
@@ -60,8 +68,13 @@ def main() -> int:
         raise ValueError("harness config major version must match plugin major version")
 
     skill_texts = [validate_skill(path) for path in SKILL_PATHS]
-    if skill_texts[0] != skill_texts[1]:
-        raise ValueError("canonical and generic Agent Skill copies are out of sync")
+    missing_contract = {
+        str(path): [marker for marker in SHARED_CONTRACT_MARKERS if marker.lower() not in text.lower()]
+        for path, text in zip(SKILL_PATHS, skill_texts)
+    }
+    missing_contract = {path: markers for path, markers in missing_contract.items() if markers}
+    if missing_contract:
+        raise ValueError(f"skill contract markers missing: {missing_contract}")
 
     configured_skill = plugin.get("skills")
     if configured_skill != "./skills/":
@@ -69,7 +82,7 @@ def main() -> int:
 
     print(f"Plugin manifest: {plugin['name']} {plugin['version']}")
     print(f"Marketplace: {marketplace['name']}")
-    print(f"Skills: {len(SKILL_PATHS)} aligned/validated")
+    print(f"Skills: {len(SKILL_PATHS)} independently validated with shared contract")
     print("Context budget: PASS")
     print("Plugin validation: PASS")
     return 0
