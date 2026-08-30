@@ -72,6 +72,22 @@ A model claim is not evidence. Match verification to acceptance criteria and ris
 
 Every retry must add evidence or materially change the approach.
 
+## Control-plane policies
+
+Read detailed control-plane guidance only when needed:
+
+- `ORCHESTRATION_SPEC.md`
+- `TEN_LOOP_POLICY.md`
+- `CONTEXT_POLICY.md`
+- `ARCHITECTURE_POLICY.md`
+- `EXECUTION_POLICY.md`
+- `VERIFICATION_POLICY.md`
+- `REVIEW_POLICY.md`
+- `LEARNING_POLICY.md`
+- `TOKEN_POLICY.md`
+- `PROVIDER_CONTRACT.md`
+- `QUALITY_GOVERNANCE.md`
+
 ## Progressive disclosure
 
 Load detailed guidance only when needed:
