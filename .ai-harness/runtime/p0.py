@@ -80,7 +80,7 @@ def detect_thrash(events: list[dict[str, Any]], window: int = 5) -> dict[str, An
 
 
 def proof_bundle(state: dict[str, Any]) -> dict[str, Any]:
-    payload = {"task_id": state["task_id"], "intent": state.get("intent", {}), "contract": state["contract"], "changeset": state["changeset"],
+    payload = {"task_id": state["task_id"], "status": state.get("status", ""), "intent": state.get("intent", {}), "contract": state["contract"], "changeset": state["changeset"],
                "verification": state["verification"], "open_risks": state["open_risks"],
                "evidence_ids": [x["id"] for x in state["evidence"]],
                "decision_ids": [x["id"] for x in state["decisions"]]}
