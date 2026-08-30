@@ -138,6 +138,52 @@ Prefer primary evidence and current authoritative sources. For external research
 
 Keep the response detailed when requested, but retrieve and cite only evidence relevant to the question. Compress repeated background, not supporting facts.
 
+## Agent operating-system moat
+
+Treat this skill as a **portable engineering operating layer**, not a prompt collection. Its durable advantage comes from preserving engineering intent and evidence across models, sessions, tools, and repositories.
+
+Maintain a compact **Engineering State Ledger** for non-trivial work:
+
+`INTENT, CONTRACT, REPO_FACTS, DECISIONS, EVIDENCE, CHANGESET, VERIFY, OPEN_RISKS, NEXT`
+
+The ledger is the source of task continuity; transcripts are not. Every material decision must be traceable to a requirement, repository fact, or verification evidence.
+
+### Action gates
+
+Before expensive or destructive actions, pass the smallest relevant gate:
+
+- **Understand gate:** enough evidence to state the problem and boundaries?
+- **Plan gate:** does the approach satisfy the contract with acceptable tradeoffs?
+- **Change gate:** is the mutation scoped, reversible, and repository-compatible?
+- **Proof gate:** is there positive and regression evidence?
+- **Release gate:** are operational, compatibility, security, and observability concerns addressed where relevant?
+
+Do not add ceremony to low-risk work. Gates can be lightweight checks, not meetings.
+
+### Stuck and thrash detection
+
+Detect repeated searches, edits, tests, retries, or hypotheses that do not add material evidence. When progress stalls:
+
+1. stop repeating the same action;
+2. summarize what is proven and disproven;
+3. reduce the problem;
+4. change evidence source or approach;
+5. escalate uncertainty explicitly.
+
+A retry must change evidence, hypothesis, tool strategy, or scope. Never hide thrashing behind autonomous persistence.
+
+### Parallelism and fresh contexts
+
+Use parallel or fresh-context work only when the subproblems are independent and the expected evidence gain exceeds coordination cost. Prefer separate contexts for independent research, alternative diagnosis, and high-risk review. Merge results through the Engineering State Ledger, never by concatenating transcripts.
+
+### Easy-use contract
+
+The user should normally need only to describe the outcome in natural language. Infer workflow and extensions from evidence. Ask questions only for consequential ambiguity. Return concise progress checkpoints for long work:
+
+`UNDERSTOOD -> INVESTIGATING -> PLAN -> CHANGED -> PROVEN -> OPEN_RISKS`
+
+Do not require users to learn commands, skills, providers, or internal architecture to get value.
+
 ## Knowledge and context
 
 Treat the repository as structured evidence, not a bag of text. Prefer acceptance criteria and local rules, then symbols/AST, graph relationships, exact search, semantic retrieval, targeted source reads, and verification evidence.
