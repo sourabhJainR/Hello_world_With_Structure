@@ -16,7 +16,7 @@ class EvalSuiteTests(unittest.TestCase):
         ids = {case["id"] for case in cases}
         self.assertEqual(len(ids), len(cases))
         for case in cases:
-            self.assertIn(case["expected_mode"], {"implement", "debug", "research", "poc", "review"})
+            self.assertIn(case["expected_mode"], {"implement", "debug", "research", "poc", "review", "grill"})
             self.assertIn("required_capabilities", case)
             self.assertIn("forbidden_capabilities", case)
 
