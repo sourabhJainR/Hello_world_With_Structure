@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""Bridge P0/P1 contracts into the production harness lifecycle."""
+from __future__ import annotations
+import hashlib, json, sys
+from pathlib import Path
+from typing import Any
+
+ROOT=Path(__file__).resolve().parent.parent
+RUNTIME=ROOT/".ai-harness"/"runtime"
+sys.path.insert(0,str(RUNTIME))
+from p0 import add_evidence, evidence, new_state, proof_bundle, save_json, verification
+from p1 import affected_profile_fields, graph_edge, graph_node, profile, regression_case, save
+
+def _task_id(task: str) -> str:
+    return "task-"+hashlib.sha256(task.encode()).hexdigest()[:12]
+
+def _facts(raw: dict[str,Any]) -> dict[str,dict[str,Any]]:
+    facts={}
+    for key,value in raw.items():
+        if key in ("profile_error",): continue
+        facts[key]={"status":"observed" if value else "unknown","value":json.dumps(value,sort_keys=True) if isinstance(value,(dict,list)) else str(value),"evidence_ids":[]}
+    return facts
+
+def start(run_dir: Path, task: str, source: str, repo_profile: dict[str,Any], route: dict[str,Any]) -> dict[str,Any]:
+    state=new_state(_task_id(task),task,source)
+    state["status"]="investigating"
+    route_ev=evidence("tool","router","route selected",snapshot=json.dumps(route,sort_keys=True),confidence="high",provenance="engine.route")
+    add_evidence(state,route_ev)
+    state["repo_facts"].append({"evidence_id":route_ev["id"]})
+    dna=profile(str(ROOT),_facts(repo_profile))
+    state_path=run_dir/"engineering-state.json"
+    dna_path=run_dir/"repository-dna.json"
+    save_json(state_path,state); save(dna_path,dna)
+    return state
+
+def finish(run_dir: Path, manifest: dict[str,Any]) -> dict[str,Any]:
+    state_path=run_dir/"engineering-state.json"
+    state=json.loads(state_path.read_text(encoding="utf-8"))
+    changed=[]
+    diff=manifest.get("git_diff","")
+    for line in diff.splitlines():
+        line=line.strip()
+        if line and not line.startswith("$") and not line.startswith("ERROR"):
+            if line.endswith((".py",".cs",".java",".ts",".tsx",".js",".go",".rs",".md",".json",".toml",".yml",".yaml")):
+                changed.append(line)
+    changed=sorted(set(changed))
+    state["changeset"]["files"]=changed
+    state["changeset"]["diff_identity"]=hashlib.sha256(diff.encode()).hexdigest()[:16]
+    state["status"]="completed" if manifest.get("status")=="completed" else "blocked"
+    validation=manifest.get("validation",{})
+    verification(state,"harness-validation","passed" if validation.get("passed",True) else "failed",details=json.dumps(validation,sort_keys=True))
+    proof=proof_bundle(state)
+    nodes=[
+      graph_node("requirement",state["task_id"]),
+      graph_node("changeset",state["changeset"]["diff_identity"] or "none"),
+      graph_node("proof",proof["proof_id"])
+    ]
+    edges=[
+      graph_edge(nodes[0]["id"],"implemented_by",nodes[1]["id"],[e["id"] for e in state["evidence"]]),
+      graph_edge(nodes[1]["id"],"verified_by",nodes[2]["id"],[])
+    ]
+    regression=regression_case("task-completion:"+state["task_id"],state["status"],["preserve protected behavior","proof required"])
+    genome={"version":"1.0","case":regression,"result":{"status":state["status"]},"affected_profile_fields":affected_profile_fields(changed)}
+    save_json(state_path,state)
+    save_json(run_dir/"proof-bundle.json",proof)
+    save_json(run_dir/"proof-graph.json",{"version":"1.0","nodes":nodes,"edges":edges})
+    save_json(run_dir/"regression-genome.json",genome)
+    return proof
