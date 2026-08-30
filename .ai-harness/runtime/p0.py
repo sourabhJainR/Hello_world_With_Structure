@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dependency-free P0 runtime artifacts: state, evidence, proof, risk and friction."""
+"""Dependency-free P0 runtime artifacts: state, evidence, proof, risk, outcome and friction."""
 from __future__ import annotations
 import hashlib, json, re, time
 from pathlib import Path
@@ -7,7 +7,7 @@ from typing import Any
 
 SCHEMA_VERSION = "1.0"
 RISK_FIELDS = ("scope", "blast_radius", "reversibility", "data_risk", "security_risk", "production_impact", "contract_risk", "uncertainty")
-LEVELS = ("low", "medium", "high", "critical")
+OUTCOME_STATUSES = ("accepted", "rejected", "partial", "unknown")
 
 
 def _id(prefix: str, value: str) -> str:
@@ -20,7 +20,8 @@ def new_state(task_id: str, goal: str, source: str = "user") -> dict[str, Any]:
             "contract": {"requirements": [], "acceptance": [], "protected_behavior": [], "assumptions": [], "questions": []},
             "repo_facts": [], "decisions": [], "evidence": [],
             "changeset": {"files": [], "symbols": [], "diff_identity": ""},
-            "verification": [], "open_risks": [], "next": []}
+            "verification": [], "outcome": {"status": "unknown", "user_acceptance": "", "review_result": "", "production_result": "", "regressions": [], "follow_up": [], "metrics": {}, "evidence_ids": []},
+            "open_risks": [], "next": []}
 
 
 def evidence(kind: str, source: str, claim: str, locator: str = "", snapshot: str = "", confidence: str = "medium", freshness: str = "", provenance: str = "") -> dict[str, Any]:
@@ -55,6 +56,18 @@ def verification(state: dict[str, Any], kind: str, status: str, command: str = "
     return state
 
 
+def record_outcome(state: dict[str, Any], status: str, user_acceptance: str = "", review_result: str = "", production_result: str = "", regressions: list[str] | None = None, follow_up: list[str] | None = None, metrics: dict[str, float] | None = None, evidence_ids: list[str] | None = None) -> dict[str, Any]:
+    if status not in OUTCOME_STATUSES:
+        raise ValueError(f"invalid outcome status: {status}")
+    evidence_ids = evidence_ids or []
+    known = {x["id"] for x in state["evidence"]}
+    missing = [x for x in evidence_ids if x not in known]
+    if missing:
+        raise ValueError(f"outcome references missing evidence: {missing}")
+    state["outcome"] = {"status": status, "user_acceptance": user_acceptance, "review_result": review_result, "production_result": production_result, "regressions": list(regressions or []), "follow_up": list(follow_up or []), "metrics": {str(k): float(v) for k, v in (metrics or {}).items()}, "evidence_ids": evidence_ids}
+    return state
+
+
 def risk_level(scores: dict[str, int]) -> str:
     values = [max(0, min(3, int(scores.get(k, 0)))) for k in RISK_FIELDS]
     maximum, total = max(values), sum(values)
@@ -81,11 +94,10 @@ def detect_thrash(events: list[dict[str, Any]], window: int = 5) -> dict[str, An
 
 def proof_bundle(state: dict[str, Any]) -> dict[str, Any]:
     payload = {"task_id": state["task_id"], "status": state.get("status", ""), "intent": state.get("intent", {}), "contract": state["contract"], "changeset": state["changeset"],
-               "verification": state["verification"], "open_risks": state["open_risks"],
-               "evidence_ids": [x["id"] for x in state["evidence"]],
-               "decision_ids": [x["id"] for x in state["decisions"]]}
+               "verification": state["verification"], "outcome": state.get("outcome", {"status": "unknown"}), "open_risks": state["open_risks"],
+               "evidence_ids": [x["id"] for x in state["evidence"]], "decision_ids": [x["id"] for x in state["decisions"]]}
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    return {"proof_version": "1.0", "proof_id": f"proof-{digest[:16]}", **payload}
+    return {"proof_version": "1.1", "proof_id": f"proof-{digest[:16]}", **payload}
 
 
 def save_json(path: Path, value: dict[str, Any]) -> None:
@@ -96,7 +108,7 @@ def save_json(path: Path, value: dict[str, Any]) -> None:
 
 
 def validate_state(state: dict[str, Any]) -> list[str]:
-    required = {"schema_version", "task_id", "status", "intent", "contract", "repo_facts", "decisions", "evidence", "changeset", "verification", "open_risks", "next"}
+    required = {"schema_version", "task_id", "status", "intent", "contract", "repo_facts", "decisions", "evidence", "changeset", "verification", "outcome", "open_risks", "next"}
     errors = [f"missing:{k}" for k in sorted(required - state.keys())]
     if state.get("schema_version") != SCHEMA_VERSION: errors.append("schema_version")
     evidence_ids = {x.get("id") for x in state.get("evidence", [])}
@@ -104,4 +116,6 @@ def validate_state(state: dict[str, Any]) -> list[str]:
         errors.extend(f"decision:{d.get('id')}:missing-evidence:{x}" for x in d.get("evidence_ids", []) if x not in evidence_ids)
     for v in state.get("verification", []):
         errors.extend(f"verification:{v.get('id')}:missing-evidence:{x}" for x in v.get("evidence_ids", []) if x not in evidence_ids)
+    for e in state.get("outcome", {}).get("evidence_ids", []):
+        if e not in evidence_ids: errors.append(f"outcome:missing-evidence:{e}")
     return errors
