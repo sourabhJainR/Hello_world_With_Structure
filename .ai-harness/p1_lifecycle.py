@@ -8,7 +8,7 @@ from typing import Any
 ROOT=Path(__file__).resolve().parent.parent
 RUNTIME=ROOT/".ai-harness"/"runtime"
 sys.path.insert(0,str(RUNTIME))
-from p0 import add_evidence, evidence, new_state, proof_bundle, save_json, verification
+from p0 import add_evidence, evidence, new_state, proof_bundle, record_outcome, save_json, verification
 from p1 import affected_profile_fields, graph_edge, graph_node, profile, regression_case, save
 
 def _task_id(task: str) -> str:
@@ -48,21 +48,30 @@ def finish(run_dir: Path, manifest: dict[str,Any]) -> dict[str,Any]:
     state["changeset"]["diff_identity"]=hashlib.sha256(diff.encode()).hexdigest()[:16]
     state["status"]="completed" if manifest.get("status")=="completed" else "blocked"
     validation=manifest.get("validation",{})
-    verification(state,"harness-validation","passed" if validation.get("passed",True) else "failed",details=json.dumps(validation,sort_keys=True))
+    ver_status="passed" if validation.get("passed",True) else "failed"
+    verification(state,"harness-validation",ver_status,details=json.dumps(validation,sort_keys=True))
+    outcome_status=manifest.get("outcome_status")
+    if outcome_status not in ("accepted","rejected","partial","unknown"):
+        outcome_status="accepted" if state["status"]=="completed" and ver_status=="passed" else "unknown"
+    outcome_ev=evidence("runtime","lifecycle","Task outcome recorded",snapshot=json.dumps({"status":outcome_status,"review":manifest.get("review_result",""),"production":manifest.get("production_result","")},sort_keys=True),confidence="high",provenance="p1_lifecycle.finish")
+    add_evidence(state,outcome_ev)
+    record_outcome(state,outcome_status,user_acceptance=manifest.get("user_acceptance",""),review_result=manifest.get("review_result",""),production_result=manifest.get("production_result",""),regressions=manifest.get("regressions",[]),follow_up=manifest.get("follow_up",[]),metrics=manifest.get("metrics",{}),evidence_ids=[outcome_ev["id"]])
     proof=proof_bundle(state)
     nodes=[
       graph_node("requirement",state["task_id"]),
       graph_node("changeset",state["changeset"]["diff_identity"] or "none"),
-      graph_node("proof",proof["proof_id"])
+      graph_node("proof",proof["proof_id"]),
+      graph_node("outcome",outcome_status)
     ]
     edges=[
       graph_edge(nodes[0]["id"],"implemented_by",nodes[1]["id"],[e["id"] for e in state["evidence"]]),
-      graph_edge(nodes[1]["id"],"verified_by",nodes[2]["id"],[])
+      graph_edge(nodes[1]["id"],"verified_by",nodes[2]["id"],[]),
+      graph_edge(nodes[2]["id"],"resulted_in",nodes[3]["id"],[outcome_ev["id"]])
     ]
     regression=regression_case("task-completion:"+state["task_id"],state["status"],["preserve protected behavior","proof required"])
-    genome={"version":"1.0","case":regression,"result":{"status":state["status"]},"affected_profile_fields":affected_profile_fields(changed)}
+    genome={"version":"1.1","case":regression,"result":{"status":state["status"],"outcome":outcome_status},"affected_profile_fields":affected_profile_fields(changed)}
     save_json(state_path,state)
     save_json(run_dir/"proof-bundle.json",proof)
-    save_json(run_dir/"proof-graph.json",{"version":"1.0","nodes":nodes,"edges":edges})
+    save_json(run_dir/"proof-graph.json",{"version":"1.1","nodes":nodes,"edges":edges})
     save_json(run_dir/"regression-genome.json",genome)
     return proof
