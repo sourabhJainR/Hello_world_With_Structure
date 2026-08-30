@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import context_engine
 import engine
 import knowledge_fabric
+import p1_lifecycle
 
 _original_make_run_dir = engine.make_run_dir
 _original_build_prompt = engine.build_prompt
@@ -105,7 +106,22 @@ def optimized_build_prompt(phase, task, source, jira, route, repo_map, memory, p
 
 def optimized_run_task(args, config, logger):
     _prepare_knowledge(args, config)
-    return _original_run_task(args, config, logger)
+    task = _task_from_args(args)
+    if not task:
+        return _original_run_task(args, config, logger)
+    profile = engine.profile_repository()
+    route = engine.heuristic_route(task)
+    run_dir = session_make_run_dir()
+    p1_lifecycle.start(run_dir, task, "resume" if getattr(args, "resume", None) else "prompt", profile, route)
+    code = _original_run_task(args, config, logger)
+    manifest_path = run_dir / "manifest.json"
+    if manifest_path.exists():
+        try:
+            p1_lifecycle.finish(run_dir, json.loads(manifest_path.read_text(encoding="utf-8")))
+        except Exception as exc:
+            (run_dir / "p1-lifecycle.error.txt").write_text(str(exc) + "\n", encoding="utf-8")
+            return 1 if code == 0 else code
+    return code
 
 
 # One invocation owns exactly one directory. Resume reuses its existing directory.
