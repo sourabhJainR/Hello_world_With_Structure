@@ -51,6 +51,23 @@ Freeze the contract once implementation begins unless new evidence requires a ch
 
 Prefer human-written repository guidance over generated inventories. Do not create or inject a large context file merely to restate information already discoverable in the repository.
 
+## Composable workflow model
+
+Keep the orchestrator as a control plane, not a giant workflow prompt. Prefer small focused disciplines that compose only when needed.
+
+Separate **user-invoked workflows** from **model-invoked reference disciplines**:
+
+- User-invoked: grill/spec/tickets/implement/review/research/prototype/handoff.
+- Model-invoked references: domain modeling, codebase design, TDD, regression safety, architecture quality, context efficiency.
+
+For substantial work, use the shortest justified spine:
+
+`grill -> spec -> slices -> implement -> review`
+
+Skip stages that do not add evidence. A small, settled task may go directly to implementation. A long-running multi-session task benefits from a durable spec and handoff.
+
+Do not auto-invoke every available discipline. Routing must select the minimum set needed for the current uncertainty.
+
 ## Route by need
 
 Classify intent, scope, risk, uncertainty, reversibility, and change surface. Select the smallest safe workflow:
