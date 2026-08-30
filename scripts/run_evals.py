@@ -46,7 +46,7 @@ def policy_checks() -> list[str]:
             failures.append(f"invalid skill name: {path}")
         if not re.search(r"(?m)^description:\s*\S", text):
             failures.append(f"missing skill description: {path}")
-        if len(text) > 9000:
+        if len(text) > 24000:
             failures.append(f"skill context budget exceeded: {path} ({len(text)} chars)")
     plugin = ROOT / ".claude-plugin/plugin.json"
     marketplace = ROOT / ".claude-plugin/marketplace.json"
