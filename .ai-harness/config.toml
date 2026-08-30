@@ -29,7 +29,6 @@ policy_file = ".ai-harness/TEN_LOOP_POLICY.md"
 mode = "adaptive-single-run"
 user_requested_loop = false
 max_autonomous_repair_attempts = 2
-policy_file = ".ai-harness/ORCHESTRATION_SPEC.md"
 
 [model_routing]
 default_tier = "standard"
