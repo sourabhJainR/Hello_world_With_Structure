@@ -6,10 +6,27 @@ Extensions are capabilities, never core dependencies. Detect first; use only whe
 |---|---|---|
 | Graphify | AST, deterministic graph, relationships, impact/path evidence | duplicate queries when code-mem already provides the needed evidence |
 | code-mem / codebase-memory-mcp | persistent code graph, semantic/structural search, call tracing, impact analysis | replaying the same repository exploration |
+| AER | compact structured evidence for AI/MCP context; benchmark JSON vs AER-AI representations; reduce repeated schema overhead | assuming fewer bytes means fewer tokens or better task quality; using AER when host compatibility or data irregularity makes JSON safer |
 | Superpowers | TDD, planning, systematic debugging, execution discipline | copying its full workflow when only one capability is needed |
 | Ponytail | YAGNI, minimal-change pressure, and explicit regression/behavior-preservation thinking | treating a small diff as proof of safety; removing required correctness, security, tests, or error handling |
 | Caveman | compact output and subagent summaries | lossy compression of code, commands, errors, acceptance criteria, or verification evidence |
 | Other Agent Skills/MCP | task-specific capability | speculative or redundant invocation |
+
+## AER usage discipline
+
+AER is an optional representation adapter, not the canonical evidence store. Keep the canonical structured evidence independent of wire/text representation.
+
+Use AER-AI only when:
+
+1. the host/model accepts it;
+2. the payload is structured enough to benefit from compact representation;
+3. the AER adapter is installed and healthy;
+4. fidelity/conformance for the required AER version has passed;
+5. measurement shows a material context benefit for the target tokenizer/model.
+
+For small, irregular, compatibility-sensitive, or debugging-heavy payloads, JSON may remain the better representation.
+
+Never claim AI productivity improvement from byte reduction alone. Measure tokens with the exact tokenizer where available, then measure task correctness, verification, retries, latency, human clarification turns, and total cost using paired experiments.
 
 ## Ponytail-inspired change discipline
 
