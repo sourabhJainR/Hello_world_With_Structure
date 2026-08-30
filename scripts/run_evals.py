@@ -34,7 +34,7 @@ def load_heuristic_route(task: str) -> dict:
 
 def policy_checks() -> list[str]:
     failures: list[str] = []
-    shared = ("Engineering State Ledger", "repository-aware", "smallest safe change", "regression", "evidence", "optional")
+    shared = ("INTENT | CONTRACT | REPO_FACTS", "repository-aware", "smallest safe change", "regression", "evidence", "optional")
     for path in SKILLS:
         if not path.exists():
             failures.append(f"missing skill: {path}")
