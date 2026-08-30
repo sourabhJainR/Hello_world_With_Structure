@@ -12,9 +12,10 @@ Rules:
 - evidence is immutable once recorded;
 - decisions reference evidence IDs;
 - verification references evidence IDs where possible;
+- outcomes reference evidence IDs where available;
 - compaction may summarize state but must retain identifiers and provenance;
 - secrets, credentials, tokens, and unnecessary personal data must not enter durable state;
-- state transitions must be explicit; cancellation and failure are not success;
+- state transitions must be explicit; cancellation, failure, and partial completion are not success;
 - concurrent agents must merge by IDs and reject conflicting decisions rather than silently overwrite them.
 
 ## 2. Evidence Contract
@@ -34,6 +35,7 @@ A completed change should produce a compact proof record containing:
 - verification commands/results;
 - relevant static, compatibility, security, and runtime evidence;
 - review result;
+- outcome status and outcome evidence where available;
 - unresolved risks.
 
 Missing evidence must be reported, not replaced with model confidence.
@@ -99,4 +101,5 @@ A P0 implementation is ready only when:
 7. non-progress is measurable and does not silently loop;
 8. all behavior degrades safely when optional providers are absent;
 9. deterministic evals cover the above invariants;
-10. documentation explains the behavior without requiring knowledge of internal implementation.
+10. documentation explains the behavior without requiring knowledge of internal implementation;
+11. outcome can be captured separately from verification so learning can distinguish test success from accepted/operational success.
