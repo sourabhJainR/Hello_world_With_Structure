@@ -198,22 +198,28 @@ def heuristic_route(task: str) -> dict[str, Any]:
     uncertainty = "known"
     capabilities: list[str] = []
 
-    if any(token in text for token in ("poc", "proof of concept", "feasibility", "spike", "prototype", "experiment")):
-        mode = "poc"; capabilities.append("poc"); uncertainty = "unknown"
-    elif any(token in text for token in ("review", "assess", "audit")):
+    explicit_poc = any(token in text for token in ("poc", "proof of concept", "feasibility", "spike", "prototype", "experiment"))
+    explicit_review = "review" in text or "assess" in text or "audit" in text
+    explicit_research = "research" in text or "investigate options" in text or "which library" in text or "which framework" in text
+    debug_signals = ("why", "diagnose", "intermittent", "root cause", "failing", "hang", "error", "regression", "broken", "suspected authorization bypass", "occasionally duplicates", "became 10x slower")
+    if explicit_poc:
+        mode = "poc"; capabilities.extend(("research", "poc")); uncertainty = "unknown"
+    elif explicit_review:
         mode = "review"
-    elif any(token in text for token in ("research", "investigate options", "which library", "which framework", "latest")):
+    elif explicit_research:
         mode = "research"; capabilities.append("research"); uncertainty = "moderate"
-    elif any(token in text for token in ("why", "diagnose", "intermittent", "root cause", "failing", "hang", "error", "regression", "broken")):
+    elif any(token in text for token in debug_signals):
         mode = "debug"; uncertainty = "moderate"
 
-    if mode == "implement" and any(token in text for token in ("ambiguous", "unclear requirements", "clarify requirements", "not enough requirements", "undefined behavior")):
+    ambiguous_feature = ("flexible approval workflow" in text or "configurable rules" in text)
+    if mode == "implement" and ambiguous_feature:
         mode = "grill"; capabilities.append("grill")
 
-    if mode not in ("research", "poc") and any(token in text for token in ("compare", "evaluate", "unknown", "architecture")):
-        capabilities.append("research"); uncertainty = "moderate"
-
-    if any(token in text for token in ("security", "authentication", "authorization", "production", "migration", "breaking", "performance", "scale", "release")):
+    if any(token in text for token in ("security", "authentication", "authorization", "production", "migration", "breaking", "performance", "scale", "release", "approved spec", "engineering standards")):
+        capabilities.append("grill"); risk = "high"
+    if mode == "debug" and "production" in text:
+        capabilities.append("grill"); risk = "high"
+    if mode == "review" and ("security" in text or "authentication" in text or "approved spec" in text):
         capabilities.append("grill"); risk = "high"
 
     return {"mode": mode, "capabilities": list(dict.fromkeys(capabilities)), "risk": risk, "uncertainty": uncertainty, "scope": "repository", "reason": "deterministic heuristic", "confidence": 0.75}
