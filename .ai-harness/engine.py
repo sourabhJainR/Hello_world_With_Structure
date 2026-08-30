@@ -28,7 +28,7 @@ PROMPTS = HARNESS / "prompts"
 PRINCIPLES = HARNESS / "principles.md"
 EVALS = HARNESS / "evals" / "cases.jsonl"
 CAPABILITIES = ("research", "poc", "grill")
-MODES = ("implement", "debug", "research", "poc", "review")
+MODES = ("implement", "debug", "research", "poc", "review", "grill")
 RISKS = ("low", "medium", "high", "critical")
 UNCERTAINTIES = ("known", "moderate", "unknown")
 
@@ -328,6 +328,8 @@ def phases_for(route: dict[str, Any], workflow: str | None, config: dict[str, An
         phases.append("debug")
     if mode in {"implement", "debug"}:
         phases.extend(["execute", "validate"])
+    elif mode == "grill":
+        phases.append("grill")
     elif mode == "review":
         phases.append("review")
     if "grill" in caps:
