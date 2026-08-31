@@ -10,13 +10,17 @@ from pathlib import Path
 
 def is_analysis_only(prompt: str) -> bool:
     text = prompt.lower()
-    return any(marker in text for marker in (
+    markers = (
         "rca analysis-only",
         "root cause analysis only",
+        "find the root cause",
+        "root cause analysis",
         "do not implement a fix",
         "do not modify source",
         "patch_allowed: false",
-    ))
+        "diagnose only",
+    )
+    return any(marker in text for marker in markers)
 
 
 def analysis_only_command(command: list[str]) -> list[str]:
