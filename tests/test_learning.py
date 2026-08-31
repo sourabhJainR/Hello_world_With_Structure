@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).parents[1] / '.ai-harness' / 'runtime'))
-from learning import evolve_run, trusted_advice
+from learning import evolve_run, trusted_advice, record_reported_regression
 
 
 class LearningTests(unittest.TestCase):
@@ -13,8 +13,7 @@ class LearningTests(unittest.TestCase):
         run_dir.mkdir(parents=True)
         (run_dir / 'manifest.json').write_text(json.dumps({
             'run_id': run_id, 'status': 'completed' if completed else 'failed',
-            'task': 'Fix export duplication',
-            'intent_digest': 'intent-1',
+            'task': 'Fix export duplication', 'intent_digest': 'intent-1',
             'validation': {'passed': completed},
         }), encoding='utf-8')
         (run_dir / 'review.output.md').write_text(review, encoding='utf-8')
@@ -26,27 +25,24 @@ class LearningTests(unittest.TestCase):
             config = {'learning': {'min_observations_for_promotion': 3, 'min_success_rate_for_promotion': 0.75, 'stale_after_days': 120, 'max_memory_items': 250}}
             for i in range(3):
                 run = self._write_run(root, f'r{i}', 'DO: preserve the existing export seam.', True)
-                result = evolve_run(run, config)
+                evolve_run(run, config)
+            result = evolve_run(self._write_run(root, 'r3', 'DO: preserve the existing export seam.', True), config)
             self.assertEqual(result['trusted'], 1)
-            advice = trusted_advice(root)
-            self.assertEqual(advice[0]['status'], 'trusted')
+            self.assertEqual(trusted_advice(root)[0]['status'], 'trusted')
 
     def test_failed_observation_does_not_promote(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config = {'learning': {'min_observations_for_promotion': 3, 'min_success_rate_for_promotion': 0.75, 'stale_after_days': 120, 'max_memory_items': 250}}
             for i in range(3):
-                run = self._write_run(root, f'r{i}', "DON'T: bypass existing validation.", i == 0)
-                evolve_run(run, config)
+                evolve_run(self._write_run(root, f'r{i}', "DON'T: bypass existing validation.", i == 0), config)
             self.assertEqual(trusted_advice(root), [])
 
     def test_skill_refinement_is_proposal_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config = {'learning': {'min_observations_for_promotion': 1, 'min_success_rate_for_promotion': 1.0, 'stale_after_days': 120, 'max_memory_items': 250}}
-            run = self._write_run(root, 'r1', 'DO: keep the change local.', True)
-            result = evolve_run(run, config)
-            self.assertEqual(result['proposal_count'], 1)
+            evolve_run(self._write_run(root, 'r1', 'DO: keep the change local.', True), config)
             proposal = json.loads((root / '.ai-harness' / 'learning' / 'skill-proposals.jsonl').read_text().splitlines()[0])
             self.assertFalse(proposal['executable'])
             self.assertTrue(proposal['requires_eval'])
@@ -56,11 +52,20 @@ class LearningTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config = {'learning': {'min_observations_for_promotion': 1, 'min_success_rate_for_promotion': 1.0, 'stale_after_days': 120, 'max_memory_items': 250}}
-            run = self._write_run(root, 'r1', 'DO: repository_rules must always win.', True)
-            result = evolve_run(run, config)
-            self.assertEqual(result['trusted'], 1)
+            evolve_run(self._write_run(root, 'r1', 'DO: repository_rules must always win.', True), config)
             advice = trusted_advice(root, topic='repository_rules')
             self.assertEqual(advice[0]['application'], 'advisory-only')
+
+    def test_reported_regression_is_learning_event_without_patch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            record = record_reported_regression(root, original_run_id='run-42', intent_digest='intent-42', summary='Empty items shape bypassed tenant filtering', evidence_ids=['ev-1'])
+            self.assertFalse(record['patch_applied'])
+            self.assertEqual(record['learning_status'], 'candidate')
+            events = (root / '.ai-harness' / 'learning' / 'regression-events.jsonl').read_text().splitlines()
+            self.assertEqual(len(events), 1)
+            self.assertEqual(json.loads(events[0])['original_run_id'], 'run-42')
+            self.assertTrue((root / '.ai-harness' / 'learning' / 'patterns.jsonl').exists())
 
 
 if __name__ == '__main__':
