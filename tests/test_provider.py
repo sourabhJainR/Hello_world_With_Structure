@@ -8,6 +8,7 @@ from provider import analysis_only_command, is_analysis_only
 class ProviderTests(unittest.TestCase):
     def test_rca_marker_is_analysis_only(self):
         self.assertTrue(is_analysis_only('RCA analysis-only\nFind the root cause.'))
+        self.assertTrue(is_analysis_only('Find the root cause of intermittent duplication.'))
         self.assertTrue(is_analysis_only('patch_allowed: false'))
         self.assertFalse(is_analysis_only('Implement the requested feature.'))
 
