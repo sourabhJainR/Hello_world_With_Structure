@@ -13,6 +13,7 @@ import engine
 import knowledge_fabric
 import p1_lifecycle
 from runtime.intent_contract import create_intent_contract, semantic_alignment, verify_intent_contract
+from runtime import learning
 
 _original_make_run_dir = engine.make_run_dir
 _original_build_prompt = engine.build_prompt
@@ -52,7 +53,6 @@ def _task_from_args(args) -> str:
 
 
 def _load_or_create_intent(args, task: str) -> dict:
-    """Load the persisted intent on resume; otherwise create a stable task contract."""
     global _intent_contract
     if getattr(args, "resume", None):
         path = Path(args.resume).resolve() / "intent-contract.json"
@@ -104,27 +104,25 @@ def _prepare_knowledge(args, config: dict) -> None:
         )
 
 
+def _trusted_learning_text(limit: int = 1800) -> str:
+    rows = learning.trusted_advice(engine.ROOT, limit=12)
+    if not rows:
+        return "No trusted learned practices yet."
+    lines = []
+    for row in rows:
+        prefix = "DO" if row.get("kind") == "do" else "DON'T"
+        lines.append(f"{prefix}: {row.get('text', '')}")
+    return engine.compact("\n".join(lines), limit)
+
+
 def optimized_build_prompt(phase, task, source, jira, route, repo_map, memory, profile, history):
     repo_tile, memory_tile, history_tile, metadata = context_engine.flash_context_prompt(
-        task,
-        repo_map,
-        memory,
-        history,
-        budget_chars=12000,
+        task, repo_map, memory, history, budget_chars=12000
     )
     prompt = _original_build_prompt(
-        phase,
-        task,
-        source,
-        jira,
-        route,
-        repo_tile,
-        memory_tile,
-        profile,
-        history_tile,
+        phase, task, source, jira, route, repo_tile, memory_tile, profile, history_tile
     )
-    knowledge = str(_knowledge.get("evidence", "No external structural knowledge available."))
-    knowledge = knowledge[:6000]
+    knowledge = str(_knowledge.get("evidence", "No external structural knowledge available."))[:6000]
     sources = ", ".join(_knowledge.get("sources", [])) or "none"
     contract = _intent_contract or create_intent_contract(task, source=source)
     alignment = semantic_alignment(contract, task + "\n" + history_tile)
@@ -136,16 +134,15 @@ def optimized_build_prompt(phase, task, source, jira, route, repo_map, memory, p
         + f"\nIntent digest: {contract['intent_digest']}"
         + f"\nCurrent alignment score: {alignment['alignment_score']}"
         + "\nBefore acting, verify the planned action serves this goal and does not violate non-goals, boundaries, or protected behavior.\n"
+        + "\n## Trusted learned practices\n"
+        + _trusted_learning_text()
     )
     return prompt + anchor + f"\n## Knowledge fabric\nSources: {sources}\n{knowledge}\n\n## IO-aware context\n{metadata}\n"
 
 
 def optimized_run_task(args, config, logger):
     global _session_dir
-    if getattr(args, "resume", None):
-        _session_dir = Path(args.resume).resolve()
-    else:
-        _session_dir = None
+    _session_dir = Path(args.resume).resolve() if getattr(args, "resume", None) else None
     task = _task_from_args(args)
     if not task and getattr(args, "resume", None):
         manifest_path = Path(args.resume).resolve() / "manifest.json"
@@ -160,11 +157,19 @@ def optimized_run_task(args, config, logger):
     contract = _load_or_create_intent(args, task)
     if _session_dir is None:
         _session_dir = session_make_run_dir()
-    (_session_dir / "intent-contract.json").write_text(json.dumps(contract, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (_session_dir / "intent-contract.json").write_text(
+        json.dumps(contract, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     _prepare_knowledge(args, config)
     profile = engine.profile_repository()
     route = engine.heuristic_route(str(contract["goal"]))
-    p1_lifecycle.start(_session_dir, str(contract["goal"]), "resume" if getattr(args, "resume", None) else "prompt", profile, route)
+    p1_lifecycle.start(
+        _session_dir,
+        str(contract["goal"]),
+        "resume" if getattr(args, "resume", None) else "prompt",
+        profile,
+        route,
+    )
     code = _original_run_task(args, config, logger)
     manifest_path = _session_dir / "manifest.json"
     if manifest_path.exists():
@@ -173,21 +178,24 @@ def optimized_run_task(args, config, logger):
             observed = {**contract, "goal": str(manifest.get("task", "")).strip()}
             check = verify_intent_contract(contract, observed)
             if not check["passed"]:
-                ( _session_dir / "intent-drift.json").write_text(json.dumps(check, indent=2) + "\n", encoding="utf-8")
+                (_session_dir / "intent-drift.json").write_text(
+                    json.dumps(check, indent=2) + "\n", encoding="utf-8"
+                )
                 return 2
             p1_lifecycle.finish(_session_dir, manifest)
+            learning.evolve_run(_session_dir, config)
         except Exception as exc:
-            (_session_dir / "p1-lifecycle.error.txt").write_text(str(exc) + "\n", encoding="utf-8")
+            (_session_dir / "p1-lifecycle.error.txt").write_text(
+                str(exc) + "\n", encoding="utf-8"
+            )
             return 1 if code == 0 else code
     return code
 
 
-# One invocation owns exactly one directory. Resume reuses its existing directory.
 engine.make_run_dir = session_make_run_dir
 engine.repository_map = optimized_repository_map
 engine.build_prompt = optimized_build_prompt
 engine.run_task = optimized_run_task
-
 
 if __name__ == "__main__":
     raise SystemExit(engine.main())
