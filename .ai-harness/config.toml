@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-orchestrator"
-version = 15
+version = 16
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -173,6 +173,8 @@ record_route_metrics = true
 record_verification_metrics = true
 record_token_metrics_when_available = true
 record_reviewer_findings = true
+record_reported_regressions = true
+regression_events_file = ".ai-harness/learning/regression-events.jsonl"
 policy_file = ".ai-harness/LEARNING_POLICY.md"
 
 default_principles = [
@@ -220,6 +222,9 @@ phases = ["route", "context", "review", "learn"]
 
 [workflows.debug]
 phases = ["route", "context", "debug", "execute", "validate", "review", "learn"]
+
+[workflows.rca]
+phases = ["route", "context", "rca", "review", "learn"]
 
 [providers.claude]
 command = ["{python}", ".ai-harness/provider.py", "--prompt-file", "{prompt_file}", "--", "claude", "-p"]
