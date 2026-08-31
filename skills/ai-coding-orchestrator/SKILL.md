@@ -19,6 +19,8 @@ For meaningful work establish:
 
 `GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS`
 
+Create an immutable intent contract at run start. Persist its digest with the run. Every phase, checkpoint, retry, and resume must preserve the original goal, boundaries, non-goals, requirements, acceptance criteria, and protected behavior. A nearby finding is not a new task. Never silently reinterpret the user's task to fit an interesting discovery.
+
 Grill consequential ambiguity only. Ask when the answer materially changes correctness, safety, scope, architecture, or verification. Otherwise state assumptions and proceed.
 
 ## Repository-first and minimal-change
@@ -51,11 +53,11 @@ When runtime evidence is unavailable, state that limitation and increase verific
 
 Keep the current task boundary explicit. Do not digress into nearby cleanup or unrelated findings. Record out-of-scope discoveries as deferred notes.
 
-For substantial work, split into independently verifiable chunks. Checkpoint after every meaningful phase or chunk with state digest, changed files, scope, and next action. Reuse settled decisions unless new evidence changes them.
+For substantial work, split into independently verifiable chunks. Checkpoint after every meaningful phase or chunk with state digest, changed files, scope, next action, and intent digest. Reuse settled decisions unless new evidence changes them.
 
-Continuously check for context rot, lost key instructions, scope drift, and unsupported claims. If critical guardrails are lost, stop and re-establish the contract. Do not ask for permission for routine low-risk continuation; use configured safe autonomy. Escalate only consequential, destructive, externally visible, or ambiguous actions.
+Continuously check for context rot, lost key instructions, scope drift, unsupported claims, and intent drift. If critical guardrails or the task goal are lost or changed, stop and re-anchor before acting. Do not ask for permission for routine low-risk continuation; use configured safe autonomy. Escalate only consequential, destructive, externally visible, or ambiguous actions.
 
-Every retry must add evidence or materially change the approach. Verification failures, repeated non-progress, scope violations, and contradictory evidence override the model's confidence.
+Every retry must add evidence or materially change the approach. Verification failures, repeated non-progress, scope violations, contradictory evidence, and intent-digest mismatches override the model's confidence.
 
 ## Architecture and production quality
 
@@ -83,7 +85,7 @@ Use the FlashAttention-inspired IO principle: small stable instructions, bounded
 
 Optimize verified outcome per tokens, calls, retries, and latency. Shorter context is not better when it creates rework.
 
-Across sessions persist only `TASK | CONTRACT | DONE | OPEN | EVIDENCE | RISKS | NEXT`.
+Across sessions persist only `TASK | CONTRACT | DONE | OPEN | EVIDENCE | RISKS | NEXT | OUTCOME` plus the immutable intent digest.
 
 ## Engineering State Ledger, proof, and anti-thrashing
 
@@ -107,8 +109,8 @@ Precedence: `Repository/team rules > security/permissions > acceptance > local a
 
 ## Completion
 
-Do not claim success from model confidence. Verify acceptance, relevant regressions, final diff, repository-native checks, architecture/operations/observability concerns, and required review evidence.
+Do not claim success from model confidence. Verify acceptance, relevant regressions, final diff, repository-native checks, architecture/operations/observability concerns, and required review evidence. Confirm the immutable intent contract still matches before declaring completion.
 
-Report `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Extensions used | Assumptions | Risks | Incomplete checks | Efficiency`.
+Report `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Extensions used | Assumptions | Risks | Incomplete checks | Efficiency | Intent digest`.
 
 Load detailed policy progressively when needed: `ORCHESTRATION_SPEC.md`, `TEN_LOOP_POLICY.md` (opt-in only), `CONTEXT_POLICY.md`, `ARCHITECTURE_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`, `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `QUALITY_GOVERNANCE.md` and the reference documents under `references/` and `docs/`.
