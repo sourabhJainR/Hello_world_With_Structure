@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-orchestrator"
-version = 14
+version = 15
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -30,6 +30,20 @@ ten_loop_policy_file = ".ai-harness/TEN_LOOP_POLICY.md"
 mode = "adaptive-single-run"
 user_requested_loop = false
 max_autonomous_repair_attempts = 2
+
+[execution_controls]
+enabled = true
+checkpoint_after_phase = true
+checkpoint_after_chunk = true
+context_integrity_check = true
+scope_fence = true
+allow_automatic_low_risk_continuation = true
+require_confirmation_for = ["destructive", "production-external-side-effect", "permission-change", "security-policy-change"]
+context_rot_threshold = 0.50
+guardrail_loss_threshold = 0.67
+max_task_chunks = 8
+max_recent_output_chars = 12000
+policy_file = ".ai-harness/EXECUTION_CONTROLS.md"
 
 [model_routing]
 default_tier = "standard"
@@ -162,28 +176,12 @@ record_reviewer_findings = true
 policy_file = ".ai-harness/LEARNING_POLICY.md"
 
 default_principles = [
-  "DRY",
-  "YAGNI",
-  "KISS",
-  "DI",
-  "SOLID",
-  "separation-of-concerns",
-  "high-cohesion-low-coupling",
-  "composition-over-inheritance",
-  "least-knowledge",
-  "fail-fast",
-  "single-source-of-truth",
-  "least-surprise",
-  "illegal-states-hard-to-represent",
-  "compatibility-by-default",
-  "behavior-focused-testing",
-  "security-by-default",
-  "failure-awareness",
-  "observability",
-  "reversibility",
-  "least-privilege",
-  "locality-of-change",
-  "evidence-over-assumption"
+  "DRY", "YAGNI", "KISS", "DI", "SOLID", "separation-of-concerns",
+  "high-cohesion-low-coupling", "composition-over-inheritance", "least-knowledge",
+  "fail-fast", "single-source-of-truth", "least-surprise", "illegal-states-hard-to-represent",
+  "compatibility-by-default", "behavior-focused-testing", "security-by-default",
+  "failure-awareness", "observability", "reversibility", "least-privilege",
+  "locality-of-change", "evidence-over-assumption"
 ]
 
 [token]
