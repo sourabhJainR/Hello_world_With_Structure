@@ -12,12 +12,14 @@ import context_engine
 import engine
 import knowledge_fabric
 import p1_lifecycle
+from runtime.intent_contract import create_intent_contract, semantic_alignment, verify_intent_contract
 
 _original_make_run_dir = engine.make_run_dir
 _original_build_prompt = engine.build_prompt
 _original_run_task = engine.run_task
 _session_dir: Path | None = None
 _knowledge: dict = {}
+_intent_contract: dict = {}
 
 
 def session_make_run_dir() -> Path:
@@ -49,6 +51,27 @@ def _task_from_args(args) -> str:
     return task
 
 
+def _load_or_create_intent(args, task: str) -> dict:
+    """Load the persisted intent on resume; otherwise create a stable task contract."""
+    global _intent_contract
+    if getattr(args, "resume", None):
+        path = Path(args.resume).resolve() / "intent-contract.json"
+        if not path.is_file():
+            raise engine.ConfigurationError("Resume requires intent-contract.json; refusing to resume without the original task contract")
+        try:
+            contract = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise engine.ConfigurationError("Resume intent-contract.json is invalid") from exc
+        if not isinstance(contract, dict):
+            raise engine.ConfigurationError("Resume intent contract must be an object")
+        if task and task != str(contract.get("goal", "")).strip():
+            raise engine.ConfigurationError("Resume task differs from the original intent; refusing to continue")
+        _intent_contract = contract
+        return contract
+    _intent_contract = create_intent_contract(task, source=getattr(args, "jira", None) and "jira" or "prompt")
+    return _intent_contract
+
+
 def _prepare_knowledge(args, config: dict) -> None:
     global _knowledge
     if getattr(args, "resume", None):
@@ -62,16 +85,18 @@ def _prepare_knowledge(args, config: dict) -> None:
             except json.JSONDecodeError:
                 pass
     task = _task_from_args(args)
+    if not task and _intent_contract:
+        task = str(_intent_contract.get("goal", "")).strip()
     if not task:
         _knowledge = {"sources": [], "evidence": "No task-specific knowledge requested."}
         return
     _knowledge = knowledge_fabric.collect(task, config)
     if _session_dir is not None:
-        ( _session_dir / "knowledge.json").write_text(
+        (_session_dir / "knowledge.json").write_text(
             json.dumps(_knowledge, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
-        ( _session_dir / "knowledge.md").write_text(
+        (_session_dir / "knowledge.md").write_text(
             "# Knowledge Fabric\n\n"
             + "Sources: " + ", ".join(_knowledge.get("sources", [])) + "\n\n"
             + str(_knowledge.get("evidence", "")) + "\n",
@@ -101,25 +126,58 @@ def optimized_build_prompt(phase, task, source, jira, route, repo_map, memory, p
     knowledge = str(_knowledge.get("evidence", "No external structural knowledge available."))
     knowledge = knowledge[:6000]
     sources = ", ".join(_knowledge.get("sources", [])) or "none"
-    return prompt + f"\n## Knowledge fabric\nSources: {sources}\n{knowledge}\n\n## IO-aware context\n{metadata}\n"
+    contract = _intent_contract or create_intent_contract(task, source=source)
+    alignment = semantic_alignment(contract, task + "\n" + history_tile)
+    anchor = (
+        "\n## Immutable task intent\n"
+        "The following contract is the source of truth for this run. Do not reinterpret, replace, broaden, or silently narrow the goal. "
+        "A nearby finding is not a new task. Deferred findings stay deferred.\n"
+        + json.dumps(contract, ensure_ascii=False, sort_keys=True, indent=2)
+        + f"\nIntent digest: {contract['intent_digest']}"
+        + f"\nCurrent alignment score: {alignment['alignment_score']}"
+        + "\nBefore acting, verify the planned action serves this goal and does not violate non-goals, boundaries, or protected behavior.\n"
+    )
+    return prompt + anchor + f"\n## Knowledge fabric\nSources: {sources}\n{knowledge}\n\n## IO-aware context\n{metadata}\n"
 
 
 def optimized_run_task(args, config, logger):
-    _prepare_knowledge(args, config)
+    global _session_dir
+    if getattr(args, "resume", None):
+        _session_dir = Path(args.resume).resolve()
+    else:
+        _session_dir = None
     task = _task_from_args(args)
-    if not task:
+    if not task and getattr(args, "resume", None):
+        manifest_path = Path(args.resume).resolve() / "manifest.json"
+        if manifest_path.is_file():
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                task = str(manifest.get("task", "")).strip()
+            except json.JSONDecodeError:
+                pass
+    if not task and not getattr(args, "resume", None):
         return _original_run_task(args, config, logger)
+    contract = _load_or_create_intent(args, task)
+    if _session_dir is None:
+        _session_dir = session_make_run_dir()
+    (_session_dir / "intent-contract.json").write_text(json.dumps(contract, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _prepare_knowledge(args, config)
     profile = engine.profile_repository()
-    route = engine.heuristic_route(task)
-    run_dir = session_make_run_dir()
-    p1_lifecycle.start(run_dir, task, "resume" if getattr(args, "resume", None) else "prompt", profile, route)
+    route = engine.heuristic_route(str(contract["goal"]))
+    p1_lifecycle.start(_session_dir, str(contract["goal"]), "resume" if getattr(args, "resume", None) else "prompt", profile, route)
     code = _original_run_task(args, config, logger)
-    manifest_path = run_dir / "manifest.json"
+    manifest_path = _session_dir / "manifest.json"
     if manifest_path.exists():
         try:
-            p1_lifecycle.finish(run_dir, json.loads(manifest_path.read_text(encoding="utf-8")))
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            observed = {**contract, "goal": str(manifest.get("task", "")).strip()}
+            check = verify_intent_contract(contract, observed)
+            if not check["passed"]:
+                ( _session_dir / "intent-drift.json").write_text(json.dumps(check, indent=2) + "\n", encoding="utf-8")
+                return 2
+            p1_lifecycle.finish(_session_dir, manifest)
         except Exception as exc:
-            (run_dir / "p1-lifecycle.error.txt").write_text(str(exc) + "\n", encoding="utf-8")
+            (_session_dir / "p1-lifecycle.error.txt").write_text(str(exc) + "\n", encoding="utf-8")
             return 1 if code == 0 else code
     return code
 
