@@ -80,8 +80,7 @@ def evidence_path(path: list[dict[str, Any]], evidence_ids: list[str] | None = N
     """Build a bounded, evidence-linked runtime path without asserting undocumented behavior."""
     if len(path) > 1000:
         raise ValueError("path exceeds safe bound")
-    ids = sorted(set(evidence_ids or []))
-    return {"version": VERSION, "steps": path, "evidence_ids": ids, "complete": bool(path)}
+    return {"version": VERSION, "steps": path, "evidence_ids": sorted(set(evidence_ids or [])), "complete": bool(path)}
 
 
 def shape_variants(observations: list[dict[str, Any]], max_variants: int = 100) -> dict[str, Any]:
