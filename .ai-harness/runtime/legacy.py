@@ -55,7 +55,7 @@ def variant(component: str, condition: str, shape_id: str | None = None, evidenc
 
 
 def impact_closure(edges: list[dict[str, Any]], roots: list[str], max_nodes: int = 500) -> dict[str, Any]:
-    """Bounded transitive closure for relationship analysis; cycles are handled safely."""
+    """Return a bounded transitive closure without marking an exact boundary as truncated unless unseen nodes remain."""
     if max_nodes <= 0 or max_nodes > 5000:
         raise ValueError("max_nodes must be between 1 and 5000")
     adjacency: dict[str, set[str]] = {}
@@ -65,15 +65,21 @@ def impact_closure(edges: list[dict[str, Any]], roots: list[str], max_nodes: int
             adjacency.setdefault(src, set()).add(dst)
     seen: set[str] = set(roots)
     queue = list(dict.fromkeys(roots))
-    while queue and len(seen) < max_nodes:
+    truncated = False
+    while queue:
         current = queue.pop(0)
         for nxt in sorted(adjacency.get(current, ())):
-            if nxt not in seen:
-                seen.add(nxt)
-                queue.append(nxt)
-                if len(seen) >= max_nodes:
-                    break
-    return {"roots": list(dict.fromkeys(roots)), "nodes": sorted(seen), "truncated": bool(queue), "max_nodes": max_nodes}
+            if nxt in seen:
+                continue
+            if len(seen) >= max_nodes:
+                truncated = True
+                queue.clear()
+                break
+            seen.add(nxt)
+            queue.append(nxt)
+        if truncated:
+            break
+    return {"roots": list(dict.fromkeys(roots)), "nodes": sorted(seen), "truncated": truncated, "max_nodes": max_nodes}
 
 
 def evidence_path(path: list[dict[str, Any]], evidence_ids: list[str] | None = None) -> dict[str, Any]:
