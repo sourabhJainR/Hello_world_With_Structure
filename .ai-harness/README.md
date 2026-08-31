@@ -31,6 +31,9 @@ Prompt / Task / Jira / Issue
  Understand -> Plan -> Execute
           |
           v
+ Chunk -> Checkpoint -> Verify -> Continue
+          |
+          v
  Validate -> Independent Review -> Grill when needed
           |
           v
@@ -39,6 +42,24 @@ Prompt / Task / Jira / Issue
           v
  Learn -> Groom -> Reuse
 ```
+
+## Execution discipline
+
+The runtime is outcome-first and autonomous within configured safety boundaries.
+
+For substantial tasks it breaks work into independently verifiable chunks and checkpoints after each meaningful phase. A checkpoint records the run/phase, state and output digests, changed files, scope decision and next action.
+
+Every run continuously checks:
+
+- **Scope:** changed files stay inside configured task roots; protected paths never change silently.
+- **Context integrity:** detect loss of task focus or key constraints as context grows.
+- **Guardrail integrity:** critical contract rules are re-established before risky continuation.
+- **Unsupported claims:** model statements such as verified/proven/no-regression must have evidence before being treated as fact.
+- **Progress:** repeated retries without new evidence trigger a strategy change instead of blind looping.
+
+Routine low-risk work proceeds without repeated confirmation. Explicit confirmation remains reserved for destructive actions, production/external side effects, permission changes, and security-policy changes. This follows the current agent-harness direction of keeping ordinary work frictionless while making higher-risk actions explicit. citeturn843113search0turn843113search34
+
+Long tasks use compact state and progressive context instead of transcript replay. Current agent guidance similarly favors structured state, incremental progress, and compaction over oversized persistent instructions. citeturn843113search1turn843113search4
 
 ## Automatic routing
 
@@ -54,13 +75,19 @@ The router chooses from:
 
 ```text
 research  unknown facts, technologies, APIs, architecture options
-poc       feasibility or major technical uncertainty
 debug     failures, regressions, intermittent behavior, root-cause analysis
+poc       feasibility or major technical uncertainty
 review    meaningful code changes
 Grill     high-risk security, migration, performance, production or design decisions
 ```
 
 Simple tasks stay simple. High-risk or uncertain tasks get stronger reasoning, stronger verification, isolation, or adversarial review.
+
+## Legacy and data-shape safety
+
+For legacy or poorly documented systems, the harness should discover before changing. It traces entry points, callers, branches, fallbacks, side effects, persistence and integrations; compares relevant data shapes; and keeps inferred or undocumented behavior separate from confirmed facts.
+
+Use `runtime/legacy.py` for structural shape fingerprints, flow variants, evidence-linked paths, and bounded impact closure. Never store sample payload values as durable shape evidence.
 
 ## Engineering operating system
 
@@ -137,7 +164,7 @@ The repository-wide instruction surface is `AGENTS.md`.
 
 ## Run state and context
 
-Each run captures route state, repository context, prompts, phase outputs, validation evidence, checkpoints, and final git state under:
+Each run captures route state, repository context, prompts, phase outputs, validation evidence, execution-control checkpoints, and final git state under:
 
 ```text
 .ai-harness/runs/<timestamp>/
@@ -172,6 +199,8 @@ The harness accepts `--jira` and `--jira-file`. For a Jira key, the selected AI 
 ## Token optimization
 
 The router has separate budgets for routing, memory, context and phase history. Repository context is built as a compact file/symbol map, and only relevant memory is included. Stable instructions and reusable repository context should remain cache-friendly for providers that support prompt caching or compaction.
+
+The system follows the current agent guidance to keep prompts lean, expose only relevant tools, track context as it grows, and use structured checkpoints/compaction for long tasks. citeturn843113search2turn843113search7
 
 ## Safety and self-improvement boundaries
 
