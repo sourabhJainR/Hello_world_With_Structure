@@ -21,6 +21,12 @@ For meaningful work establish:
 
 Grill consequential ambiguity only. Ask when the answer materially changes correctness, safety, scope, architecture, or verification. Otherwise state assumptions and proceed.
 
+## Task identity is immutable
+
+Create or load a stable task-intent contract before meaningful work. Preserve its goal, non-goals, requirements, constraints, protected behavior, boundaries, acceptance criteria, and intent digest across every phase, checkpoint, retry, and resume.
+
+A nearby finding is not a new task. Out-of-scope discoveries remain deferred. Before each meaningful action verify that it serves the original contract. If intent changes materially, stop rather than silently reinterpret the task.
+
 ## Repository-first and minimal-change
 
 Read applicable repository/team/platform instructions first. Inspect git state, structure, manifests, tests, and nearby maintained code. Never assume tools or frameworks exist.
@@ -47,15 +53,23 @@ For unfamiliar or mixed legacy/modern systems:
 
 When runtime evidence is unavailable, state that limitation and increase verification rather than increasing confidence.
 
+## RCA and regression-only analysis
+
+When the user asks to find RCA, diagnose, investigate a regression, or explain a failure without explicitly requesting a fix, remain analysis-only. Do not create, edit, propose-as-applied, commit, or push a patch.
+
+Go deep on evidence: timeline, actual entry point, callers, branch conditions, data transformations, data-shape variants, persistence, integrations, logs, tests, history, runtime evidence, contradictions, and unknowns. Separate `Fact | Inference | Unknown | Recommendation` and attach evidence to material claims. Rank hypotheses and state what evidence supports or weakens each. A root cause is `proven`, `probable`, or `unproven`; do not overstate certainty.
+
+For a later regression related to an earlier completed task, link the report to the original task/run and record it as learning input. Do not silently turn the regression report into a code change.
+
 ## Execution controls
 
 Keep the current task boundary explicit. Do not digress into nearby cleanup or unrelated findings. Record out-of-scope discoveries as deferred notes.
 
-For substantial work, split into independently verifiable chunks. Checkpoint after every meaningful phase or chunk with state digest, changed files, scope, and next action. Reuse settled decisions unless new evidence changes them.
+For substantial work, split into independently verifiable chunks. Checkpoint after every meaningful phase or chunk with state digest, intent digest, changed files, scope, and next action. Reuse settled decisions unless new evidence changes them.
 
-Continuously check for context rot, lost key instructions, scope drift, and unsupported claims. If critical guardrails are lost, stop and re-establish the contract. Do not ask for permission for routine low-risk continuation; use configured safe autonomy. Escalate only consequential, destructive, externally visible, or ambiguous actions.
+Continuously check for context rot, lost key instructions, scope drift, intent drift, and unsupported claims. If critical guardrails are lost, stop and re-establish the contract. Do not ask for permission for routine low-risk continuation; use configured safe autonomy. Escalate only consequential, destructive, externally visible, or ambiguous actions.
 
-Every retry must add evidence or materially change the approach. Verification failures, repeated non-progress, scope violations, and contradictory evidence override model confidence.
+Every retry must add evidence or materially change the approach. Verification failures, repeated non-progress, scope violations, intent mismatch, and contradictory evidence override the model's confidence.
 
 ## Architecture and production quality
 
@@ -97,7 +111,7 @@ Use lightweight gates: `Understand -> Plan -> Change -> Proof -> Release`.
 
 Stop repeated searches, edits, tests, or retries that add no material evidence. Change hypothesis, evidence source, strategy, or scope before continuing.
 
-Reviewed failures and corrections may become deterministic regression cases. Promote learning only after repeated evidence/evaluation; learning must not silently alter executable policy, permissions, or security rules.
+Reviewed failures, user corrections, and later regressions may become deterministic regression cases. Promote learning only after repeated evidence/evaluation; learning must not silently alter executable policy, permissions, or security rules.
 
 ## Optional extensions
 
@@ -112,5 +126,7 @@ Precedence: `Repository/team rules > security/permissions > acceptance > local a
 Do not claim success from model confidence. Verify acceptance, relevant regressions, final diff, repository-native checks, architecture/operations/observability concerns, and required review evidence.
 
 Report `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Extensions used | Assumptions | Risks | Incomplete checks | Efficiency`.
+
+For RCA-only work report `RCA status | Timeline | Flow | Evidence | Hypotheses | Contradictions | Unknowns | Root cause | Follow-up`; do not report a patch as part of the RCA result.
 
 Load detailed policy progressively when needed: `ORCHESTRATION_SPEC.md`, `TEN_LOOP_POLICY.md` (opt-in only), `CONTEXT_POLICY.md`, `ARCHITECTURE_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`, `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `QUALITY_GOVERNANCE.md` and the reference documents under `references/` and `docs/`.
