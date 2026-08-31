@@ -5,7 +5,7 @@ from pathlib import Path
 RUNTIME = Path(__file__).parents[1] / '.ai-harness' / 'runtime'
 sys.path.insert(0, str(RUNTIME))
 from legacy import compare_shapes, shape_fingerprint, flow_step, variant, impact_closure
-from execution_controls import checkpoint, context_integrity, scope_check, task_chunks
+from execution_controls import checkpoint, context_integrity, scope_check, task_chunks, guard_check
 
 
 class LegacyRuntimeTests(unittest.TestCase):
@@ -31,6 +31,8 @@ class LegacyRuntimeTests(unittest.TestCase):
         result = impact_closure(edges, ['a'], max_nodes=3)
         self.assertEqual(result['nodes'], ['a', 'b', 'c'])
         self.assertFalse(result['truncated'])
+        truncated = impact_closure(edges + [{'source': 'c', 'target': 'd'}], ['a'], max_nodes=3)
+        self.assertTrue(truncated['truncated'])
 
     def test_scope_fence_blocks_outside_changes(self):
         self.assertTrue(scope_check(['src/export/service.py'], ['src/export'])['passed'])
@@ -48,6 +50,8 @@ class LegacyRuntimeTests(unittest.TestCase):
         result = context_integrity('fix export', {'goal': 'fix export'}, 'unrelated answer', ['preserve API', 'add regression'])
         self.assertTrue(result['context_rot'])
         self.assertTrue(result['guardrail_loss'])
+        safe = guard_check('fix export', {'goal': 'fix export'}, 'I preserved API and attached test evidence.', ['preserve API'], ['src/a.py'], ['src'], evidence_markers=['test'])
+        self.assertTrue(safe['passed'])
 
     def test_checkpoint_is_deterministic(self):
         state = {'task': 'T', 'status': 'implementing'}
@@ -57,5 +61,4 @@ class LegacyRuntimeTests(unittest.TestCase):
         self.assertEqual(a['next'], 'continue')
 
 
-if __name__ == '__main__':
-    unittest.main()
+if __name__ == '__main__': unittest.main()
