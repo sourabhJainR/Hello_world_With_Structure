@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from typing import Any
 
-VERSION = "1.0"
+VERSION = "1.1"
 
 
 def stable_id(prefix: str, value: str) -> str:
@@ -13,7 +14,7 @@ def stable_id(prefix: str, value: str) -> str:
 
 
 def normalize_shape(value: Any, depth: int = 0, max_depth: int = 6) -> Any:
-    """Return a bounded structural fingerprint without retaining sensitive payload values."""
+    """Return a bounded structural fingerprint without retaining payload values."""
     if depth >= max_depth:
         return "<depth-limit>"
     if value is None:
@@ -36,7 +37,7 @@ def normalize_shape(value: Any, depth: int = 0, max_depth: int = 6) -> Any:
 
 def shape_fingerprint(value: Any) -> dict[str, Any]:
     shape = normalize_shape(value)
-    serialized = repr(shape)
+    serialized = json.dumps(shape, sort_keys=True, separators=(",", ":"))
     return {"id": stable_id("shape", serialized), "version": VERSION, "shape": shape}
 
 
@@ -72,4 +73,28 @@ def impact_closure(edges: list[dict[str, Any]], roots: list[str], max_nodes: int
                 queue.append(nxt)
                 if len(seen) >= max_nodes:
                     break
-    return {"roots": roots, "nodes": sorted(seen), "truncated": bool(queue), "max_nodes": max_nodes}
+    return {"roots": list(dict.fromkeys(roots)), "nodes": sorted(seen), "truncated": bool(queue), "max_nodes": max_nodes}
+
+
+def evidence_path(path: list[dict[str, Any]], evidence_ids: list[str] | None = None) -> dict[str, Any]:
+    """Build a bounded, evidence-linked runtime path without asserting undocumented behavior."""
+    if len(path) > 1000:
+        raise ValueError("path exceeds safe bound")
+    ids = sorted(set(evidence_ids or []))
+    return {"version": VERSION, "steps": path, "evidence_ids": ids, "complete": bool(path)}
+
+
+def shape_variants(observations: list[dict[str, Any]], max_variants: int = 100) -> dict[str, Any]:
+    """Group observed flow variants by structural data shape; values are never persisted."""
+    if max_variants <= 0 or max_variants > 1000:
+        raise ValueError("max_variants must be between 1 and 1000")
+    groups: dict[str, dict[str, Any]] = {}
+    for item in observations[:5000]:
+        component = str(item.get("component", "unknown"))
+        condition = str(item.get("condition", "observed"))
+        fingerprint = shape_fingerprint(item.get("data")).get("id") if "data" in item else "shape-unknown"
+        key = f"{component}|{condition}|{fingerprint}"
+        if key not in groups and len(groups) >= max_variants:
+            break
+        groups.setdefault(key, {"component": component, "condition": condition, "shape_id": fingerprint, "count": 0})["count"] += 1
+    return {"version": VERSION, "variants": sorted(groups.values(), key=lambda x: (x["component"], x["condition"], x["shape_id"]))}
