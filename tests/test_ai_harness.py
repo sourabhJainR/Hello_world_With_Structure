@@ -10,13 +10,7 @@ RUNNER = ROOT / ".ai-harness" / "run.py"
 
 class AdaptiveHarnessTests(unittest.TestCase):
     def run_cli(self, *args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [sys.executable, str(RUNNER), *args],
-            cwd=ROOT,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        return subprocess.run([sys.executable, str(RUNNER), *args], cwd=ROOT, text=True, capture_output=True, check=False)
 
     def test_capabilities(self) -> None:
         result = self.run_cli("capabilities")
@@ -36,10 +30,12 @@ class AdaptiveHarnessTests(unittest.TestCase):
         self.assertTrue(run_dirs)
         run_dir = max(run_dirs, key=lambda path: path.stat().st_mtime)
         manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], 5)
+        self.assertEqual(manifest["version"], 6)
         self.assertEqual(manifest["workflow"], "adaptive")
         self.assertIn("route", manifest)
+        self.assertIn("task_chunks", manifest)
         self.assertTrue((run_dir / "checkpoint.json").exists())
+        self.assertTrue((run_dir / "execution-checkpoint.json").exists())
         self.assertTrue((run_dir / "repository-map.md").exists())
         self.assertTrue((run_dir / "execute.prompt.md").exists())
 
