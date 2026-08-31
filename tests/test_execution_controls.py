@@ -17,7 +17,10 @@ class ExecutionControlTests(unittest.TestCase):
     def test_context_rot_and_guardrail_loss(self):
         result = context_integrity('fix export', {'goal': 'fix export'}, 'unrelated answer', ['preserve API', 'add regression'])
         self.assertTrue(result['context_rot']); self.assertTrue(result['guardrail_loss'])
-        self.assertFalse(guard_check('fix export', {'goal': 'fix export'}, 'verified with no regression', ['preserve API'], ['src/a.py'], ['src'], evidence_markers=['test']))
+        unsafe = guard_check('fix export', {'goal': 'fix export'}, 'verified with no regression', ['preserve API'], ['src/a.py'], ['src'], evidence_markers=['test'])
+        self.assertFalse(unsafe['passed'])
+        safe = guard_check('fix export', {'goal': 'fix export'}, 'I preserved API and attached test evidence.', ['preserve API'], ['src/a.py'], ['src'], evidence_markers=['test'])
+        self.assertTrue(safe['passed'])
 
     def test_checkpoint_is_deterministic(self):
         state={'task':'T','status':'implementing'}
