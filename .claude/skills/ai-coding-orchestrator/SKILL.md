@@ -29,14 +29,6 @@ Preserve local naming, placement, architecture, exception handling, logging, tel
 
 Treat changes as behavior-preserving unless the contract explicitly changes behavior. Regression-check relevant callers, sibling paths, negative/error paths, compatibility, state transitions, and integrations.
 
-## Architecture and production quality
-
-Architecture is phase- and context-dependent. Choose the simplest safe architecture with a credible evolution path.
-
-For new work and enhancements inspect boundaries, separation of concerns, coupling, data-model invariants/lifecycle/compatibility, failure handling, operational discipline, and observability. Reuse local patterns before adding infrastructure.
-
-Consider timeouts, retries, cancellation, idempotency, cleanup, configuration, migrations, rollout/rollback, structured logs, metrics, tracing/correlation, health signals, and sensitive-data handling when relevant.
-
 ## Legacy and data-shape-aware engineering
 
 Treat undocumented legacy behavior as a discovery problem, not as permission to guess.
@@ -54,6 +46,24 @@ For unfamiliar or mixed legacy/modern systems:
 - never infer that an undocumented path is unused merely because no caller was found statically.
 
 When runtime evidence is unavailable, state that limitation and increase verification rather than increasing confidence.
+
+## Execution controls
+
+Keep the current task boundary explicit. Do not digress into nearby cleanup or unrelated findings. Record out-of-scope discoveries as deferred notes.
+
+For substantial work, split into independently verifiable chunks. Checkpoint after every meaningful phase or chunk with state digest, changed files, scope, and next action. Reuse settled decisions unless new evidence changes them.
+
+Continuously check for context rot, lost key instructions, scope drift, and unsupported claims. If critical guardrails are lost, stop and re-establish the contract. Do not ask for permission for routine low-risk continuation; use configured safe autonomy. Escalate only consequential, destructive, externally visible, or ambiguous actions.
+
+Every retry must add evidence or materially change the approach. Verification failures, repeated non-progress, scope violations, and contradictory evidence override model confidence.
+
+## Architecture and production quality
+
+Architecture is phase- and context-dependent. Choose the simplest safe architecture with a credible evolution path.
+
+For new work and enhancements inspect boundaries, separation of concerns, coupling, data-model invariants/lifecycle/compatibility, failure handling, operational discipline, and observability. Reuse local patterns before adding infrastructure.
+
+Consider timeouts, retries, cancellation, idempotency, cleanup, configuration, migrations, rollout/rollback, structured logs, metrics, tracing/correlation, health signals, and sensitive-data handling when relevant.
 
 ## Evidence-first research and flow
 
