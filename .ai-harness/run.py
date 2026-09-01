@@ -12,6 +12,8 @@ import context_engine
 import engine
 import knowledge_fabric
 import p1_lifecycle
+import extension_registry
+from runtime import loop_engine
 from runtime.intent_contract import create_intent_contract, semantic_alignment, verify_intent_contract
 from runtime import learning
 
@@ -163,6 +165,18 @@ def optimized_run_task(args, config, logger):
     _prepare_knowledge(args, config)
     profile = engine.profile_repository()
     route = engine.heuristic_route(str(contract["goal"]))
+    extensions = extension_registry.detect_extensions()
+    loop_cfg = config.get("loop_engineering", {})
+    plan = loop_engine.loop_plan(
+        str(contract["goal"]), route,
+        risk=str(loop_cfg.get("default_risk", "normal")),
+        explicit_loop=bool(getattr(args, "loop", False)) and bool(loop_cfg.get("allow_explicit_bounded_loop", True)),
+        configured_max=int(loop_cfg.get("max_explicit_iterations", 4)),
+        extensions=extensions,
+    )
+    (_session_dir / "loop-plan.json").write_text(
+        json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     p1_lifecycle.start(
         _session_dir,
         str(contract["goal"]),
@@ -183,6 +197,20 @@ def optimized_run_task(args, config, logger):
                 )
                 return 2
             p1_lifecycle.finish(_session_dir, manifest)
+            validation = manifest.get("validation", {}) if isinstance(manifest.get("validation"), dict) else {}
+            result = {
+                "evidence_score": 1.0 if manifest.get("status") == "completed" else 0.4,
+                "verification_score": 1.0 if validation.get("passed") else 0.0,
+                "quality_score": 1.0 if code == 0 else 0.0,
+                "uncertainty": 0.0 if code == 0 else 0.6,
+                "regressions": 0,
+            }
+            record = loop_engine.iteration_record(1, result)
+            decision = loop_engine.next_action([record], plan["budget"])
+            (_session_dir / "loop-outcome.json").write_text(
+                json.dumps({"record": record, "next": decision}, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
             learning.evolve_run(_session_dir, config)
         except Exception as exc:
             (_session_dir / "p1-lifecycle.error.txt").write_text(
