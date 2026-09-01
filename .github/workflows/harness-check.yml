@@ -3,6 +3,7 @@ name: AI Harness Check
 on:
   push:
     paths:
+      - '.github/workflows/**'
       - '.ai-harness/**'
       - '.agents/**'
       - '.claude-plugin/**'
