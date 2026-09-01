@@ -49,7 +49,19 @@ def context_integrity(task: str, contract: dict[str, Any], recent_output: str, k
     text = recent_output[-max_output_chars:].lower()
     goal = str(contract.get("goal", task)).strip().lower()
     instructions = [str(x).strip() for x in key_instructions if str(x).strip()]
-    missing = [item for item in instructions if item.lower() not in text]
+
+    def instruction_present(item: str) -> bool:
+        terms = [term for term in re.findall(r"[a-z0-9_]{3,}", item.lower()) if term not in {"the", "and", "with"}]
+        if not terms:
+            return True
+        matched = 0
+        for term in terms:
+            stem = term[: max(3, len(term) - 2)]
+            if term in text or stem in text:
+                matched += 1
+        return matched / len(terms) >= 0.6
+
+    missing = [item for item in instructions if not instruction_present(item)]
     terms = [x for x in re.findall(r"[a-z0-9_]{4,}", goal) if x not in {"with", "that", "this", "must"}][:30]
     overlap = sum(term in text for term in terms) / max(1, len(terms))
     rot = len(missing) / max(1, len(instructions)) if instructions else 0.0
