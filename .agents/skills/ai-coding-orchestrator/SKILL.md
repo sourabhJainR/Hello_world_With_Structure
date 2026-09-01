@@ -5,7 +5,7 @@ description: Adaptive repository-aware control plane for software engineering th
 
 # Adaptive AI Coding Orchestrator
 
-Provider-neutral engineering control plane. Keep this entrypoint compact.
+Provider-neutral control plane.
 
 Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Execute -> Verify -> Review -> Repair if justified -> Learn -> Stop`.
 
@@ -163,4 +163,4 @@ Report:
 
 `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Extensions used | Assumptions | Risks | Incomplete checks | Efficiency`.
 
-Load detailed policy progressively from `.ai-harness/*_POLICY.md` and relevant references; recursive loop policy remains opt-in.
+Load detailed policy progressively from `ORCHESTRATION_SPEC.md` and `.ai-harness/*_POLICY.md`; recursive loop policy remains opt-in.
