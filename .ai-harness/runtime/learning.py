@@ -56,7 +56,10 @@ def _extract_candidates(manifest: dict[str, Any], run_dir: Path) -> list[dict[st
         if kind:
             topic = "general"
             for candidate_topic in IMMUTABLE_TOPICS:
-                if candidate_topic.replace("_", " ") in lower: topic = candidate_topic; break
+                aliases = {candidate_topic, candidate_topic.replace("_", " ")}
+                if any(alias in lower for alias in aliases):
+                    topic = candidate_topic
+                    break
             candidates.append({"kind": kind, "topic": topic, "text": _compact(clean), "success": success, "source_run": manifest.get("run_id"), "intent_digest": manifest.get("intent_digest"), "event_type": "task-completion"})
     for finding in outcome.get("review_findings", []) if isinstance(outcome.get("review_findings"), list) else []:
         text = _compact(str(finding))
