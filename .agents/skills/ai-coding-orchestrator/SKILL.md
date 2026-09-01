@@ -13,7 +13,7 @@ Normal runtime is one adaptive run. Never self-loop unless the user explicitly r
 
 ## Loop Engineering
 
-Use a bounded quality loop: **Generation -> Evaluation -> Memory -> Scheduling -> Optimization**. Select specialists by complexity and risk; parallelize only independent read-only work. Default to one adaptive run. Repeat only when measurable evidence, verification, quality, or risk reduction justifies another cycle; stop on sufficient quality, diminishing returns, budget exhaustion, or no new evidence.
+Bounded loop: **Generation -> Evaluation -> Memory -> Scheduling -> Optimization**. Select specialists by risk/complexity; parallelize only independent read-only work. Repeat only for measurable gain; stop on sufficient quality, diminishing returns, budget, or no new evidence.
 
 ## Immutable task identity
 
@@ -144,12 +144,7 @@ Skill changes are proposals requiring evaluation and review.
 
 Extensions are optional capabilities, never dependencies. Detect first; use only when available, relevant, healthy and permitted. Never install or modify them automatically.
 
-Graphify: AST/graph/impact evidence.
-code-mem: persistent code graph/search.
-Superpowers: planning, TDD and debugging process.
-Ponytail: YAGNI/minimal-change/regression pressure.
-Caveman: compact context/output.
-Other Agent Skills/MCP: only when materially useful.
+Graphify/code-mem: structural and graph evidence. Superpowers: planning/TDD/debugging. Ponytail: minimal-change/regression checks. Caveman: compact context. Other skills/MCP: only when useful.
 
 Precedence:
 
@@ -163,4 +158,4 @@ Report:
 
 `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Extensions used | Assumptions | Risks | Incomplete checks | Efficiency`.
 
-Load detailed policy progressively from `ORCHESTRATION_SPEC.md`, `TEN_LOOP_POLICY.md`, and `.ai-harness/*_POLICY.md`; recursive loop policy remains opt-in.
+Policies: `ORCHESTRATION_SPEC.md`, `TEN_LOOP_POLICY.md`, `CONTEXT_POLICY.md`, `ARCHITECTURE_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`, `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `QUALITY_GOVERNANCE.md`.
