@@ -163,4 +163,4 @@ Report:
 
 `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Extensions used | Assumptions | Risks | Incomplete checks | Efficiency`.
 
-Load detailed policy progressively from `ORCHESTRATION_SPEC.md` and `.ai-harness/*_POLICY.md`; recursive loop policy remains opt-in.
+Load detailed policy progressively from `ORCHESTRATION_SPEC.md`, `TEN_LOOP_POLICY.md`, and `.ai-harness/*_POLICY.md`; recursive loop policy remains opt-in.
