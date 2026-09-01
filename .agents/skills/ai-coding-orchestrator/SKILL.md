@@ -5,7 +5,7 @@ description: Adaptive repository-aware control plane for software engineering th
 
 # Adaptive AI Coding Orchestrator
 
-Provider-neutral engineering control plane. Keep this entrypoint compact and load detailed policy progressively.
+Provider-neutral engineering control plane. Keep this entrypoint compact.
 
 Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Execute -> Verify -> Review -> Repair if justified -> Learn -> Stop`.
 
