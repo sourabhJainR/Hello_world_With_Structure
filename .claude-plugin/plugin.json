@@ -1,7 +1,7 @@
 {
   "name": "adaptive-ai-coding-orchestrator",
   "description": "Adaptive repository-aware engineering control plane for coding, debugging, research, POCs, reviews, and safe changes, with bounded context and optional code-intelligence extensions.",
-  "version": "14.0.0",
+  "version": "16.0.0",
   "author": {
     "name": "Sourabh Jain",
     "url": "https://github.com/sourabhJainR"
