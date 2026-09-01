@@ -11,6 +11,10 @@ Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Execute -> 
 
 Normal runtime is one adaptive run. Never self-loop unless the user explicitly requests a bounded loop.
 
+## Loop Engineering
+
+Use a bounded recursive quality loop: **Generation -> Evaluation -> Memory -> Scheduling -> Optimization**. Select subagents by task complexity and risk, parallelize only independent read-only work, and serialize conflicting edits. Default to one adaptive run; recursion is opt-in and bounded. Continue only when verification, evidence, quality, or risk reduction shows measurable gain. Stop on sufficient quality, diminishing returns, budget exhaustion, or lack of new evidence.
+
 ## Immutable task identity
 
 Before meaningful work create or load:
