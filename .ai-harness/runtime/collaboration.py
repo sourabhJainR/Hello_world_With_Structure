@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -120,6 +119,28 @@ def validate_handoff(packet: dict[str, Any], *, expected_intent_digest: str,
                 reasons.append("scope_violation")
                 break
     return {"passed": not reasons, "reasons": reasons}
+
+
+def persist_handoff(root: Path, packet: dict[str, Any]) -> Path:
+    """Persist a validated handoff so another session or agent can resume safely."""
+    digest = str(packet.get("intent_digest", "")).strip()
+    if not digest:
+        raise ValueError("handoff intent_digest is required")
+    path = Path(root) / ".ai-harness" / "state" / "handoffs" / f"{packet.get("id", "handoff")}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps(packet, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    temp.replace(path)
+    return path
+
+
+def load_handoff(path: Path, *, expected_intent_digest: str,
+                 allowed_scope: set[str] | None = None) -> dict[str, Any]:
+    packet = json.loads(Path(path).read_text(encoding="utf-8"))
+    result = validate_handoff(packet, expected_intent_digest=expected_intent_digest, allowed_scope=allowed_scope)
+    if not result["passed"]:
+        raise ValueError("invalid handoff: " + ",".join(result["reasons"]))
+    return packet
 
 
 def shared_memory(root: Path, *, intent_digest: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
