@@ -1,5 +1,6 @@
 import importlib.util
 import unittest
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,6 +56,18 @@ class CollaborationTests(unittest.TestCase):
         )
         result = collaboration.validate_memory_item(item)
         self.assertIn("missing_evidence", result["reasons"])
+
+    def test_handoff_can_be_persisted_and_resumed(self):
+        packet = collaboration.build_handoff(
+            intent=self.intent(), phase="verification", from_component="review", to_component="learning",
+            findings=[{"text": "Regression test added", "task_scope": "verification"}],
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            path = collaboration.persist_handoff(Path(temp), packet)
+            loaded = collaboration.load_handoff(
+                path, expected_intent_digest="intent-123", allowed_scope={"verification"}
+            )
+        self.assertEqual(packet["id"], loaded["id"])
 
 
 if __name__ == "__main__":
