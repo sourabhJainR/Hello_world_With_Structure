@@ -13,7 +13,7 @@ Normal runtime is one adaptive run. Never self-loop unless the user explicitly r
 
 ## Loop Engineering
 
-Use a bounded recursive quality loop: **Generation -> Evaluation -> Memory -> Scheduling -> Optimization**. Select subagents by task complexity and risk, parallelize only independent read-only work, and serialize conflicting edits. Default to one adaptive run; recursion is opt-in and bounded. Continue only when verification, evidence, quality, or risk reduction shows measurable gain. Stop on sufficient quality, diminishing returns, budget exhaustion, or lack of new evidence.
+Use a bounded quality loop: **Generation -> Evaluation -> Memory -> Scheduling -> Optimization**. Select specialists by complexity and risk; parallelize only independent read-only work. Default to one adaptive run. Repeat only when measurable evidence, verification, quality, or risk reduction justifies another cycle; stop on sufficient quality, diminishing returns, budget exhaustion, or no new evidence.
 
 ## Immutable task identity
 
