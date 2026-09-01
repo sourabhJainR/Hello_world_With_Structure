@@ -99,7 +99,7 @@ def _promote(records, *, min_observations, min_success_rate, stale_after_days, n
 def evolve_run(run_dir: Path, config: dict[str, Any]) -> dict[str, Any]:
     manifest_path = run_dir / "manifest.json"
     if not manifest_path.exists(): return {"status": "skipped", "reason": "missing-manifest"}
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8")); now = int(time.time()); learning = config.get("learning", {}); root = run_dir.parents[1] if len(run_dir.parents) > 1 else Path("."); learn_dir = root / ".ai-harness" / "learning"; registry_path = learn_dir / "patterns.jsonl"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8")); now = int(time.time()); learning = config.get("learning", {}); root = run_dir.parents[2] if len(run_dir.parents) > 2 else Path("."); learn_dir = root / ".ai-harness" / "learning"; registry_path = learn_dir / "patterns.jsonl"
     existing = _read_jsonl(registry_path); candidates = _extract_candidates(manifest, run_dir); records = _aggregate(existing, candidates, now)
     _promote(records, min_observations=int(learning.get("min_observations_for_promotion", 3)), min_success_rate=float(learning.get("min_success_rate_for_promotion", 0.75)), stale_after_days=int(learning.get("stale_after_days", 120)), now=now)
     records.sort(key=lambda row: (-float(row.get("confidence", 0)), -int(row.get("last_seen_at", 0)), str(row.get("id", "")))); records = records[:int(learning.get("max_memory_items", 250))]
