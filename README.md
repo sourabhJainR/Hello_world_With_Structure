@@ -314,6 +314,18 @@ The project uses three layers:
 
 A model-generated improvement does not become an executable default merely because it scored well once. Changes require reproducible evidence and regression coverage.
 
+## Productization and IP
+
+The practical commercial path is to keep the local developer experience easy to adopt while monetizing organization-level value: hosted evaluation, private engineering memory, regression intelligence, enterprise policy controls, fleet analytics, premium integrations, and rollout/support.
+
+Do not depend on obfuscation or client-side anti-copy mechanisms. The repository is public, so the durable moat should be the accumulated evidence and outcome loop:
+
+`Repository evidence -> Outcome data -> Evaluation corpus -> Learned engineering patterns -> Better routing/retrieval/verification -> Better outcomes`
+
+The public repository currently has no detected software license. Choose the intended legal licensing model before commercial distribution rather than silently imposing one through automation. See `IP_AND_COMMERCIALIZATION.md` and `SECURITY.md`.
+
+For product claims, measure real repositories against the team's normal coding-agent workflow using accepted-change rate, time to accepted change, escaped regressions, RCA precision, review effort, tool/model calls, token cost, latency, and rework.
+
 ## Safety
 
 The orchestrator never silently installs tools, changes permissions, connects to production, merges changes, or promotes learned behavior into executable policy. Repository and organization instructions remain authoritative. Cancellation, provider failure, partial execution, and successful completion must remain distinguishable.
