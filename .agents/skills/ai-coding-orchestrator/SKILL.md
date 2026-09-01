@@ -163,5 +163,4 @@ Report:
 
 `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Extensions used | Assumptions | Risks | Incomplete checks | Efficiency`.
 
-Load detailed policy progressively when needed:
-`ORCHESTRATION_SPEC.md`, `TEN_LOOP_POLICY.md` (opt-in only), `CONTEXT_POLICY.md`, `ARCHITECTURE_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`, `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `QUALITY_GOVERNANCE.md`, plus relevant references/docs.
+Load detailed policy progressively from `.ai-harness/*_POLICY.md` and relevant references; recursive loop policy remains opt-in.
