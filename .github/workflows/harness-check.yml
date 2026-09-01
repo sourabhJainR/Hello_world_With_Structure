@@ -81,7 +81,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           hits=[]
-          roots=[Path('.ai-harness'),Path('.agents'),Path('.claude'),Path('skills'),Path('state'),Path('scripts'),Path('tests'),Path('docs'),Path('README.md')]
+          roots=[Path('.ai-harness'),Path('.agents'),Path('.claude'),Path('skills'),Path('state'),Path('scripts'),Path('README.md'),Path('AGENTS.md')]
           for root in roots:
               files=[root] if root.is_file() else root.rglob('*')
               for path in files:
