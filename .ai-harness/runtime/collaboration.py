@@ -126,7 +126,8 @@ def persist_handoff(root: Path, packet: dict[str, Any]) -> Path:
     digest = str(packet.get("intent_digest", "")).strip()
     if not digest:
         raise ValueError("handoff intent_digest is required")
-    path = Path(root) / ".ai-harness" / "state" / "handoffs" / f"{packet.get("id", "handoff")}.json"
+    handoff_id = str(packet.get("id", "handoff")).strip() or "handoff"
+    path = Path(root) / ".ai-harness" / "state" / "handoffs" / f"{handoff_id}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(".tmp")
     temp.write_text(json.dumps(packet, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
