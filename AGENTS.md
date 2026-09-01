@@ -174,6 +174,24 @@ Record evidence-backed observations, useful lessons, route quality, verification
 
 Promote durable patterns only after repeated successful observations. Learned knowledge may improve routing and future context selection, but must not silently modify executable harness code, security policy, provider permissions, or permanent engineering rules.
 
+
+## Collaboration, handoff, and shared memory
+
+Treat runtime components and optional skills as one evidence-sharing system, not isolated personas.
+
+Use the collaboration fabric at `.ai-harness/runtime/collaboration.py` for meaningful phase/component handoffs.
+
+- Carry the immutable `intent_digest` through every handoff.
+- Share evidence-backed facts, decisions, risks, trusted DO/DON'T guidance, and unresolved questions with provenance.
+- Build lineage as a graph: evidence -> finding -> decision -> change -> verification -> outcome -> learning.
+- Validate a handoff before consuming it; reject intent mismatch and scope drift.
+- Keep memory task-scoped and bounded. Do not flood a receiver with unrelated history.
+- Share useful lessons across components, but never let learned advice override repository instructions, acceptance criteria, security boundaries, or immutable guardrails.
+- When handing over, state what is known, what is proven, what is inferred, what remains unknown, open risks, and the exact next action.
+- Related regressions should feed the same lineage so future RCA and implementation can see the original decision, evidence, outcome, and later miss.
+
+The collaboration model is a chain for execution and a graph for knowledge. Components may evolve independently, but their contracts must remain compatible through intent, provenance, evidence IDs, and bounded shared memory.
+
 ## Completion report
 
 Report outcome, files changed, validation evidence, independent review evidence when used, knowledge sources and extensions actually used, repository conventions reused, placement decisions, dependency decisions, principles materially applied, assumptions, remaining risks, and checkpoint or next action when intentionally incomplete.
