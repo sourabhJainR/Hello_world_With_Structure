@@ -8,6 +8,17 @@ auto_groom = true
 checkpoint_long_runs = true
 require_verification_before_complete = true
 
+[loop_engineering]
+enabled = true
+strategy = "generation + evaluation + memory + scheduling + optimization"
+default_risk = "normal"
+allow_explicit_bounded_loop = true
+max_explicit_iterations = 4
+minimum_utility_gain = 0.03
+parallel_read_only_subagents = true
+provenance_required_for_learning = true
+stop_on_diminishing_returns = true
+
 [runtime]
 mode = "single-adaptive-run"
 looping_enabled = false
