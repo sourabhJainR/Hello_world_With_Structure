@@ -1,1 +1,364 @@
-{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://adaptive-ai-coding-orchestrator.dev/schemas/engineering-state/v1","title":"Engineering State Ledger","type":"object","additionalProperties":false,"required":["schema_version","task_id","status","intent","contract","repo_facts","decisions","evidence","changeset","verification","outcome","open_risks","next"],"properties":{"schema_version":{"const":"1.0"},"task_id":{"type":"string","minLength":1},"status":{"enum":["intake","grilling","specified","investigating","planned","implementing","verifying","reviewing","completed","blocked","cancelled"]},"intent":{"type":"object","additionalProperties":false,"required":["goal"],"properties":{"goal":{"type":"string"},"source":{"type":"string"},"non_goals":{"type":"array","items":{"type":"string"}}}},"contract":{"type":"object","additionalProperties":false,"required":["requirements","acceptance","protected_behavior"],"properties":{"requirements":{"type":"array","items":{"$ref":"#/$defs/item"}},"acceptance":{"type":"array","items":{"$ref":"#/$defs/item"}},"protected_behavior":{"type":"array","items":{"$ref":"#/$defs/item"}},"assumptions":{"type":"array","items":{"$ref":"#/$defs/item"}},"questions":{"type":"array","items":{"$ref":"#/$defs/item"}}}},"repo_facts":{"type":"array","items":{"$ref":"#/$defs/evidence_ref"}},"decisions":{"type":"array","items":{"$ref":"#/$defs/decision"}},"evidence":{"type":"array","items":{"$ref":"#/$defs/evidence"}},"changeset":{"type":"object","additionalProperties":false,"properties":{"files":{"type":"array","items":{"type":"string"}},"symbols":{"type":"array","items":{"type":"string"}},"diff_identity":{"type":"string"}}},"verification":{"type":"array","items":{"$ref":"#/$defs/verification"}},"outcome":{"$ref":"#/$defs/outcome"},"open_risks":{"type":"array","items":{"$ref":"#/$defs/item"}},"next":{"type":"array","items":{"type":"string"}},"metadata":{"type":"object","additionalProperties":true}},"$defs":{"item":{"type":"object","additionalProperties":false,"required":["id","text"],"properties":{"id":{"type":"string"},"text":{"type":"string"}}},"evidence_ref":{"type":"object","additionalProperties":false,"required":["evidence_id"],"properties":{"evidence_id":{"type":"string"}}},"decision":{"type":"object","additionalProperties":false,"required":["id","decision","evidence_ids"],"properties":{"id":{"type":"string"},"decision":{"type":"string"},"evidence_ids":{"type":"array","items":{"type":"string"}}}},"evidence":{"type":"object","additionalProperties":false,"required":["id","kind","source","claim","confidence"],"properties":{"id":{"type":"string"},"kind":{"enum":["source","test","runtime","history","documentation","external","tool"]},"source":{"type":"string"},"locator":{"type":"string"},"snapshot":{"type":"string"},"claim":{"type":"string"},"confidence":{"enum":["high","medium","low"]},"freshness":{"type":"string"},"provenance":{"type":"string"}}},"verification":{"type":"object","additionalProperties":false,"required":["id","kind","status"],"properties":{"id":{"type":"string"},"kind":{"type":"string"},"status":{"enum":["passed","failed","skipped","unknown"]},"command":{"type":"string"},"evidence_ids":{"type":"array","items":{"type":"string"}},"details":{"type":"string"}}},"outcome":{"type":"object","additionalProperties":false,"required":["status"],"properties":{"status":{"enum":["accepted","rejected","partial","unknown"]},"user_acceptance":{"type":"string"},"review_result":{"type":"string"},"production_result":{"type":"string"},"regressions":{"type":"array","items":{"type":"string"}},"follow_up":{"type":"array","items":{"type":"string"}},"metrics":{"type":"object","additionalProperties":{"type":"number"}},"evidence_ids":{"type":"array","items":{"type":"string"}}}}}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adaptive-ai-coding-orchestrator.dev/schemas/engineering-state/v1",
+  "title": "Engineering State Ledger",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "status",
+    "intent",
+    "contract",
+    "repo_facts",
+    "decisions",
+    "evidence",
+    "changeset",
+    "verification",
+    "outcome",
+    "open_risks",
+    "next"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "intake",
+        "grilling",
+        "specified",
+        "investigating",
+        "planned",
+        "implementing",
+        "verifying",
+        "reviewing",
+        "completed",
+        "blocked",
+        "cancelled"
+      ]
+    },
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "goal"
+      ],
+      "properties": {
+        "goal": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "non_goals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requirements",
+        "acceptance",
+        "protected_behavior"
+      ],
+      "properties": {
+        "requirements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/item"
+          }
+        },
+        "acceptance": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/item"
+          }
+        },
+        "protected_behavior": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/item"
+          }
+        },
+        "assumptions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/item"
+          }
+        },
+        "questions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/item"
+          }
+        }
+      }
+    },
+    "repo_facts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence_ref"
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/decision"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "changeset": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "symbols": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "diff_identity": {
+          "type": "string"
+        }
+      }
+    },
+    "verification": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/verification"
+      }
+    },
+    "outcome": {
+      "$ref": "#/$defs/outcome"
+    },
+    "open_risks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/item"
+      }
+    },
+    "next": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "text"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "evidence_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string"
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "decision",
+        "evidence_ids"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "decision": {
+          "type": "string"
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "source",
+        "claim",
+        "confidence"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "source",
+            "test",
+            "runtime",
+            "history",
+            "documentation",
+            "external",
+            "tool"
+          ]
+        },
+        "source": {
+          "type": "string"
+        },
+        "locator": {
+          "type": "string"
+        },
+        "snapshot": {
+          "type": "string"
+        },
+        "claim": {
+          "type": "string"
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        "freshness": {
+          "type": "string"
+        },
+        "provenance": {
+          "type": "string"
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "status"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "skipped",
+            "unknown"
+          ]
+        },
+        "command": {
+          "type": "string"
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "details": {
+          "type": "string"
+        }
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "accepted",
+            "rejected",
+            "partial",
+            "unknown"
+          ]
+        },
+        "user_acceptance": {
+          "type": "string"
+        },
+        "review_result": {
+          "type": "string"
+        },
+        "production_result": {
+          "type": "string"
+        },
+        "regressions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "follow_up": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number"
+          }
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
