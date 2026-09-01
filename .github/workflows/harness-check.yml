@@ -57,7 +57,16 @@ jobs:
       - name: Validate configuration
         run: python -c "import tomllib; tomllib.load(open('.ai-harness/config.toml','rb')); tomllib.load(open('.ai-harness/extension_registry.toml','rb'))"
       - name: Validate P0 state schema
-        run: python -c 'import json; s=json.load(open("state/engineering-state.schema.json")); assert s["$schema"].endswith("/draft/2020-12/schema") and s["$id"].endswith("/schemas/engineering-state/v1") and s["properties"]["schema_version"]["const"]=="1.0" and "outcome" in s["properties"]'
+        run: |
+          python - <<'PY'
+          import json
+          with open("state/engineering-state.schema.json", encoding="utf-8") as handle:
+              schema = json.load(handle)
+          assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
+          assert schema["$id"].endswith("/schemas/engineering-state/v1")
+          assert schema["properties"]["schema_version"]["const"] == "1.0"
+          assert "outcome" in schema["properties"]
+          PY
       - name: Validate plugin and marketplace manifests
         run: python scripts/validate_plugin.py
       - name: Validate deployable skill metadata
