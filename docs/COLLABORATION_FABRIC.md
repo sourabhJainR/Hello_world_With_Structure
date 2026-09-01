@@ -44,3 +44,7 @@ A receiver validates the handoff before using it. Intent mismatch or scope drift
 ## Memory safety
 
 Shared memory is bounded and provenance-aware. Learning may improve retrieval and advice, but it cannot silently alter permissions, security rules, architecture policy, repository rules or executable harness behavior.
+
+## CI contract
+
+The collaboration fabric is covered by the repository harness gate together with intent preservation, execution controls, learning, RCA, and deterministic evaluations.
