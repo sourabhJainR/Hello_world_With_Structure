@@ -13,7 +13,7 @@ import engine
 import knowledge_fabric
 import p1_lifecycle
 import extension_registry
-from runtime import loop_engine
+from runtime import capability_catalog, loop_engine
 from runtime.intent_contract import create_intent_contract, semantic_alignment, verify_intent_contract
 from runtime import learning
 
@@ -23,6 +23,7 @@ _original_run_task = engine.run_task
 _session_dir: Path | None = None
 _knowledge: dict = {}
 _intent_contract: dict = {}
+_capability_plan: dict = {}
 
 
 def session_make_run_dir() -> Path:
@@ -136,6 +137,9 @@ def optimized_build_prompt(phase, task, source, jira, route, repo_map, memory, p
         + f"\nIntent digest: {contract['intent_digest']}"
         + f"\nCurrent alignment score: {alignment['alignment_score']}"
         + "\nBefore acting, verify the planned action serves this goal and does not violate non-goals, boundaries, or protected behavior.\n"
+        + "\n## Specialist capability plan\n"
+        + json.dumps(_capability_plan or {"selected": ["builder"], "strategy": "fallback"}, ensure_ascii=False, indent=2)
+        + "\nUse only the selected roles. Parallel work is permitted only for read-only roles marked safe. Each report must satisfy its declared contract.\n"
         + "\n## Trusted learned practices\n"
         + _trusted_learning_text()
     )
@@ -143,7 +147,7 @@ def optimized_build_prompt(phase, task, source, jira, route, repo_map, memory, p
 
 
 def optimized_run_task(args, config, logger):
-    global _session_dir
+    global _session_dir, _capability_plan
     _session_dir = Path(args.resume).resolve() if getattr(args, "resume", None) else None
     task = _task_from_args(args)
     if not task and getattr(args, "resume", None):
@@ -166,6 +170,13 @@ def optimized_run_task(args, config, logger):
     profile = engine.profile_repository()
     route = engine.heuristic_route(str(contract["goal"]))
     extensions = extension_registry.detect_extensions()
+    _capability_plan = capability_catalog.select_capabilities(route, extensions=extensions)
+    capability_validation = capability_catalog.validate_plan(_capability_plan)
+    if not capability_validation["passed"]:
+        raise engine.ConfigurationError("Invalid specialist capability plan: " + ",".join(capability_validation["reasons"]))
+    (_session_dir / "capability-plan.json").write_text(
+        json.dumps(_capability_plan, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     loop_cfg = config.get("loop_engineering", {})
     plan = loop_engine.loop_plan(
         str(contract["goal"]), route,
