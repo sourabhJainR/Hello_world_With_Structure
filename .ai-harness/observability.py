@@ -1,4 +1,4 @@
-"""Standard-library logging, exception handling, and local telemetry for the harness."""
+"""Standard-library logging, exception handling, local telemetry, and durable run journaling."""
 from __future__ import annotations
 
 import json
@@ -8,6 +8,8 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+
+from runtime.run_journal import append_event as append_journal_event
 
 HARNESS_NAME = "ai-coding-harness"
 
@@ -45,7 +47,11 @@ def configure_logging(run_dir: Path | None = None, level: str = "INFO") -> loggi
 
 
 def emit_event(run_dir: Path | None, event: str, **fields: Any) -> None:
-    """Emit local JSONL telemetry only when a run directory is available."""
+    """Emit local telemetry and a durable hash-chained journal event.
+
+    The journal is a second, append-only record rather than the source of truth for telemetry. If
+    journaling fails, normal telemetry must continue: observability must never become a run failure.
+    """
     if run_dir is None:
         return
     record = {
@@ -57,6 +63,10 @@ def emit_event(run_dir: Path | None, event: str, **fields: Any) -> None:
     path = run_dir / "telemetry.jsonl"
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    try:
+        append_journal_event(run_dir, event, fields)
+    except (OSError, TypeError, ValueError):
+        logging.getLogger(HARNESS_NAME).debug("durable event journal append failed", exc_info=True)
 
 
 def exception_summary(exc: BaseException) -> dict[str, Any]:
