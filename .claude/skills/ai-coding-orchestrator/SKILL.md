@@ -28,7 +28,7 @@ Apply proportionally: DRY, YAGNI, KISS, SOLID, dependency inversion, high cohesi
 
 Before provider execution, use the deterministic capability catalog and record `capability-plan.json`. Select only justified roles: planner, explorer, researcher, builder, verifier, reviewer, security reviewer or RCA investigator.
 
-Each role has a responsibility, mutation policy, parallel-safety rule and report contract. Parallelize only independent read-only work. Never parallelize edits to the same file.
+Each role has a responsibility, mutation policy, parallel-safety rule and report contract. Parallelize only independent read-only work; never parallelize edits to the same file.
 
 Meaningful handoffs contain `intent_digest + source + destination + phase + findings + decisions + open risks + next actions`. Validate intent and scope before consuming a handoff. Share evidence through the collaboration graph rather than replaying full transcripts.
 
@@ -75,10 +75,12 @@ Record evidence-backed outcomes, reviewer findings, retries, regressions and DO/
 
 Extensions are capabilities, never dependencies. Detect first; use only when available, healthy, relevant and permitted; never install or modify them automatically.
 
-Graphify/code-mem: structural and graph evidence. Superpowers: planning/TDD/debugging. Ponytail: minimal-change/regression checks. Caveman: compact context. LSP: optional diagnostics from an existing suitable server. Sandboxing: explicit future execution boundary; never silently enabled.
+Graphify/code-mem: structural and graph evidence. Superpowers: planning/TDD/debugging. Ponytail: minimal-change/regression checks. Caveman: compact context. LSP: optional diagnostics when a suitable existing server is available. Sandboxing: explicit future execution boundary; never silently enabled.
 
 Precedence: `Repository/team rules > security/permissions > acceptance > local architecture > verification > orchestrator > extension > model preference`.
 
 ## Completion
 
 Report: `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Extensions | Assumptions | Risks | Incomplete checks | Efficiency`.
+
+Policies: `ORCHESTRATION_SPEC.md`, `TEN_LOOP_POLICY.md`, `CONTEXT_POLICY.md`, `ARCHITECTURE_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`, `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `QUALITY_GOVERNANCE.md`.
