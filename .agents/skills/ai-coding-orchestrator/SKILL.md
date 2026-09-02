@@ -28,7 +28,7 @@ Apply proportionally: DRY, YAGNI, KISS, SOLID, dependency inversion, high cohesi
 
 Before provider execution, use the deterministic capability catalog and record `capability-plan.json`. Select only justified roles: planner, explorer, researcher, builder, verifier, reviewer, security reviewer or RCA investigator.
 
-Each role has a responsibility, mutation policy, parallel-safety rule and report contract. Parallelize only independent read-only work. Never parallelize edits to the same file.
+Each role has a responsibility, mutation policy, parallel-safety rule and report contract. Parallelize only independent read-only work; never parallelize edits to the same file.
 
 Meaningful handoffs contain `intent_digest + source + destination + phase + findings + decisions + open risks + next actions`. Validate intent and scope before consuming a handoff. Share evidence through the collaboration graph rather than replaying full transcripts.
 
@@ -44,9 +44,9 @@ Verification outranks model confidence. Check acceptance, relevant regression pa
 
 Review weak architectural boundaries, separation of concerns, coupling, data-model invariants/lifecycle/compatibility, failure handling, operational discipline and observability. Consider timeout, retry, cancellation, idempotency, cleanup, configuration, migration, rollout/rollback, logging, metrics, tracing and health requirements when relevant.
 
-## Execution controls
+## Execution and durability
 
-Split substantial work into independently verifiable chunks. Checkpoint meaningful phases/chunks with intent, state, changed files, evidence, risks and next action. Re-anchor on context rot, instruction loss, intent drift, scope drift or contradiction. Every retry must add evidence or materially change strategy.
+Split substantial work into independently verifiable chunks. Checkpoint meaningful phases/chunks and re-anchor on context rot, instruction loss, intent drift, scope drift or contradiction. Every retry must add evidence or change strategy.
 
 Runtime events are mirrored to `execution.journal.jsonl` as append-only hash-chained records. The journal is separate from checkpoints, telemetry and the final manifest and supports integrity checks, replay projections and future replay-driven evaluation. Journal failure is non-fatal.
 
@@ -54,7 +54,7 @@ Runtime events are mirrored to `execution.journal.jsonl` as append-only hash-cha
 
 Treat the repository as structured evidence. Prefer repository rules/acceptance, AST/symbol/dependency structure, graph impact paths, exact search, semantic retrieval when configured, targeted reads, then verification output.
 
-Use Graphify, code-mem and other extensions only when available, relevant, healthy and permitted. Apply the FlashAttention-inspired operational principle: keep stable context small, rank evidence, compact history by information value, preserve proof-bearing state, reuse summaries and avoid transcript replay. Optimize verified outcome per token, call, retry and latency.
+Use Graphify, code-mem and other extensions only when available, relevant and permitted. Apply the FlashAttention-inspired operational principle: keep stable context small, rank evidence, compact history by information value, preserve proof-bearing state, reuse summaries and avoid transcript replay. Optimize verified outcome per token, call, retry and latency.
 
 ## Engineering State Ledger
 
@@ -73,7 +73,7 @@ Record evidence-backed outcomes, reviewer findings, retries, regressions and DO/
 
 ## Optional extensions
 
-Extensions are capabilities, never dependencies. Detect first; use only when available and permitted; never install or modify them automatically.
+Extensions are capabilities, never dependencies. Detect first; use only when available, healthy, relevant and permitted; never install or modify them automatically.
 
 Graphify/code-mem: structural and graph evidence. Superpowers: planning/TDD/debugging. Ponytail: minimal-change/regression checks. Caveman: compact context. LSP: optional diagnostics from an existing suitable server. Sandboxing: explicit future execution boundary; never silently enabled.
 
@@ -82,3 +82,5 @@ Precedence: `Repository/team rules > security/permissions > acceptance > local a
 ## Completion
 
 Report: `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Extensions | Assumptions | Risks | Incomplete checks | Efficiency`.
+
+Policies: `ORCHESTRATION_SPEC.md`, `TEN_LOOP_POLICY.md`, `CONTEXT_POLICY.md`, `ARCHITECTURE_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`, `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `QUALITY_GOVERNANCE.md`.
