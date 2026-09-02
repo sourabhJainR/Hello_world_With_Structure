@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "adaptive-ai-engineering",
   "version": "1.0.0",
-  "description": "Repository-aware AI engineering control plane with adaptive routing, bounded context, verification, review, and optional extensions.",
+  "description": "Repository-aware AI engineering control plane with adaptive routing, bounded context, specialist planning, durable execution history, verification, and optional extensions.",
   "owner": {
     "name": "Sourabh Jain",
     "url": "https://github.com/sourabhJainR"
@@ -11,8 +11,8 @@
     {
       "name": "adaptive-ai-coding-orchestrator",
       "source": "./",
-      "version": "16.0.0",
-      "description": "Adaptive coding orchestration for implementation, debugging, research, POCs, reviews, Jira tasks, and safe repository changes.",
+      "version": "17.0.0",
+      "description": "Adaptive coding orchestration for implementation, debugging, research, POCs, reviews, Jira tasks, safe repository changes, and evidence-backed learning.",
       "author": {
         "name": "Sourabh Jain",
         "url": "https://github.com/sourabhJainR"
@@ -29,7 +29,9 @@
         "graph-rag",
         "ast",
         "evals",
-        "context-engineering"
+        "context-engineering",
+        "durable-execution",
+        "regression-intelligence"
       ],
       "skills": [
         "./skills/ai-coding-orchestrator/SKILL.md"
