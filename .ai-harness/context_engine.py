@@ -1,7 +1,8 @@
 """Deterministic, IO-aware context selection for AI coding runs.
 
-Inspired by the IO-awareness of FlashAttention: keep stable context small,
-reuse it, and stream only high-value evidence into each provider prompt.
+Inspired by the IO-awareness of FlashAttention and the practical context-engineering patterns in
+modern coding-agent harnesses: keep stable context small, retrieve targeted evidence, compact old
+history before the model boundary, and preserve correctness-critical state.
 """
 from __future__ import annotations
 
@@ -12,6 +13,22 @@ from pathlib import Path
 from typing import Any
 
 _STOP = {"the", "and", "for", "with", "from", "this", "that", "into", "have", "will", "task", "change", "please", "need", "make", "using"}
+_PRIORITY = (
+    ("critical", 6.0),
+    ("acceptance", 6.0),
+    ("constraint", 5.0),
+    ("protected", 5.0),
+    ("decision", 5.0),
+    ("evidence", 5.0),
+    ("verification", 5.0),
+    ("regression", 5.0),
+    ("risk", 4.5),
+    ("root cause", 4.5),
+    ("failed", 4.0),
+    ("next", 3.5),
+    ("changed", 3.0),
+    ("file", 1.0),
+)
 
 
 def _words(text: str) -> set[str]:
@@ -67,6 +84,51 @@ def build_repository_context(root: Path, task: str, limit_files: int = 180, budg
     return "\n".join(lines) + "\n"
 
 
+def compact_history(history: str, task: str, budget_chars: int) -> str:
+    """Compress history by information value, retaining proof and task-critical state first.
+
+    This is deliberately deterministic and model-free. It does not invent summaries. It removes
+    repeated low-value lines and keeps the highest-value evidence, with a small recent tail so the
+    current execution state remains visible. That gives the caller a predictable token ceiling.
+    """
+    if budget_chars <= 0 or not history.strip():
+        return ""
+    lines = [line.strip() for line in history.splitlines() if line.strip()]
+    task_words = _words(task)
+    candidates: list[tuple[float, int, str]] = []
+    seen: set[str] = set()
+    for index, line in enumerate(lines):
+        normalized = re.sub(r"\s+", " ", line.lower())
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        score = len(_words(line) & task_words) * 2.0
+        for marker, weight in _PRIORITY:
+            if marker in normalized:
+                score += weight
+        # Recent lines receive a small tie-breaker, never enough to displace strong proof.
+        score += index / max(1, len(lines))
+        candidates.append((score, index, line))
+
+    candidates.sort(key=lambda item: (-item[0], -item[1]))
+    selected: list[tuple[int, str]] = []
+    used = 0
+    for _, index, line in candidates:
+        entry_size = len(line) + 1
+        if used + entry_size > budget_chars:
+            continue
+        selected.append((index, line))
+        used += entry_size
+
+    # Always try to retain the most recent line when budget permits.
+    if lines:
+        recent = lines[-1]
+        if recent not in {line for _, line in selected} and used + len(recent) + 1 <= budget_chars:
+            selected.append((len(lines) - 1, recent))
+    selected.sort(key=lambda item: item[0])
+    return "\n".join(line for _, line in selected)
+
+
 def select_context(task: str, repo_map: str, memory: str, history: str, budget_chars: int = 12000) -> dict[str, Any]:
     """Build a compact context tile set while preserving high-value evidence."""
     task_words = _words(task)
@@ -76,10 +138,12 @@ def select_context(task: str, repo_map: str, memory: str, history: str, budget_c
         return sorted(lines, key=lambda line: (-len(_words(line) & task_words), -len(line)))
 
     memory_lines = rank_lines(memory)
-    history_lines = rank_lines(history)
+    history_budget = max(1200, budget_chars // 5)
+    compressed_history = compact_history(history, task, history_budget)
+    history_lines = rank_lines(compressed_history)
     sections: list[tuple[str, list[str], int]] = [
         ("memory", memory_lines, max(1200, budget_chars // 6)),
-        ("history", history_lines, max(1800, budget_chars // 5)),
+        ("history", history_lines, history_budget),
     ]
     output: dict[str, str] = {}
     remaining = budget_chars
@@ -100,11 +164,24 @@ def select_context(task: str, repo_map: str, memory: str, history: str, budget_c
         "history": output["history"],
         "budget_chars": budget_chars,
         "selected": {name: len(value) for name, value in output.items()},
-        "strategy": "stable-prefix + tiled-context + relevance-ranking + bounded-evidence",
+        "history_compression": {
+            "input_chars": len(history),
+            "output_chars": len(compressed_history),
+            "ratio": round(len(compressed_history) / max(1, len(history)), 4),
+        },
+        "strategy": "stable-prefix + evidence-priority-compaction + tiled-context + relevance-ranking + bounded-evidence",
     }
 
 
 def flash_context_prompt(task: str, repo_map: str, memory: str, history: str, budget_chars: int = 12000) -> tuple[str, str, str, str]:
     selected = select_context(task, repo_map, memory, history, budget_chars)
-    metadata = json.dumps({"strategy": selected["strategy"], "budget_chars": budget_chars, "selected_chars": selected["selected"]}, ensure_ascii=False)
+    metadata = json.dumps(
+        {
+            "strategy": selected["strategy"],
+            "budget_chars": budget_chars,
+            "selected_chars": selected["selected"],
+            "history_compression": selected["history_compression"],
+        },
+        ensure_ascii=False,
+    )
     return selected["repository"], selected["memory"], selected["history"], metadata
