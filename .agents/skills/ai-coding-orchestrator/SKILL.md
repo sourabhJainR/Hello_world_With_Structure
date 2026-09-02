@@ -1,15 +1,21 @@
 ---
 name: ai-coding-orchestrator
-description: Adaptive repository-aware control plane for software engineering that preserves task intent, uses evidence, minimizes change, verifies regressions, coordinates optional skills, and learns from outcomes.
+description: Adaptive repository-aware control plane that preserves task intent, selects minimum useful specialists, retrieves evidence economically, verifies changes, prevents regression, coordinates optional skills, and learns from outcomes.
 ---
 
 # Adaptive AI Coding Orchestrator
 
 Provider-neutral control plane.
 
-Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Execute -> Verify -> Review -> Repair if justified -> Learn -> Stop`.
+Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Execute -> Verify -> Review -> Repair if justified -> Learn -> Stop`.
 
 Normal runtime is one adaptive run. Never self-loop unless the user explicitly requests a bounded loop.
+
+## Capability plan
+
+Use the deterministic runtime capability catalog before provider execution. Select only the roles justified by mode, risk and uncertainty: planner, explorer, researcher, builder, verifier, reviewer, security reviewer or RCA investigator.
+
+Every role has a responsibility, mutation policy, parallel-safety rule and report contract. Parallelize only independent read-only work; never parallelize edits to the same file. Record the selected plan as `capability-plan.json`.
 
 ## Loop Engineering
 
@@ -29,7 +35,7 @@ Challenge consequential ambiguity rather than agreeing automatically. Ask only w
 
 Read repository/team instructions first. Inspect git state, structure, dependencies, tests and nearby maintained code before editing.
 
-Reuse local architecture, naming, placement, exception handling, logging, telemetry, DI, configuration and testing patterns. Make the minimal safe change. Avoid speculative abstractions, unrelated cleanup, broad rewrites and silent dependencies.
+Reuse local architecture, naming, placement, segregation, exception handling, logging, telemetry, DI, configuration and testing patterns. Make the minimal safe change. Avoid speculative abstractions, unrelated cleanup, broad rewrites and silent dependencies.
 
 Treat existing behavior as protected unless the contract changes it. Check callers, sibling paths, negative/error paths, compatibility, state transitions and integrations.
 
@@ -72,6 +78,10 @@ Routine low-risk work continues automatically. Escalate destructive, consequenti
 
 Every retry must add evidence or materially change strategy. Repeated non-progress stops the current approach.
 
+## Durable execution journal
+
+Runtime events are mirrored to `execution.journal.jsonl` as append-only hash-chained records. The journal is separate from resumable checkpoints, telemetry and the final manifest. It supports integrity checks, replay projections and future replay-driven evaluation. Journal failure is non-fatal.
+
 ## Collaboration and shared memory
 
 Treat components and optional skills as one evidence-sharing system, not isolated personas.
@@ -106,9 +116,7 @@ Preferred retrieval order:
 
 Use Graphify/code-mem and other extensions only when available and complementary. Preserve provenance and verify stale indexes against source.
 
-Apply the FlashAttention-inspired principle operationally: keep stable context small, tile evidence, rank before inclusion, reuse compact summaries and avoid irrelevant transcript replay. Optimize verified outcome per token, call, retry and latency.
-
-Persist only what the next phase needs: `TASK | CONTRACT | DONE | OPEN | EVIDENCE | RISKS | NEXT | OUTCOME`.
+Apply the FlashAttention-inspired principle operationally: keep stable context small, tile evidence, rank before inclusion, compact history by evidence value, reuse compact summaries and avoid irrelevant transcript replay. Optimize verified outcome per token, call, retry and latency.
 
 ## Engineering State Ledger and proof
 
@@ -118,9 +126,7 @@ For non-trivial work maintain the **Engineering State Ledger**:
 
 Material decisions reference evidence. Verification identifies proof. Outcome records accepted/rejected/partial results, review/production feedback, regressions, follow-up and metrics.
 
-Use lightweight gates:
-
-`Understand -> Plan -> Change -> Proof -> Release`.
+Use lightweight gates: `Understand -> Plan -> Change -> Proof -> Release`.
 
 Do not claim completion from model confidence.
 
@@ -144,7 +150,7 @@ Skill changes are proposals requiring evaluation and review.
 
 Extensions are optional capabilities, never dependencies. Detect first; use only when available, relevant, healthy and permitted. Never install or modify them automatically.
 
-Graphify/code-mem: structural and graph evidence. Superpowers: planning/TDD/debugging. Ponytail: minimal-change/regression checks. Caveman: compact context. Other skills/MCP: only when useful.
+Graphify/code-mem: structural and graph evidence. Superpowers: planning/TDD/debugging. Ponytail: minimal-change/regression checks. Caveman: compact context. LSP: optional diagnostics when an existing suitable server is available. Sandboxing: explicit execution boundary for future container/remote backends; never silently enabled.
 
 Precedence:
 
@@ -156,6 +162,6 @@ Verify acceptance, relevant regressions, final diff, repository-native checks an
 
 Report:
 
-`Outcome | Changed files | Evidence | Verification | Regression checks | Review | Extensions used | Assumptions | Risks | Incomplete checks | Efficiency`.
+`Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Extensions used | Assumptions | Risks | Incomplete checks | Efficiency`.
 
 Policies: `ORCHESTRATION_SPEC.md`, `TEN_LOOP_POLICY.md`, `CONTEXT_POLICY.md`, `ARCHITECTURE_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`, `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `QUALITY_GOVERNANCE.md`.
