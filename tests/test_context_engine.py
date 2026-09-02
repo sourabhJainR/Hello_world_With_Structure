@@ -34,6 +34,26 @@ class ContextEngineTests(unittest.TestCase):
         result = self.module.select_context("feature", "repo", "memory", "history", 1000)
         self.assertIn("stable-prefix", result["strategy"])
 
+    def test_history_compaction_preserves_high_value_evidence(self):
+        history = "\n".join(
+            [
+                "[execute] exploratory note about an unrelated module",
+                "[execute] Evidence: tenant filter is applied in service.py:42",
+                "[execute] Decision: preserve legacy null behavior",
+                "[execute] noisy repeated model narration",
+                "[validate] Verification: regression tests passed",
+                "[review] Risk: downstream consumer may depend on ordering",
+                "[review] Next: inspect the consumer before finalizing",
+            ]
+        )
+        result = self.module.compact_history(history, "tenant filter legacy regression", 280)
+        self.assertIn("Evidence:", result)
+        self.assertIn("Verification:", result)
+        self.assertLessEqual(len(result), 280)
+
+    def test_empty_history_is_empty(self):
+        self.assertEqual(self.module.compact_history("", "anything", 100), "")
+
     def test_launcher_exists_as_public_entrypoint(self):
         self.assertTrue(LAUNCHER.exists())
 
