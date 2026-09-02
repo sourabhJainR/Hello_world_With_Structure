@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-orchestrator"
-version = 16
+version = 17
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -32,6 +32,20 @@ context_budget = 3200
 max_history_chars = 4000
 minimum_confidence_for_auto_capability = 0.68
 escalate_after_failed_verifications = 2
+
+[capability_catalog]
+enabled = true
+catalog_file = ".ai-harness/runtime/capability_catalog.py"
+minimum_capability_set = true
+explicit_report_contracts = true
+parallel_read_only_only = true
+
+[durability]
+enabled = true
+journal_file = "execution.journal.jsonl"
+hash_chain = true
+replay_projection = true
+journal_failure_is_non_fatal = true
 
 [orchestration]
 max_passes = 10
@@ -78,7 +92,7 @@ policy_file = ".ai-harness/CONTEXT_POLICY.md"
 [flash_context]
 enabled = true
 policy_file = ".ai-harness/FLASH_CONTEXT_POLICY.md"
-strategy = "stable-prefix + tiled-context + relevance-ranking + bounded-evidence"
+strategy = "stable-prefix + evidence-priority-compaction + tiled-context + relevance-ranking + bounded-evidence"
 budget_chars = 12000
 repository_budget_chars = 9000
 memory_budget_chars = 2000
