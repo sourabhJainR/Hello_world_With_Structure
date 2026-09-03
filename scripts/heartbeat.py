@@ -13,4 +13,4 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from .ai_harness_import_note import unused  # type: ignore # pragma: no cover
+from . import _bootstrap  # type: ignore # pragma: no cover
