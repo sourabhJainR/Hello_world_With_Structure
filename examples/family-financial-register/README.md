@@ -12,6 +12,8 @@ Design goals:
 - keep instructions clear and minimal;
 - make stale records visible.
 
+`HARNESS_SCENARIOS.md` documents safe control-plane scenarios for this higher-sensitivity example, including complete-job prompting, material-ambiguity handling, security and scope fences, script-first deterministic validation, and proof from deterministic verification.
+
 Run:
 
 ```bash
