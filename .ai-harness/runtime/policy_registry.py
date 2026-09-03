@@ -39,17 +39,32 @@ class PolicyRegistry:
         self._policies[key] = promoted
         return promoted
 
-    def rollback(self, policy_id: str, version: int, *, now: int | None = None) -> Policy:
+    def rollback(self, policy_id: str, version: int, *, now: int | None = None, restore_previous: bool = True) -> Policy:
         key = (policy_id, version)
         policy = self._policies[key]
         if policy.status != "active":
             raise ValueError("only active policies can be rolled back")
-        retired = Policy(**{**asdict(policy), "status": "rolled_back", "retired_at": int(time.time()) if now is None else now})
+        timestamp = int(time.time()) if now is None else now
+        retired = Policy(**{**asdict(policy), "status": "rolled_back", "retired_at": timestamp})
         self._policies[key] = retired
+        if restore_previous:
+            prior = [
+                p for p in self._policies.values()
+                if p.task_class == policy.task_class and p.status == "rolled_back" and p.version < policy.version
+            ]
+            if prior:
+                previous = max(prior, key=lambda p: (p.version, p.confidence))
+                self._policies[(previous.policy_id, previous.version)] = Policy(
+                    **{**asdict(previous), "status": "active", "retired_at": None}
+                )
         return retired
 
     def active(self, task_class: str) -> list[Policy]:
         return sorted((p for p in self._policies.values() if p.status == "active" and p.task_class == task_class), key=lambda p: (p.confidence, p.version), reverse=True)
+
+    def best_strategy(self, task_class: str) -> str | None:
+        active = self.active(task_class)
+        return active[0].strategy if active else None
 
     def export_jsonl(self) -> str:
         return "\n".join(json.dumps(asdict(p), sort_keys=True) for p in self._policies.values())
