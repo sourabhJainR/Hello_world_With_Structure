@@ -61,13 +61,19 @@ def plan_context(*, phase: str, risk: str = "medium", uncertainty: str = "medium
     if risk in {"high", "critical"}:
         modes += ["security", "history"]
 
+    # Strategy hints may reorder or add retrieval modes, but must never remove
+    # modes required by risk/uncertainty controls.
+    required_modes = list(modes)
     strategy = (policy_strategy or "").strip().lower()
     if strategy in {"targeted_context", "structural_first"}:
-        modes = ["instructions", "task_contract", "structural", "lexical", *(["memory"] if phase in {"implement", "review", "verify"} else [])]
-    elif strategy in {"semantic_first", "research_first"} and "semantic" not in modes:
-        modes.insert(3, "semantic")
-    elif strategy in {"history_first", "regression_history"} and "history" not in modes:
-        modes.append("history")
+        preferred = ["instructions", "task_contract", "structural", "lexical"]
+        modes = preferred + [item for item in required_modes if item not in preferred]
+    elif strategy in {"semantic_first", "research_first"}:
+        modes = ["semantic"] + [item for item in required_modes if item != "semantic"]
+    elif strategy in {"history_first", "regression_history"}:
+        modes = ["history"] + [item for item in required_modes if item != "history"]
+    else:
+        modes = required_modes
 
     modes = list(dict.fromkeys(modes))
     budgets = {"low": 9000, "medium": 14000, "high": 20000, "critical": 24000}
