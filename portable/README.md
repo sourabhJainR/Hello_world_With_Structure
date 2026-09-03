@@ -1,67 +1,104 @@
-# AER Portable Bundle
+# AER Portable Distribution
 
-The portable distribution is **repository-isolated by design**. AER is installed under the user's machine-level `~/.aer` directory and the selected Agent Skill is installed in a user-level skill location. A target project is a workspace only; the installer does not vendor AER files into that project.
+AER is a **machine-scoped, repository-isolated, version-pinned engineering control plane**. Installing or updating AER never vendors its implementation into the repository being worked on.
 
-## What is carried
+## Distribution unit
 
-The bundle contains the complete provider-neutral `.ai-harness` implementation plus the canonical `ai-coding-orchestrator` Agent Skill. This includes the current routing/context policies, context cache, learning engine and controller, policy registry, rollback controls, regression corpus, shadow/canary evaluation, verification controls, extension contracts, and supporting runtime modules present in the source `.ai-harness` tree.
+The bundle contains the current provider-neutral AER runtime and canonical Agent Skill, including routing, bounded context, context cache, learning, policy registry, rollback controls, regression corpus, shadow/canary evaluation, verification, capability planning, and optional-extension contracts.
 
-Mutable or machine-specific state is excluded from the bundle: execution journals, telemetry, task-memory/regression event logs, worktrees, and Python caches.
+Mutable state is excluded: execution journals, telemetry, learned task logs, worktrees, caches, and other machine/session state.
 
-## Build an offline bundle
-
-Run from the AER source repository:
-
-```bash
-python portable/aer.py build --output aer-portable.zip
-python portable/aer.py verify aer-portable.zip
-```
-
-The ZIP is content-addressed by a manifest and can be copied to another machine with no Git access required.
-
-## Install on a machine
+## Install
 
 ```bash
 python aer.py install aer-portable.zip
 ```
 
-The installer writes only to user-scoped AER/Agent-Skill locations such as `~/.aer` and `~/.agents/skills`. It accepts no target-repository path because installation must not mutate a project.
+AER is installed under `~/.aer/versions/v<version>/` and selected through `~/.aer/current`. The exact semantic version, source Git commit, bundle SHA-256 and installation time are stored in `install.json` and `active.json`.
 
-Use `--skill claude`, `--skill gemini`, `--skill all`, or `--skill none` for host selection.
+The Agent Skill is installed only in user-level locations. No target repository path is accepted by the installer.
+
+## Self-update
+
+Check the configured update channel:
+
+```bash
+python ~/.aer/current/aer.py check-update
+```
+
+Update to the newest channel commit only when it carries a newer semantic version:
+
+```bash
+python ~/.aer/current/aer.py update
+```
+
+The updater resolves the remote commit first, downloads that **exact commit**, rebuilds and verifies the bundle, installs it into a new immutable version directory, and only then switches the `current` pointer. A changed commit without a version bump is rejected unless explicitly forced.
+
+The default channel is the AER repository `main` branch. For controlled environments, use a stable branch/ref as the channel:
+
+```bash
+python ~/.aer/current/aer.py check-update --channel release
+python ~/.aer/current/aer.py update --channel release
+```
+
+## Version pinning
+
+Each installed version has two pins:
+
+`semantic version -> exact source commit`
+
+A version directory cannot be silently overwritten by another commit. This prevents a mutable branch from changing the meaning of an already-installed version.
+
+The `current` pointer is the only active selection. Older versions remain available for rollback.
+
+## Rollback
+
+Automatic rollback to the previous installed version:
+
+```bash
+python ~/.aer/current/aer.py rollback
+```
+
+Or select a specific installed version:
+
+```bash
+python ~/.aer/current/aer.py rollback --version 20.1.0
+```
+
+Rollback changes only AER's user-scoped installation and selected user-level skill surfaces.
 
 ## Repository isolation contract
 
-These are hard guarantees of the portable installer:
+The installer and updater:
 
-- It does **not** create `.ai-harness` in a target repository.
-- It does **not** replace, delete, or back up existing target files.
-- It does **not** add files to the target Git working tree or index.
-- It does **not** modify `.git/config`, hooks, remotes, branches, or ignore files.
-- It does **not** modify MCP configuration, credentials, permissions, production access, or merge authority.
-- A repository that was clean before AER installation remains unchanged after AER installation.
+- never create, replace, delete, or back up `.ai-harness` in a project;
+- never add files to the project's working tree or Git index;
+- never modify `.git/config`, hooks, remotes, branches, or ignore files;
+- never modify project source, tests, manifests, or configuration merely to install AER;
+- never silently change MCP configuration, credentials, permissions, production access, or merge authority.
 
-Project-specific instructions remain owned by the project. AER implementation, configuration, caches, journals, learned state, regression corpus, and runtime code remain outside the project.
+A target repository can therefore remain completely unchanged by installing, updating, or rolling back AER.
 
-## Using AER with any repository
+When AER actually performs a user's requested engineering task, changes to the project are the requested engineering changes—not AER distribution artifacts.
 
-After machine-level installation, open any repository with the supported coding agent and use the normal AER skill. The skill treats the current repository as the workspace and keeps the AER implementation outside it. Optional integrations remain opt-in and are never installed automatically.
-
-AER may inspect the repository, run repository-native commands and change project files only when the user's engineering task requires those changes. Those are the user's requested product/code changes, not AER installation artifacts.
-
-## Lifecycle after installation
+## Lifecycle
 
 ```text
-intent
-  -> route/context
-  -> execute/verify/review
-  -> observe outcome
-  -> learn candidate
-  -> deterministic regression replay
-  -> shadow evaluation
-  -> bounded canary
-  -> explicit promotion
-  -> monitor
-  -> rollback when health degrades
+installed pinned version
+        |
+     check-update
+        |
+ download exact commit
+        |
+ build + integrity verify
+        |
+ install new immutable version
+        |
+ atomic current-pointer switch
+        |
+ observe -> learn -> regressions -> shadow -> canary -> promote -> monitor
+        |
+      rollback
 ```
 
-Learned behavior remains advisory and safety-critical controls remain authoritative.
+Learned behavior remains advisory and safety/security controls remain authoritative.
