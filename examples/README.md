@@ -6,7 +6,25 @@ They are not dependencies, fixtures, or required runtime components.
 
 ## Included references
 
-- `habit-tracker/`: small CRUD-style application showing tasks, streaks, validation, and tests.
-- `family-financial-register/`: a continuity-oriented record structure for important financial accounts, assets, liabilities, contacts, and instructions. It contains only fake sample data and is not a financial or legal system.
+| Example | Purpose | Control-plane coverage |
+| --- | --- | --- |
+| `habit-tracker/` | Small CRUD-style application showing tasks, streaks, validation, and tests. | Complete-job prompting, material ambiguity, scope fencing, script-first validation, deterministic proof. |
+| `family-financial-register/` | Offline continuity-oriented record structure using fake data only. | Complete-job prompting, material ambiguity, security/scope fences, script-first validation, deterministic proof. |
 
-Use these examples as practice repositories for the harness workflows. Keep domain code isolated from `.ai-harness` so the core system has no dependency on the examples.
+Each example keeps domain code independent from `.ai-harness`. The harness scenarios live in `HARNESS_SCENARIOS.md` within the example and describe the expected run behavior without coupling the application to the control plane.
+
+## Current reference pattern
+
+A good example task should exercise the same contract used by the current implementation:
+
+1. **Intent** — immutable user outcome, rationale, done criteria, guardrails, and non-goals.
+2. **Spec** — refine the requested behavior without silently broadening intent.
+3. **Plan** — sequence the work and identify deterministic checks.
+4. **Changeset** — make only the authorized change.
+5. **Verification** — use deterministic tests/scripts as the authoritative check.
+6. **Review** — inspect the result for correctness, scope, security, and regressions.
+7. **Proof** — retain evidence tied to the run and final changeset.
+
+The scenarios also demonstrate `CLARIFICATION_NEEDED` for material ambiguity, explicit scope fencing for out-of-scope work, script-first handling of repeatable mechanical tasks, and human approval for destructive or security-sensitive changes.
+
+Run either example directly from its directory with the documented Python test command. These examples require no external services and use no real credentials or secrets.
