@@ -2,8 +2,9 @@
 """Build, verify, install and update isolated AER distributions.
 
 AER is machine-scoped. Project repositories are workspaces only and are never
-used as an installation location. Installed versions are immutable and selected
-through a user-scoped pointer, so updates can be pinned, audited and rolled back.
+used as an installation location. Installed versions are pinned by semantic
+version, exact source commit and bundle hash, so updates are auditable and
+rollbacks are deterministic.
 """
 from __future__ import annotations
 
@@ -80,9 +81,8 @@ def _plugin_version(root: Path) -> str:
     return "0.0.0"
 
 def _version_tuple(version: str) -> tuple[int, int, int]:
-    parts = version.split(".")
     values = []
-    for part in parts[:3]:
+    for part in version.split(".")[:3]:
         digits = "".join(ch for ch in part if ch.isdigit())
         values.append(int(digits or 0))
     while len(values) < 3:
@@ -127,7 +127,7 @@ def build(root: Path, output: Path, source_commit: str | None = None, source_ref
         for source in files:
             archive.write(source, f"{PAYLOAD_ROOT}/{source.relative_to(root).as_posix()}")
         archive.write(root / "aer.py", "aer.py")
-        archive.writestr(f"{PAYLOAD_ROOT}/PORTABLE_BUNDLE.txt", "AER portable bundle\nInstallation is user-scoped and repository-isolated.\nInstalled versions are immutable and selected by a pinned user-level pointer.\n")
+        archive.writestr(f"{PAYLOAD_ROOT}/PORTABLE_BUNDLE.txt", "AER portable bundle\nInstallation is user-scoped and repository-isolated.\nVersion and exact source commit are pinned in the manifest.\n")
     return output
 
 def safe_extract(archive: zipfile.ZipFile, destination: Path) -> None:
@@ -244,10 +244,11 @@ def install(bundle: Path, install_skill: str = "agents", aer_home: Path | None =
         with zipfile.ZipFile(bundle) as archive:
             safe_extract(archive, temp)
         existing = version_root / "install.json"
+        bundle_hash = sha256_file(bundle)
         if existing.is_file():
             prior = json.loads(existing.read_text(encoding="utf-8"))
-            if prior.get("source_commit") != manifest["source_commit"]:
-                raise SystemExit(f"version {version} is already pinned to {prior.get('source_commit')}; refusing overwrite")
+            if prior.get("source_commit") != manifest["source_commit"] or prior.get("bundle_sha256") != bundle_hash:
+                raise SystemExit(f"version {version} is already pinned to a different build; refusing overwrite")
         elif version_root.exists():
             raise SystemExit(f"version directory exists without a pin: {version_root}")
         _copy_payload(temp / PAYLOAD_ROOT, version_root)
@@ -258,7 +259,7 @@ def install(bundle: Path, install_skill: str = "agents", aer_home: Path | None =
             "source_repository": manifest.get("source_repository"),
             "source_ref": manifest.get("source_ref"),
             "source_commit": manifest.get("source_commit"),
-            "bundle_sha256": sha256_file(bundle),
+            "bundle_sha256": bundle_hash,
             "installed_at": datetime.now(timezone.utc).isoformat(),
             "repository_isolated": True,
         }
@@ -336,7 +337,6 @@ def update(aer_home: Path | None = None, ref: str = AER_BRANCH) -> Path:
         source = _download_source(status["latest_commit"], temp)
         bundle = temp / "aer-portable.zip"
         build(source, bundle, source_commit=status["latest_commit"], source_ref=ref)
-        verify_bundle(bundle)
         manifest = verify_bundle(bundle)
         if _version_tuple(manifest["version"]) != _version_tuple(status["latest_version"]):
             raise SystemExit("downloaded source version differs from update metadata; refusing activation")
