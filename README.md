@@ -48,6 +48,12 @@ The broader engineering state is:
 
 AER is therefore more than a prompt library or model wrapper. It is the control plane around the coding agent.
 
+## GenAI coding system adaptation
+
+AER now incorporates the most useful engineering ideas from the current `awesome-generative-ai-guide`: explicit context engineering, hybrid retrieval, adaptive planning, whole-system evaluation, independent verification, restrained multi-agent use, and production feedback. These are expressed as repository policies rather than dependencies on a specific model, framework, vector database, or agent host.
+
+See `.ai-harness/GENAI_CODING_POLICY.md` and `docs/GENAI_CODING_ADAPTATION.md`.
+
 ## AER design principles
 
 - Repository conventions before generic conventions.
