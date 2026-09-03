@@ -2,6 +2,7 @@
 """Production launcher: one run owns one session and one IO-aware context policy."""
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 import sys
@@ -13,6 +14,7 @@ import engine
 import knowledge_fabric
 import p1_lifecycle
 import extension_registry
+import verification_gate
 from runtime import capability_catalog, instruction_loader, loop_engine
 from runtime.intent_contract import create_intent_contract, semantic_alignment, verify_intent_contract
 from runtime import learning
@@ -20,6 +22,7 @@ from runtime import learning
 _original_make_run_dir = engine.make_run_dir
 _original_build_prompt = engine.build_prompt
 _original_run_task = engine.run_task
+_original_run_validation = engine.run_validation
 _session_dir: Path | None = None
 _knowledge: dict = {}
 _intent_contract: dict = {}
@@ -160,6 +163,23 @@ def optimized_build_prompt(phase, task, source, jira, route, repo_map, memory, p
     return prompt + anchor + f"\n## Knowledge fabric\nSources: {sources}\n{knowledge}\n\n## IO-aware context\n{metadata}\n"
 
 
+def strict_run_validation(config: dict, run_dir: Path):
+    """Do not turn absence of discovered tests into a successful verification result."""
+    passed, results = _original_run_validation(config, run_dir)
+    if results:
+        return passed, results
+    commands = verification_gate.discover_commands()
+    ok, reason = verification_gate.validate_discovery(commands)
+    if not ok:
+        result = {"status": "failed", "exit_code": 125, "reason": reason, "commands": []}
+        (run_dir / "validation.log").write_text(reason + "\n", encoding="utf-8")
+        return False, [result]
+    strict_config = copy.deepcopy(config)
+    strict_config.setdefault("validation", {})["commands"] = commands
+    strict_config["validation"]["auto_discover"] = False
+    return _original_run_validation(strict_config, run_dir)
+
+
 def optimized_run_task(args, config, logger):
     global _session_dir, _capability_plan, _repository_instructions
     _session_dir = Path(args.resume).resolve() if getattr(args, "resume", None) else None
@@ -250,6 +270,7 @@ def optimized_run_task(args, config, logger):
 engine.make_run_dir = session_make_run_dir
 engine.repository_map = optimized_repository_map
 engine.build_prompt = optimized_build_prompt
+engine.run_validation = strict_run_validation
 engine.run_task = optimized_run_task
 
 if __name__ == "__main__":
