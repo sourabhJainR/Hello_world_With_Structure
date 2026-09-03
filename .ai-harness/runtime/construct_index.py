@@ -12,10 +12,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent.parent
 IGNORED_PREFIXES = (".git/", ".ai-harness/runs/", ".ai-harness/worktrees/", "node_modules/", ".venv/", "venv/", "bin/", "obj/", "dist/", "build/", "target/", "__pycache__/")
 IGNORED_FILES = {".git"}
-TEXT_EXTENSIONS = {
-    ".py", ".cs", ".java", ".go", ".rs", ".ts", ".tsx", ".js", ".jsx", ".kt", ".swift", ".rb", ".php", ".c", ".cpp", ".h", ".hpp",
-    ".sql", ".json", ".yaml", ".yml", ".toml", ".xml", ".md", ".graphql", ".gql", ".proto", ".csproj", ".sln",
-}
+TEXT_EXTENSIONS = {".py", ".cs", ".java", ".go", ".rs", ".ts", ".tsx", ".js", ".jsx", ".kt", ".swift", ".rb", ".php", ".c", ".cpp", ".h", ".hpp", ".sql", ".json", ".yaml", ".yml", ".toml", ".xml", ".md", ".graphql", ".gql", ".proto", ".csproj", ".sln"}
 
 @dataclass(frozen=True)
 class Construct:
@@ -40,8 +37,7 @@ def _language(path: Path) -> str:
 
 
 def _id(kind: str, path: str, name: str, line: int) -> str:
-    raw = f"{kind}|{path}|{name}|{line}".encode()
-    return "rc-" + hashlib.sha1(raw).hexdigest()[:12]
+    return "rc-" + hashlib.sha1(f"{kind}|{path}|{name}|{line}".encode()).hexdigest()[:12]
 
 
 def _add(result: list[Construct], kind: str, name: str, path: str, line: int, *, parent: str | None = None, signature: str | None = None, language: str | None = None) -> None:
@@ -66,7 +62,7 @@ def _scan_code(path: Path, text: str, result: list[Construct]) -> None:
     lang = _language(path)
     lines = text.splitlines()
     parents: list[tuple[int, str]] = []
-    patterns: list[tuple[str, re.Pattern[str]]] = [
+    patterns = [
         ("class", re.compile(r"^\s*(?:public|private|protected|internal|abstract|final|sealed|partial|export|open|data|static|unsafe|async|\s)*\s*class\s+([A-Za-z_][\w]*)")),
         ("interface", re.compile(r"^\s*(?:public|private|protected|internal|export|\s)*\s*interface\s+([A-Za-z_][\w]*)")),
         ("record", re.compile(r"^\s*(?:public|private|protected|internal|export|\s)*\brecord(?:\s+class|\s+struct)?\s+([A-Za-z_][\w]*)")),
@@ -81,14 +77,13 @@ def _scan_code(path: Path, text: str, result: list[Construct]) -> None:
                 parent = parents[-1][1] if parents else None
                 _add(result, kind, name, rel, number, parent=parent, signature=line.strip(), language=lang)
                 if "{" in line:
-                    end = _brace_end(lines, number - 1)
-                    parents.append((end or len(lines), name))
+                    parents.append((_brace_end(lines, number - 1) or len(lines), name))
                 break
         while parents and number > parents[-1][0]:
             parents.pop()
 
     function_patterns = {
-        "python": re.compile(r"^\s*(?:async\s+)?def\s+([A-Za-z_][\w]*)\s*\((.*?)\)"),
+        "python": re.compile(r"^\s*(?:async\s+)?def\s+([A-Za-z_][\w]*)\s*\("),
         "go": re.compile(r"^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_][\w]*)\s*\("),
         "rust": re.compile(r"^\s*(?:pub\s+)?(?:async\s+)?fn\s+([A-Za-z_][\w]*)\s*\("),
         "csharp": re.compile(r"^\s*(?:(?:public|private|protected|internal|static|async|virtual|override|sealed|new|partial|unsafe|extern)\s+)*(?:[\w<>,.?\[\]]+)\s+([A-Za-z_][\w]*)\s*\("),
@@ -107,23 +102,14 @@ def _scan_code(path: Path, text: str, result: list[Construct]) -> None:
             if match:
                 name = next((group for group in match.groups() if group), None)
                 if name and name not in {"if", "for", "while", "switch", "catch"}:
-                    parent = None
-                    for construct in reversed(result):
-                        if construct.path == rel and construct.line <= number and construct.kind in {"class", "interface", "record", "struct", "enum"}:
-                            parent = construct.name
-                            break
+                    parent = next((c.name for c in reversed(result) if c.path == rel and c.line <= number and c.kind in {"class", "interface", "record", "struct", "enum"}), None)
                     _add(result, "function", name, rel, number, parent=parent, signature=line.strip(), language=lang)
 
 
 def _scan_sql(path: Path, text: str, result: list[Construct]) -> None:
     rel = str(path.relative_to(ROOT)).replace("\\", "/")
+    patterns = [("stored_procedure", r"\b(?:CREATE|ALTER)\s+(?:OR\s+ALTER\s+)?PROCEDURE\s+([\[\]\w.]+)"), ("view", r"\b(?:CREATE|ALTER)\s+VIEW\s+([\[\]\w.]+)"), ("table", r"\b(?:CREATE|ALTER)\s+TABLE\s+([\[\]\w.]+)"), ("function", r"\b(?:CREATE|ALTER)\s+FUNCTION\s+([\[\]\w.]+)")]
     for number, line in enumerate(text.splitlines(), 1):
-        patterns = [
-            ("stored_procedure", r"\b(?:CREATE|ALTER)\s+(?:OR\s+ALTER\s+)?PROCEDURE\s+([\[\]\w.]+)"),
-            ("view", r"\b(?:CREATE|ALTER)\s+VIEW\s+([\[\]\w.]+)"),
-            ("table", r"\b(?:CREATE|ALTER)\s+TABLE\s+([\[\]\w.]+)"),
-            ("function", r"\b(?:CREATE|ALTER)\s+FUNCTION\s+([\[\]\w.]+)"),
-        ]
         for kind, expression in patterns:
             match = re.search(expression, line, re.I)
             if match:
@@ -159,6 +145,8 @@ def build_index(root: Path = ROOT) -> dict[str, Any]:
         except OSError:
             continue
         files += 1
+        rel = str(path.relative_to(root)).replace("\\", "/")
+        _add(constructs, "file", rel, rel, 1, signature=f"file {rel}", language=_language(path))
         if path.suffix.lower() == ".sql":
             _scan_sql(path, text, constructs)
         elif path.suffix.lower() in {".json", ".yaml", ".yml", ".toml"}:
@@ -169,20 +157,16 @@ def build_index(root: Path = ROOT) -> dict[str, Any]:
 
 
 def compact_index(index: dict[str, Any], limit: int = 9000) -> str:
-    """Create prompt-sized construct references without losing exact paths/symbols."""
     lines = ["# Repository Construct Index", f"Files scanned: {index.get('files_scanned', 0)}", f"Constructs indexed: {index.get('construct_count', 0)}"]
     for item in index.get("constructs", []):
         parent = f" parent={item['parent']}" if item.get("parent") else ""
         signature = f" | {item['signature']}" if item.get("signature") else ""
         lines.append(f"- [{item['id']}] {item['kind']} {item['path']}:{item['line']}::{item['name']}{parent}{signature}")
     text = "\n".join(lines)
-    if len(text) <= limit:
-        return text
-    return text[: max(1, limit - 80)] + "\n... [construct index compacted; full index is regenerated from the repository source]"
+    return text if len(text) <= limit else text[: max(1, limit - 80)] + "\n... [construct index compacted; full index is regenerated from the repository source]"
 
 
 def validate_references(text: str, index: dict[str, Any]) -> dict[str, Any]:
-    """Check explicit repository references against indexed constructs/files."""
     known_paths = {str(item["path"]) for item in index.get("constructs", [])}
     known_ids = {str(item["id"]) for item in index.get("constructs", [])}
     known_symbols = {(str(item["path"]), str(item["name"])) for item in index.get("constructs", [])}
