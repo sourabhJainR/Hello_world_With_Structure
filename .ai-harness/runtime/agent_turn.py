@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Observable agent-turn state machine, usage accounting and decision telemetry."""
+"""Observable agent-turn state machine, live tool telemetry and interrupt decisions."""
 from __future__ import annotations
 
 import hashlib
@@ -12,10 +12,12 @@ STATES = ("idle", "planning", "acting", "observing", "verifying", "deciding", "c
 OBSERVATION_PREFIX = "HARNESS_TOOL_OBSERVATION:"
 USAGE_PREFIX = "HARNESS_USAGE:"
 CACHE_PREFIX = "HARNESS_CACHE:"
+INTERRUPT_REPAIR_EXIT = 75
+INTERRUPT_STOP_EXIT = 76
 
 
 def digest(value: Any) -> str:
-    raw = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    raw = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
@@ -24,7 +26,7 @@ def estimate_tokens(text: str) -> int:
 
 
 def _json_lines(output: str, prefix: str) -> list[dict[str, Any]]:
-    rows = []
+    rows: list[dict[str, Any]] = []
     for line in output.splitlines():
         if not line.startswith(prefix):
             continue
@@ -92,6 +94,8 @@ class AgentTurn:
 
 
 class AgentTurnStateMachine:
+    """Provider-neutral state machine; provider adapters supply observations, not policy."""
+
     _allowed = {
         "idle": {"planning", "acting", "failed"},
         "planning": {"acting", "failed"},
@@ -119,19 +123,23 @@ class AgentTurnStateMachine:
         self.turn.context_digest = context_digest or digest(self.turn.context_pages)
         self._event("context.lineage", {"page_ids": self.turn.context_pages, "context_digest": self.turn.context_digest})
 
+    def observe_tool(self, row: dict[str, Any]) -> ToolObservation:
+        observation = ToolObservation(
+            sequence=int(row.get("sequence", len(self.turn.observations) + 1)),
+            tool=str(row.get("tool", "unknown")),
+            status=str(row.get("status", "unknown")),
+            duration_ms=float(row.get("duration_ms", 0) or 0),
+            result_digest=str(row.get("result_digest") or digest(row.get("result", ""))),
+            error=str(row["error"]) if row.get("error") else None,
+            metadata=row.get("metadata") if isinstance(row.get("metadata"), dict) else {},
+        )
+        self.turn.observations.append(observation)
+        self._event("tool.observation", asdict(observation))
+        return observation
+
     def observe_tools(self, output: str) -> None:
-        for index, row in enumerate(_json_lines(output, OBSERVATION_PREFIX), start=1):
-            observation = ToolObservation(
-                sequence=int(row.get("sequence", index)),
-                tool=str(row.get("tool", "unknown")),
-                status=str(row.get("status", "unknown")),
-                duration_ms=float(row.get("duration_ms", 0) or 0),
-                result_digest=str(row.get("result_digest") or digest(row.get("result", ""))),
-                error=str(row["error"]) if row.get("error") else None,
-                metadata=row.get("metadata") if isinstance(row.get("metadata"), dict) else {},
-            )
-            self.turn.observations.append(observation)
-            self._event("tool.observation", asdict(observation))
+        for row in _json_lines(output, OBSERVATION_PREFIX):
+            self.observe_tool(row)
 
     def observe_usage(self, prompt: str, output: str) -> None:
         rows = _json_lines(output, USAGE_PREFIX)
@@ -165,6 +173,41 @@ class AgentTurnStateMachine:
         elif stable_context_digest:
             self.turn.cache = CacheTelemetry(provider_reported=False, source="harness-context-only", cache_key=stable_context_digest)
         self._event("cache.telemetry", asdict(self.turn.cache))
+
+    def decide_live(self, *, event: str, max_tool_calls: int = 0, max_tokens: int = 0,
+                    min_progress_gain: float = 0.03, previous_utility: float | None = None) -> dict[str, Any]:
+        """Evaluate the live turn immediately after a provider observation."""
+        completed = [o for o in self.turn.observations if o.status in {"completed", "failed", "error"}]
+        failures = [o for o in completed if o.status in {"failed", "error"} or o.error]
+        unique_results = len({o.result_digest for o in completed if o.result_digest})
+        observation_count = len(completed)
+        evidence = min(1.0, observation_count / 3.0)
+        uncertainty = 1.0 if observation_count == 0 else max(0.15, 1.0 - unique_results / max(3.0, observation_count + 1.0))
+        verification = 0.0 if event in {"tool_started", "tool_running"} else (0.75 if completed else 0.0)
+        utility = round(0.45 * verification + 0.35 * evidence - 0.15 * uncertainty - 0.10 * min(1, len(failures)), 4)
+        token_penalty = min(0.20, self.turn.usage.total_tokens / 200000)
+        utility = round(utility - token_penalty, 4)
+        gain = None if previous_utility is None else round(utility - previous_utility, 4)
+        if failures:
+            action, reason = "repair", "tool-failure-observed"
+        elif max_tokens > 0 and self.turn.usage.total_tokens >= max_tokens:
+            action, reason = "stop", "live-token-budget-exhausted"
+        elif max_tool_calls > 0 and observation_count >= max_tool_calls:
+            action, reason = "stop", "live-tool-call-budget-exhausted"
+        elif gain is not None and gain < min_progress_gain and observation_count >= 2:
+            action, reason = "stop", "live-diminishing-returns"
+        elif utility >= 0.90 and observation_count >= 2:
+            action, reason = "stop", "live-quality-threshold"
+        else:
+            action, reason = "continue", "live-improvement-available"
+        self.turn.decision = {
+            "action": action, "reason": reason, "utility": utility, "gain": gain,
+            "event": event, "observed_tool_calls": observation_count,
+            "observed_failures": len(failures), "token_penalty": round(token_penalty, 4),
+            "interruptible": True,
+        }
+        self._event("live.turn.decision", self.turn.decision)
+        return self.turn.decision
 
     def decide(self, *, verification_score: float, evidence_score: float, uncertainty: float, regressions: int = 0,
                max_turns: int = 3, min_gain: float = 0.03, previous_utility: float | None = None) -> dict[str, Any]:
@@ -200,9 +243,7 @@ class AgentTurnStateMachine:
         self._event("turn.complete", self.snapshot())
 
     def snapshot(self) -> dict[str, Any]:
-        value = asdict(self.turn)
-        value["observations"] = [asdict(item) for item in self.turn.observations]
-        return value
+        return asdict(self.turn)
 
     def _event(self, kind: str, data: dict[str, Any]) -> None:
         record = {"turn_id": self.turn.turn_id, "phase": self.turn.phase, "event": kind, "data": data}
@@ -212,8 +253,4 @@ class AgentTurnStateMachine:
 
 
 def parse_provider_metadata(output: str) -> dict[str, Any]:
-    return {
-        "tool_observations": _json_lines(output, OBSERVATION_PREFIX),
-        "usage": _json_lines(output, USAGE_PREFIX),
-        "cache": _json_lines(output, CACHE_PREFIX),
-    }
+    return {"tool_observations": _json_lines(output, OBSERVATION_PREFIX), "usage": _json_lines(output, USAGE_PREFIX), "cache": _json_lines(output, CACHE_PREFIX)}
