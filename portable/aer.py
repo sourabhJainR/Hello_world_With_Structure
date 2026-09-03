@@ -317,72 +317,96 @@ def check_update(aer_home: Path | None = None, ref: str = AER_BRANCH) -> dict:
     active = json.loads((root / "active.json").read_text(encoding="utf-8")) if (root / "active.json").is_file() else {}
     remote_version, remote_commit = _remote_target(ref)
     current_version = str(active.get("version") or "0.0.0")
+    current_commit = str(active.get("source_commit") or "")
+    update_available = (
+        _version_tuple(remote_version) > _version_tuple(current_version)
+        or (
+            _version_tuple(remote_version) == _version_tuple(current_version)
+            and bool(remote_commit)
+            and remote_commit != current_commit
+        )
+    )
     return {
         "current_version": active.get("version"),
         "current_commit": active.get("source_commit"),
         "latest_version": remote_version,
         "latest_commit": remote_commit,
-        "update_available": _version_tuple(remote_version) > _version_tuple(current_version),
-        "channel": ref,
+        "update_available": update_available,
     }
 
-def update(aer_home: Path | None = None, ref: str = AER_BRANCH) -> Path:
-    status = check_update(aer_home, ref)
-    if not status["update_available"]:
-        if status["latest_commit"] == status.get("current_commit"):
-            raise SystemExit("AER is already pinned to the latest channel version")
-        raise SystemExit(f"remote commit {status['latest_commit']} changed without a newer semantic version; refusing update")
-    temp = Path(tempfile.mkdtemp(prefix="aer-update-"))
-    try:
-        source = _download_source(status["latest_commit"], temp)
-        bundle = temp / "aer-portable.zip"
-        build(source, bundle, source_commit=status["latest_commit"], source_ref=ref)
-        manifest = verify_bundle(bundle)
-        if _version_tuple(manifest["version"]) != _version_tuple(status["latest_version"]):
-            raise SystemExit("downloaded source version differs from update metadata; refusing activation")
-        return install(bundle, "auto", aer_home)
-    finally:
-        shutil.rmtree(temp, ignore_errors=True)
-
-def rollback(aer_home: Path | None = None, version: str | None = None) -> Path:
+def rollback(aer_home: Path | None = None) -> Path:
     root = home_aer(aer_home)
-    active = json.loads((root / "active.json").read_text(encoding="utf-8")) if (root / "active.json").is_file() else {}
     versions = []
     for path in (root / "versions").glob("v*") if (root / "versions").exists() else []:
         record = path / "install.json"
         if record.is_file():
-            try:
-                versions.append(json.loads(record.read_text(encoding="utf-8")))
-            except json.JSONDecodeError:
-                pass
-    target = next((r for r in versions if r.get("version") == version), None) if version else next((r for r in sorted(versions, key=lambda r: r.get("installed_at", ""), reverse=True) if r.get("source_commit") != active.get("source_commit")), None)
-    if target is None:
-        raise SystemExit("requested rollback version is not installed")
-    target_root = root / "versions" / f"v{target['version']}"
-    _set_current(root, target_root)
-    _atomic_json(root / "active.json", target)
+            versions.append((json.loads(record.read_text(encoding="utf-8")), path))
+    active = json.loads((root / "active.json").read_text(encoding="utf-8")) if (root / "active.json").is_file() else {}
+    candidates = [item for item in versions if item[0].get("source_commit") != active.get("source_commit") or item[0].get("bundle_sha256") != active.get("bundle_sha256")]
+    if not candidates:
+        raise SystemExit("no previous immutable AER version is available")
+    candidates.sort(key=lambda item: (_version_tuple(str(item[0].get("version", "0.0.0"))), str(item[0].get("installed_at", ""))))
+    record, version_root = candidates[-1]
+    _set_current(root, version_root)
+    _atomic_json(root / "active.json", record)
     with (root / "history.jsonl").open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"event": "rollback", **target}) + "\n")
-    _sync_skills(target_root / "skills" / "ai-coding-orchestrator", "auto")
-    print(f"Rolled back AER to {target['version']} ({target['source_commit'][:12]})")
+        handle.write(json.dumps({"event": "rollback", **record}) + "\n")
+    _sync_skills(version_root / "skills" / "ai-coding-orchestrator", "agents")
+    print(f"Rolled back AER to {record['version']} ({record['source_commit'][:12]})")
     return root / "current"
 
+def update(aer_home: Path | None = None, ref: str = AER_BRANCH, install_skill: str = "agents") -> Path:
+    remote_version, remote_commit = _remote_target(ref)
+    root = home_aer(aer_home)
+    active = json.loads((root / "active.json").read_text(encoding="utf-8")) if (root / "active.json").is_file() else {}
+    if remote_version == active.get("version") and remote_commit == active.get("source_commit"):
+        raise SystemExit("AER is already up to date")
+    with tempfile.TemporaryDirectory(prefix="aer-update-") as tmp:
+        source = _download_source(remote_commit, Path(tmp))
+        bundle = Path(tmp) / "aer-portable.zip"
+        build(source, bundle, source_commit=remote_commit, source_ref=ref)
+        install(bundle, install_skill, root)
+    return root / "current"
+
+def parser() -> argparse.ArgumentParser:
+    root = argparse.ArgumentParser(description="AER portable distribution manager")
+    sub = root.add_subparsers(dest="command", required=True)
+    build_parser = sub.add_parser("build")
+    build_parser.add_argument("--output", type=Path, default=Path("aer-portable.zip"))
+    build_parser.add_argument("--source-commit", default=None)
+    build_parser.add_argument("--source-ref", default=AER_BRANCH)
+    verify_parser = sub.add_parser("verify")
+    verify_parser.add_argument("bundle", type=Path)
+    install_parser = sub.add_parser("install")
+    install_parser.add_argument("bundle", type=Path)
+    install_parser.add_argument("--skill", choices=("none", "agents", "claude", "gemini", "all", "auto"), default="agents")
+    install_parser.add_argument("--aer-home", type=Path, default=None)
+    update_parser = sub.add_parser("update")
+    update_parser.add_argument("--ref", default=AER_BRANCH)
+    update_parser.add_argument("--skill", choices=("none", "agents", "claude", "gemini", "all", "auto"), default="agents")
+    update_parser.add_argument("--aer-home", type=Path, default=None)
+    check_parser = sub.add_parser("check-update")
+    check_parser.add_argument("--ref", default=AER_BRANCH)
+    check_parser.add_argument("--aer-home", type=Path, default=None)
+    rollback_parser = sub.add_parser("rollback")
+    rollback_parser.add_argument("--aer-home", type=Path, default=None)
+    return root
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="aer", description="Build, verify, install and self-update isolated AER")
-    sub = parser.add_subparsers(dest="command", required=True)
-    p = sub.add_parser("build"); p.add_argument("--output", type=Path, default=Path("aer-portable.zip")); p.add_argument("--source-commit", default=None); p.add_argument("--source-ref", default=AER_BRANCH)
-    p = sub.add_parser("verify"); p.add_argument("bundle", type=Path)
-    p = sub.add_parser("install"); p.add_argument("bundle", type=Path); p.add_argument("--skill", choices=("none", "auto", "agents", "claude", "gemini", "all"), default="agents"); p.add_argument("--aer-home", type=Path, default=None)
-    p = sub.add_parser("check-update"); p.add_argument("--channel", default=AER_BRANCH); p.add_argument("--aer-home", type=Path, default=None)
-    p = sub.add_parser("update"); p.add_argument("--channel", default=AER_BRANCH); p.add_argument("--aer-home", type=Path, default=None)
-    p = sub.add_parser("rollback"); p.add_argument("--version", default=None); p.add_argument("--aer-home", type=Path, default=None)
-    args = parser.parse_args(argv)
-    if args.command == "build": print(build(repo_root(), args.output.resolve(), args.source_commit, args.source_ref))
-    elif args.command == "verify": print(json.dumps(verify_bundle(args.bundle.resolve()), indent=2, sort_keys=True))
-    elif args.command == "install": install(args.bundle.resolve(), args.skill, args.aer_home)
-    elif args.command == "check-update": print(json.dumps(check_update(args.aer_home, args.channel), indent=2, sort_keys=True))
-    elif args.command == "update": update(args.aer_home, args.channel)
-    elif args.command == "rollback": rollback(args.aer_home, args.version)
+    args = parser().parse_args(argv)
+    if args.command == "build":
+        path = build(repo_root(), args.output, args.source_commit, args.source_ref)
+        print(path)
+    elif args.command == "verify":
+        print(json.dumps(verify_bundle(args.bundle), indent=2, sort_keys=True))
+    elif args.command == "install":
+        install(args.bundle, args.skill, args.aer_home)
+    elif args.command == "check-update":
+        print(json.dumps(check_update(args.aer_home, args.ref), indent=2, sort_keys=True))
+    elif args.command == "update":
+        update(args.aer_home, args.ref, args.skill)
+    elif args.command == "rollback":
+        rollback(args.aer_home)
     return 0
 
 if __name__ == "__main__":
