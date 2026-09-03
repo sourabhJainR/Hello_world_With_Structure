@@ -4,5 +4,6 @@
 .ai-harness/memory/observations.jsonl
 .ai-harness/memory/patterns.jsonl
 .ai-harness/learning/*.sqlite3
+.ai-harness/local-second-brain/
 __pycache__/
 *.py[cod]
