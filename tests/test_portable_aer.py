@@ -93,12 +93,21 @@ class PortableAerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             aer_home = Path(tmp) / "aer-home"
             aer_home.mkdir()
-            (aer_home / "active.json").write_text(json.dumps({"version": "20.1.0", "source_commit": "old"}), encoding="utf-8")
-            with patch("portable.aer._remote_target", return_value=("20.2.0", "new")):
+            (aer_home / "active.json").write_text(json.dumps({"version": "20.9.0", "source_commit": "old"}), encoding="utf-8")
+            with patch("portable.aer._remote_target", return_value=("20.10.0", "new")):
                 status = check_update(aer_home)
             self.assertTrue(status["update_available"])
-            self.assertEqual(status["latest_version"], "20.2.0")
+            self.assertEqual(status["latest_version"], "20.10.0")
             self.assertEqual(status["latest_commit"], "new")
+
+    def test_same_semver_different_commit_is_not_an_update(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            aer_home = Path(tmp) / "aer-home"
+            aer_home.mkdir()
+            (aer_home / "active.json").write_text(json.dumps({"version": "20.10.0", "source_commit": "old"}), encoding="utf-8")
+            with patch("portable.aer._remote_target", return_value=("20.10.0", "new")):
+                status = check_update(aer_home)
+            self.assertFalse(status["update_available"])
 
 
 if __name__ == "__main__":
