@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-orchestrator"
-version = 19
+version = 20
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -222,6 +222,13 @@ record_token_metrics_when_available = true
 record_reviewer_findings = true
 record_reported_regressions = true
 regression_events_file = ".ai-harness/learning/regression-events.jsonl"
+task_memory_file = ".ai-harness/learning/task-memory.jsonl"
+record_failed_commands = true
+record_failed_approaches = true
+record_unresolved_bugs = true
+record_feature_misses = true
+feed_history_into_context = true
+require_repeated_evidence_before_trust = true
 policy_file = ".ai-harness/LEARNING_POLICY.md"
 
 default_principles = [
@@ -299,3 +306,20 @@ review_cycles = 500
 execution_enabled = false
 purpose = "maintainer-only repository improvement"
 policy_file = ".ai-harness/DEVELOPMENT_HARDENING.md"
+
+[collaborative_development]
+enabled = true
+policy_file = ".ai-harness/COLLABORATIVE_SELF_SUSTAINED_DEVELOPMENT.md"
+minimal_interruption = true
+parallel_read_only_specialists = true
+mutating_agents_isolated = true
+bounded_autonomous_repair = true
+human_escalation_only_for = ["ambiguous-product-intent", "destructive", "production-external-side-effect", "security-policy-change", "permission-change", "incompatible-toolchain-upgrade", "missing-access", "insufficient-evidence"]
+
+[compatibility]
+enabled = true
+module = ".ai-harness/runtime/legacy_compatibility.py"
+preserve_declared_versions = true
+upgrade_requires_explicit_task = true
+unknown_version_marker = "UNRESOLVED VERSION"
+apply_to_legacy_projects = true
