@@ -79,6 +79,16 @@ def _plugin_version(root: Path) -> str:
                 return f"{raw}.0.0" if raw.isdigit() else raw
     return "0.0.0"
 
+def _version_tuple(version: str) -> tuple[int, int, int]:
+    parts = version.split(".")
+    values = []
+    for part in parts[:3]:
+        digits = "".join(ch for ch in part if ch.isdigit())
+        values.append(int(digits or 0))
+    while len(values) < 3:
+        values.append(0)
+    return tuple(values[:3])
+
 def _git_head(root: Path) -> str | None:
     try:
         result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, text=True, capture_output=True, check=False, timeout=5)
@@ -94,7 +104,7 @@ def make_manifest(root: Path, files: list[Path], source_commit: str | None = Non
         "format": BUNDLE_FORMAT_VERSION,
         "name": BUNDLE_NAME,
         "version": version,
-        "harness_version": int(version.split(".", 1)[0] or 0),
+        "harness_version": _version_tuple(version)[0],
         "portable": True,
         "isolated_install": True,
         "provider_neutral": True,
@@ -209,12 +219,20 @@ def _skill_destinations() -> dict[str, Path]:
     }
 
 def _sync_skills(source: Path, mode: str) -> None:
-    destinations = _skill_destinations()
     if mode == "none":
         return
+    destinations = _skill_destinations()
     selected = list(destinations) if mode == "all" else ([name for name, path in destinations.items() if path.exists()] if mode == "auto" else [mode])
     for name in selected:
         _install_skill(source, destinations[name])
+
+def _install_skill(source: Path, destination: Path) -> None:
+    if not source.is_dir():
+        raise SystemExit("bundle does not contain the canonical Agent Skill")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        shutil.rmtree(destination)
+    shutil.copytree(source, destination)
 
 def install(bundle: Path, install_skill: str = "agents", aer_home: Path | None = None) -> Path:
     manifest = verify_bundle(bundle)
@@ -257,14 +275,6 @@ def install(bundle: Path, install_skill: str = "agents", aer_home: Path | None =
     finally:
         shutil.rmtree(temp, ignore_errors=True)
 
-def _install_skill(source: Path, destination: Path) -> None:
-    if not source.is_dir():
-        raise SystemExit("bundle does not contain the canonical Agent Skill")
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    if destination.exists():
-        shutil.rmtree(destination)
-    shutil.copytree(source, destination)
-
 def _http_json(url: str) -> dict:
     request = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "aer-portable"})
     with urllib.request.urlopen(request, timeout=20) as response:
@@ -305,20 +315,31 @@ def check_update(aer_home: Path | None = None, ref: str = AER_BRANCH) -> dict:
     root = home_aer(aer_home)
     active = json.loads((root / "active.json").read_text(encoding="utf-8")) if (root / "active.json").is_file() else {}
     remote_version, remote_commit = _remote_target(ref)
-    return {"current_version": active.get("version"), "current_commit": active.get("source_commit"), "latest_version": remote_version, "latest_commit": remote_commit, "update_available": remote_commit != active.get("source_commit"), "channel": ref}
+    current_version = str(active.get("version") or "0.0.0")
+    return {
+        "current_version": active.get("version"),
+        "current_commit": active.get("source_commit"),
+        "latest_version": remote_version,
+        "latest_commit": remote_commit,
+        "update_available": _version_tuple(remote_version) > _version_tuple(current_version),
+        "channel": ref,
+    }
 
-def update(aer_home: Path | None = None, ref: str = AER_BRANCH, force: bool = False) -> Path:
+def update(aer_home: Path | None = None, ref: str = AER_BRANCH) -> Path:
     status = check_update(aer_home, ref)
-    if not force and status["latest_version"] <= str(status.get("current_version") or "0.0.0"):
-        if not status["update_available"]:
-            raise SystemExit("AER is already pinned to the latest channel commit")
-        raise SystemExit(f"remote commit changed without a version bump ({status['latest_version']}); refusing to move a pinned version")
+    if not status["update_available"]:
+        if status["latest_commit"] == status.get("current_commit"):
+            raise SystemExit("AER is already pinned to the latest channel version")
+        raise SystemExit(f"remote commit {status['latest_commit']} changed without a newer semantic version; refusing update")
     temp = Path(tempfile.mkdtemp(prefix="aer-update-"))
     try:
         source = _download_source(status["latest_commit"], temp)
         bundle = temp / "aer-portable.zip"
         build(source, bundle, source_commit=status["latest_commit"], source_ref=ref)
         verify_bundle(bundle)
+        manifest = verify_bundle(bundle)
+        if _version_tuple(manifest["version"]) != _version_tuple(status["latest_version"]):
+            raise SystemExit("downloaded source version differs from update metadata; refusing activation")
         return install(bundle, "auto", aer_home)
     finally:
         shutil.rmtree(temp, ignore_errors=True)
@@ -351,16 +372,16 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("build"); p.add_argument("--output", type=Path, default=Path("aer-portable.zip")); p.add_argument("--source-commit", default=None); p.add_argument("--source-ref", default=AER_BRANCH)
     p = sub.add_parser("verify"); p.add_argument("bundle", type=Path)
-    p = sub.add_parser("install"); p.add_argument("bundle", type=Path); p.add_argument("--skill", choices=("none", "agents", "claude", "gemini", "all"), default="agents"); p.add_argument("--aer-home", type=Path, default=None)
+    p = sub.add_parser("install"); p.add_argument("bundle", type=Path); p.add_argument("--skill", choices=("none", "auto", "agents", "claude", "gemini", "all"), default="agents"); p.add_argument("--aer-home", type=Path, default=None)
     p = sub.add_parser("check-update"); p.add_argument("--channel", default=AER_BRANCH); p.add_argument("--aer-home", type=Path, default=None)
-    p = sub.add_parser("update"); p.add_argument("--channel", default=AER_BRANCH); p.add_argument("--aer-home", type=Path, default=None); p.add_argument("--force", action="store_true")
+    p = sub.add_parser("update"); p.add_argument("--channel", default=AER_BRANCH); p.add_argument("--aer-home", type=Path, default=None)
     p = sub.add_parser("rollback"); p.add_argument("--version", default=None); p.add_argument("--aer-home", type=Path, default=None)
     args = parser.parse_args(argv)
     if args.command == "build": print(build(repo_root(), args.output.resolve(), args.source_commit, args.source_ref))
     elif args.command == "verify": print(json.dumps(verify_bundle(args.bundle.resolve()), indent=2, sort_keys=True))
     elif args.command == "install": install(args.bundle.resolve(), args.skill, args.aer_home)
     elif args.command == "check-update": print(json.dumps(check_update(args.aer_home, args.channel), indent=2, sort_keys=True))
-    elif args.command == "update": update(args.aer_home, args.channel, args.force)
+    elif args.command == "update": update(args.aer_home, args.channel)
     elif args.command == "rollback": rollback(args.aer_home, args.version)
     return 0
 
