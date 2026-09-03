@@ -25,12 +25,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Compile security and ledger components
-        run: python -m py_compile .ai-harness/security_gate.py .ai-harness/safe_provider.py .ai-harness/state_validator.py .ai-harness/provider.py
+      - name: Compile security, verification and ledger components
+        run: python -m py_compile .ai-harness/security_gate.py .ai-harness/safe_provider.py .ai-harness/state_validator.py .ai-harness/verification_gate.py .ai-harness/run.py .ai-harness/provider.py .ai-harness/p1_lifecycle.py
       - name: Run focused hardening tests
-        run: python -m unittest tests.test_security_gate tests.test_state_validator tests.test_provider -v
+        run: python -m unittest tests.test_security_gate tests.test_state_validator tests.test_provider tests.test_execution_controls tests.test_verification_gate -v
       - name: Validate configuration
-        run: python -c "import tomllib; c=tomllib.load(open('.ai-harness/config.toml','rb')); assert c['harness']['version'] >= 21; assert c['durability']['journal_failure_is_non_fatal'] is False; assert c['reviewers']['require_consensus_for_high_risk'] is True"
+        run: python -c "import tomllib; c=tomllib.load(open('.ai-harness/config.toml','rb')); assert c['harness']['version'] >= 21; assert c['durability']['journal_failure_is_non_fatal'] is False; assert c['reviewers']['require_consensus_for_high_risk'] is True; assert c['knowledge']['require_fresh_index_for_high_risk'] is True"
       - name: Validate ledger schema and implementation contract
         run: |
           python - <<'PY'
