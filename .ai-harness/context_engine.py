@@ -12,6 +12,8 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from runtime.context_cache import ContextPageCache
+
 _STOP = {"the", "and", "for", "with", "from", "this", "that", "into", "have", "will", "task", "change", "please", "need", "make", "using"}
 _PRIORITY = (
     ("critical", 6.0),
@@ -29,6 +31,10 @@ _PRIORITY = (
     ("changed", 3.0),
     ("file", 1.0),
 )
+
+# Process-local cache. Provider-side KV caching is intentionally left to the
+# provider adapter because CLI providers expose different caching contracts.
+_PAGE_CACHE = ContextPageCache(page_chars=1800)
 
 
 def _words(text: str) -> set[str]:
@@ -106,7 +112,6 @@ def compact_history(history: str, task: str, budget_chars: int) -> str:
         for marker, weight in _PRIORITY:
             if marker in normalized:
                 score += weight
-        # Recent lines receive a small tie-breaker, never enough to displace strong proof.
         score += index / max(1, len(lines))
         candidates.append((score, index, line))
 
@@ -120,7 +125,6 @@ def compact_history(history: str, task: str, budget_chars: int) -> str:
         selected.append((index, line))
         used += entry_size
 
-    # Always try to retain the most recent line when budget permits.
     if lines:
         recent = lines[-1]
         if recent not in {line for _, line in selected} and used + len(recent) + 1 <= budget_chars:
@@ -129,8 +133,14 @@ def compact_history(history: str, task: str, budget_chars: int) -> str:
     return "\n".join(line for _, line in selected)
 
 
+def _paged_section(kind: str, text: str, budget_chars: int, *, stable: bool = False) -> tuple[str, list[str]]:
+    pages = _PAGE_CACHE.paginate(kind, text, stable=stable)
+    selected = _PAGE_CACHE.select(pages, budget_chars)
+    return "\n".join(page.text for page in selected), [page.page_id for page in selected]
+
+
 def select_context(task: str, repo_map: str, memory: str, history: str, budget_chars: int = 12000) -> dict[str, Any]:
-    """Build a compact context tile set while preserving high-value evidence."""
+    """Build compact context tiles using relevance ranking plus reusable pages."""
     task_words = _words(task)
 
     def rank_lines(text: str) -> list[str]:
@@ -141,36 +151,44 @@ def select_context(task: str, repo_map: str, memory: str, history: str, budget_c
     history_budget = max(1200, budget_chars // 5)
     compressed_history = compact_history(history, task, history_budget)
     history_lines = rank_lines(compressed_history)
-    sections: list[tuple[str, list[str], int]] = [
-        ("memory", memory_lines, max(1200, budget_chars // 6)),
-        ("history", history_lines, history_budget),
-    ]
-    output: dict[str, str] = {}
     remaining = budget_chars
-    output["repository"] = repo_map[: min(len(repo_map), remaining // 2)]
-    remaining -= len(output["repository"])
-    for name, lines, cap in sections:
-        take = "\n".join(lines)
-        take = take[: min(len(take), cap, remaining)]
-        value = take or "None."
-        if len(value) > remaining:
-            value = value[:remaining]
-        output[name] = value
-        remaining -= len(value)
 
-    return {
-        "repository": output["repository"],
-        "memory": output["memory"],
-        "history": output["history"],
+    repository, repository_pages = _paged_section(
+        "repository", repo_map[: min(len(repo_map), remaining // 2)], min(remaining // 2, 9000), stable=True
+    )
+    remaining -= len(repository)
+    memory_text, memory_pages = _paged_section(
+        "memory", "\n".join(memory_lines), min(max(1200, budget_chars // 6), remaining)
+    )
+    remaining -= len(memory_text)
+    history_text, history_pages = _paged_section(
+        "history", "\n".join(history_lines), min(history_budget, remaining)
+    )
+
+    output = {
+        "repository": repository or "None.",
+        "memory": memory_text or "None.",
+        "history": history_text or "None.",
         "budget_chars": budget_chars,
-        "selected": {name: len(value) for name, value in output.items()},
+        "selected": {
+            "repository": len(repository),
+            "memory": len(memory_text),
+            "history": len(history_text),
+        },
+        "pages": {
+            "repository": repository_pages,
+            "memory": memory_pages,
+            "history": history_pages,
+        },
+        "cache": _PAGE_CACHE.stats(),
         "history_compression": {
             "input_chars": len(history),
             "output_chars": len(compressed_history),
             "ratio": round(len(compressed_history) / max(1, len(history)), 4),
         },
-        "strategy": "stable-prefix + evidence-priority-compaction + tiled-context + relevance-ranking + bounded-evidence",
+        "strategy": "stable-prefix + content-addressed-page-cache + evidence-priority-compaction + tiled-context + relevance-ranking + bounded-evidence",
     }
+    return output
 
 
 def flash_context_prompt(task: str, repo_map: str, memory: str, history: str, budget_chars: int = 12000) -> tuple[str, str, str, str]:
@@ -180,7 +198,10 @@ def flash_context_prompt(task: str, repo_map: str, memory: str, history: str, bu
             "strategy": selected["strategy"],
             "budget_chars": budget_chars,
             "selected_chars": selected["selected"],
+            "pages": selected["pages"],
+            "cache": selected["cache"],
             "history_compression": selected["history_compression"],
+            "provider_kv_cache": "adapter-dependent; not assumed",
         },
         ensure_ascii=False,
     )

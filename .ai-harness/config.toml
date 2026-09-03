@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-orchestrator"
-version = 17
+version = 18
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -92,13 +92,22 @@ policy_file = ".ai-harness/CONTEXT_POLICY.md"
 [flash_context]
 enabled = true
 policy_file = ".ai-harness/FLASH_CONTEXT_POLICY.md"
-strategy = "stable-prefix + evidence-priority-compaction + tiled-context + relevance-ranking + bounded-evidence"
+strategy = "stable-prefix + content-addressed-page-cache + evidence-priority-compaction + tiled-context + relevance-ranking + bounded-evidence"
 budget_chars = 12000
 repository_budget_chars = 9000
 memory_budget_chars = 2000
 history_budget_chars = 2400
 preserve_verification_evidence = true
 third_party_dependency = false
+
+[context_cache]
+enabled = true
+module = ".ai-harness/runtime/context_cache.py"
+page_chars = 1800
+content_addressed = true
+stable_prefix_reuse = true
+provider_side_kv_cache = "adapter-dependent"
+require_provider_reported_hits = true
 
 [knowledge]
 enabled = true
