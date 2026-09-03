@@ -30,7 +30,8 @@ jobs:
       - name: Run focused hardening tests
         run: python -m unittest tests.test_security_gate tests.test_state_validator tests.test_provider tests.test_execution_controls tests.test_verification_gate -v
       - name: Validate configuration
-        run: python - <<'PY'
+        run: |
+          cat > /tmp/validate_config.py <<'PY'
           import json
           import tomllib
           from pathlib import Path
@@ -50,7 +51,9 @@ jobs:
           assert config['verification']['require_acceptance_evidence'] is True
           assert config['verification']['require_diff_check'] is True
           assert config['execution']['require_new_evidence_for_retry'] is True
+          print(f'Validated harness/plugin major version: {harness_major}')
           PY
+          python /tmp/validate_config.py
       - name: Validate ledger schema and implementation contract
         run: |
           python - <<'PY'
