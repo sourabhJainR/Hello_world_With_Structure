@@ -39,6 +39,10 @@ class PolicyRegistry:
         self._policies[key] = promoted
         return promoted
 
+    def active_for_id(self, policy_id: str) -> Policy | None:
+        active = [p for p in self._policies.values() if p.policy_id == policy_id and p.status == "active"]
+        return max(active, key=lambda p: p.version, default=None)
+
     def rollback(self, policy_id: str, version: int, *, now: int | None = None, restore_previous: bool = True) -> Policy:
         key = (policy_id, version)
         policy = self._policies[key]
