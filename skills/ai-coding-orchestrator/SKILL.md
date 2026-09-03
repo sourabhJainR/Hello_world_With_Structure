@@ -9,6 +9,18 @@ Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Capability 
 
 Normal mode is one adaptive run. Never self-loop unless the user explicitly requests a bounded loop.
 
+## Portable isolation contract
+
+AER may be installed as a user-level/global capability. When used from an arbitrary repository, the repository is the **workspace**, not the AER installation directory.
+
+- Never copy or vendor AER implementation files into the workspace merely to use AER.
+- Never create `.ai-harness`, `aer`, runtime, policy, cache, journal, telemetry, learning, or regression files in the workspace unless the user explicitly asks for repository-local AER configuration.
+- Never modify `.git`, hooks, remotes, ignore files, permissions, MCP configuration, credentials, or external agent configuration as part of normal AER use.
+- Keep AER runtime, immutable policies, regression corpus, learned machine state, journals and caches in the user-level AER installation/state location.
+- Repository changes are limited to the engineering work the user actually requested.
+
+The workspace's existing instructions, source, tests, configuration and Git state remain authoritative and independently owned by that repository.
+
 ## Task contract
 
 Create or load:
@@ -77,7 +89,7 @@ Review architecture boundaries, coupling, lifecycle/compatibility, failure handl
 
 Split substantial work into independently verifiable chunks. Checkpoint meaningful phases/chunks and re-anchor on context rot, instruction loss, intent drift, scope drift or contradiction. Every retry must add evidence or change strategy.
 
-Runtime events are mirrored to `execution.journal.jsonl` as append-only hash-chained records. Journal, checkpoints, telemetry and final manifest remain separate evidence channels.
+Runtime events are kept in the external AER state location by default. Repository-specific work products are separate from AER machine state unless the user explicitly requests repository-local artifacts.
 
 ## Context economics
 
