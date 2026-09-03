@@ -4,6 +4,29 @@ A provider-neutral AI software-engineering control plane for Claude Code and com
 
 The product identity is `adaptive-ai-coding-orchestrator`; the GitHub repository name is retained temporarily for history compatibility.
 
+## Portable AER bundle
+
+AER can now be distributed as an **offline, repository-agnostic bundle** containing the current `.ai-harness` implementation and canonical `ai-coding-orchestrator` Agent Skill.
+
+Build and verify it from the AER source repository:
+
+```bash
+python aer.py build --output aer-portable.zip
+python aer.py verify aer-portable.zip
+```
+
+Move `aer-portable.zip` and `aer.py` to another machine, then install into any repository:
+
+```bash
+python aer.py install aer-portable.zip /path/to/target-repo
+```
+
+The installer backs up an existing `.ai-harness`, creates a fresh repository-local harness state, and can install the generic Agent Skill or Claude/Gemini-specific skill locations. It does not install third-party tools, edit MCP configuration, change permissions, touch credentials, or grant production/merge access.
+
+The bundle intentionally excludes machine- and repository-local mutable state such as telemetry, execution journals, learned task-memory logs, regression event logs, worktrees, and Python caches. This keeps the distribution portable while allowing each target repository to build its own evidence and learning history.
+
+See `portable/README.md` for the portability contract and lifecycle.
+
 ## What is AER?
 
 AER is the runtime/control-plane layer that governs how an AI coding agent moves from **intent to a verified engineering outcome**. The model is replaceable; AER owns the workflow, repository evidence, safety boundaries, verification, and proof.
@@ -351,7 +374,7 @@ A model-generated improvement does not become an executable default merely becau
 
 ## Productization and IP
 
-The practical commercial path is to keep the local developer experience easy to adopt while monetizing organization-level value: hosted evaluation, private engineering memory, regression intelligence, enterprise policy controls, fleet analytics, premium integrations, and rollout/support.
+The practical commercial path is to keep the local developer experience easy to adopt while monetizing organization-level value: hosted evaluation, private engineering memory, enterprise policy controls, fleet analytics, premium integrations, and rollout/support.
 
 Do not depend on obfuscation or client-side anti-copy mechanisms. The repository is public, so the durable moat should be the accumulated evidence and outcome loop:
 
