@@ -8,8 +8,10 @@ from typing import Any
 ROOT=Path(__file__).resolve().parent.parent
 RUNTIME=ROOT/".ai-harness"/"runtime"
 sys.path.insert(0,str(RUNTIME))
+sys.path.insert(0,str(ROOT/".ai-harness"))
 from p0 import add_evidence, evidence, new_state, proof_bundle, record_outcome, save_json, verification
 from p1 import affected_profile_fields, graph_edge, graph_node, profile, regression_case, save
+from state_validator import validate_state
 
 def _task_id(task: str) -> str:
     return "task-"+hashlib.sha256(task.encode()).hexdigest()[:12]
@@ -56,6 +58,11 @@ def finish(run_dir: Path, manifest: dict[str,Any]) -> dict[str,Any]:
     outcome_ev=evidence("runtime","lifecycle","Task outcome recorded",snapshot=json.dumps({"status":outcome_status,"review":manifest.get("review_result",""),"production":manifest.get("production_result","")},sort_keys=True),confidence="high",provenance="p1_lifecycle.finish")
     add_evidence(state,outcome_ev)
     record_outcome(state,outcome_status,user_acceptance=manifest.get("user_acceptance",""),review_result=manifest.get("review_result",""),production_result=manifest.get("production_result",""),regressions=manifest.get("regressions",[]),follow_up=manifest.get("follow_up",[]),metrics=manifest.get("metrics",{}),evidence_ids=[outcome_ev["id"]])
+    save_json(state_path,state)
+    errors=validate_state(state)
+    if errors:
+        save_json(run_dir/"state-validation-errors.json", {"valid":False,"errors":errors})
+        raise RuntimeError("Engineering State Ledger validation failed: " + "; ".join(errors))
     proof=proof_bundle(state)
     nodes=[
       graph_node("requirement",state["task_id"]),
@@ -70,7 +77,6 @@ def finish(run_dir: Path, manifest: dict[str,Any]) -> dict[str,Any]:
     ]
     regression=regression_case("task-completion:"+state["task_id"],state["status"],["preserve protected behavior","proof required"])
     genome={"version":"1.1","case":regression,"result":{"status":state["status"],"outcome":outcome_status},"affected_profile_fields":affected_profile_fields(changed)}
-    save_json(state_path,state)
     save_json(run_dir/"proof-bundle.json",proof)
     save_json(run_dir/"proof-graph.json",{"version":"1.1","nodes":nodes,"edges":edges})
     save_json(run_dir/"regression-genome.json",genome)

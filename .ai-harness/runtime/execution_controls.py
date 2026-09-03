@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-VERSION = "1.0"
+VERSION = "1.2"
 
 
 def stable_digest(value: Any) -> str:
@@ -22,12 +22,13 @@ def normalize_scope(paths: list[str] | None) -> list[str]:
 
 def path_in_scope(path: str, roots: list[str]) -> bool:
     value = path.replace("\\", "/").strip("/")
-    return any(value == root or value.startswith(root.rstrip("/") + "/") for root in roots)
+    return any(root in ("", ".") or value == root or value.startswith(root.rstrip("/") + "/") for root in roots)
 
 
 def scope_check(changed_paths: list[str], allowed_paths: list[str] | None = None, protected_paths: list[str] | None = None) -> dict[str, Any]:
-    allowed, protected = normalize_scope(allowed_paths), normalize_scope(protected_paths)
-    outside = sorted(p for p in changed_paths if allowed and not path_in_scope(p, allowed))
+    allowed = normalize_scope(allowed_paths) or ["."]
+    protected = normalize_scope(protected_paths)
+    outside = sorted(p for p in changed_paths if not path_in_scope(p, allowed))
     protected_hits = sorted(p for p in changed_paths if any(path_in_scope(p, [root]) for root in protected))
     return {"allowed_paths": allowed, "protected_paths": protected, "outside_scope": outside, "protected_changes": protected_hits, "passed": not outside and not protected_hits}
 

@@ -10,6 +10,12 @@ class ExecutionControlTests(unittest.TestCase):
         result = scope_check(['src/a.py', 'docs/x.md'], ['src'], ['src/private'])
         self.assertFalse(result['passed']); self.assertEqual(result['outside_scope'], ['docs/x.md'])
 
+    def test_empty_scope_defaults_to_repository_root(self):
+        self.assertTrue(scope_check(['src/a.py', 'new-file.py'], [])['passed'])
+        result = scope_check(['src/a.py', '.github/workflows/release.yml'], [], ['.github/workflows'])
+        self.assertFalse(result['passed'])
+        self.assertEqual(result['protected_changes'], ['.github/workflows/release.yml'])
+
     def test_task_chunking_scales(self):
         self.assertEqual(len(task_chunks('rename helper')), 1)
         self.assertGreaterEqual(len(task_chunks('legacy API security migration across data shape paths', complexity=8)), 5)

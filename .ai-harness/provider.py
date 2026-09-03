@@ -21,6 +21,7 @@ from runtime.agent_turn import (
     OBSERVATION_PREFIX,
     USAGE_PREFIX,
 )
+from security_gate import SecurityGateError, safe_environment, validate_prompt_file, validate_provider_command
 
 
 def is_analysis_only(prompt: str) -> bool:
@@ -225,14 +226,22 @@ def main() -> int:
         print("No provider command supplied", file=sys.stderr)
         return 2
 
-    prompt = Path(args.prompt_file).read_text(encoding="utf-8")
-    if is_analysis_only(prompt):
+    run_dir = Path(os.environ.get("HARNESS_RUN_DIR", str(Path(args.prompt_file).parent))).resolve()
+    try:
+        prompt_file = validate_prompt_file(Path(args.prompt_file), expected_root=run_dir)
+        prompt = prompt_file.read_text(encoding="utf-8")
+        analysis_only = is_analysis_only(prompt)
+        validate_provider_command(command, analysis_only=analysis_only)
+    except SecurityGateError as exc:
+        print(f"SECURITY GATE: {exc}", file=sys.stderr)
+        return 78
+
+    if analysis_only:
         command = analysis_only_command(command)
         prompt = "RCA ANALYSIS-ONLY ENFORCEMENT\nDo not edit files, create patches, commit, merge, or perform destructive actions. Investigate deeply and return evidence-backed findings only. Separate facts, inferences, contradictions, unknowns, hypotheses, root cause, and follow-up.\n\n" + prompt
 
     command = streaming_command(command)
-    phase = os.environ.get("HARNESS_PHASE", Path(args.prompt_file).stem.replace(".prompt", ""))
-    run_dir = Path(os.environ.get("HARNESS_RUN_DIR", str(Path(args.prompt_file).parent)))
+    phase = os.environ.get("HARNESS_PHASE", prompt_file.stem.replace(".prompt", ""))
     turn_id = os.environ.get("HARNESS_TURN_ID", f"{phase}-{int(time.time() * 1000)}")
     turn = AgentTurnStateMachine(phase, run_dir, turn_id)
     pages, context_digest = prompt_context(prompt)
@@ -252,7 +261,7 @@ def main() -> int:
     try:
         workspace = run_dir.parents[2] if len(run_dir.parents) >= 3 else run_dir.parent
         kwargs: dict[str, Any] = {
-            "cwd": workspace, "env": os.environ.copy(), "text": True,
+            "cwd": workspace, "env": safe_environment(), "text": True,
             "stdout": subprocess.PIPE, "stderr": subprocess.STDOUT, "bufsize": 1,
         }
         if os.name != "nt":

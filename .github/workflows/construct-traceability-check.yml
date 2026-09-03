@@ -29,7 +29,23 @@ jobs:
       - name: Compile traceability implementations
         run: python -m compileall -q .ai-harness
       - name: Validate construct index behavior
-        run: python -m unittest discover -s .ai-harness/tests -p 'test_construct_index.py' -v
+        run: |
+          python - <<'PY'
+          import pathlib
+          import unittest
+
+          suite = unittest.defaultTestLoader.discover(
+              start_dir='.ai-harness/tests',
+              pattern='test_construct_index.py',
+          )
+          count = suite.countTestCases()
+          if count == 0:
+              raise SystemExit('No construct-index tests were collected')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          if not result.wasSuccessful():
+              raise SystemExit(1)
+          print(f'Collected and passed {count} construct-index tests')
+          PY
       - name: Validate harness configuration and version consistency
         run: python scripts/validate_plugin.py
       - name: Validate configuration feature flags

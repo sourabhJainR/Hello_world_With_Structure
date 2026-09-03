@@ -1,0 +1,75 @@
+name: Production AI Harness Hardening
+
+on:
+  pull_request:
+    paths:
+      - '.ai-harness/**'
+      - 'state/**'
+      - 'tests/**'
+      - '.github/workflows/production-hardening.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.ai-harness/**'
+      - 'state/**'
+      - 'tests/**'
+      - '.github/workflows/production-hardening.yml'
+
+jobs:
+  hardening:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile security, verification and ledger components
+        run: python -m py_compile .ai-harness/security_gate.py .ai-harness/safe_provider.py .ai-harness/state_validator.py .ai-harness/verification_gate.py .ai-harness/run.py .ai-harness/provider.py .ai-harness/p1_lifecycle.py
+      - name: Run focused hardening tests
+        run: python -m unittest tests.test_security_gate tests.test_state_validator tests.test_provider tests.test_execution_controls tests.test_verification_gate -v
+      - name: Validate configuration
+        run: |
+          cat > /tmp/validate_config.py <<'PY'
+          import json
+          import tomllib
+          from pathlib import Path
+
+          config = tomllib.load(open('.ai-harness/config.toml', 'rb'))
+          plugin = json.loads(Path('.claude-plugin/plugin.json').read_text())
+          harness_major = int(config['harness']['version'])
+          plugin_major = int(plugin['version'].split('.')[0])
+
+          assert harness_major == plugin_major, (
+              f'harness config major version {harness_major} must match '
+              f'plugin major version {plugin_major}'
+          )
+          assert config['durability']['journal_failure_is_non_fatal'] is False
+          assert config['reviewers']['require_consensus_for_high_risk'] is True
+          assert config['knowledge']['require_fresh_index_for_high_risk'] is True
+          assert config['verification']['require_acceptance_evidence'] is True
+          assert config['verification']['require_diff_check'] is True
+          assert config['execution']['require_new_evidence_for_retry'] is True
+          print(f'Validated harness/plugin major version: {harness_major}')
+          PY
+          python /tmp/validate_config.py
+      - name: Validate ledger schema and implementation contract
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, '.ai-harness')
+          from state_validator import validate_state
+          schema = json.loads(Path('state/engineering-state.schema.json').read_text())
+          assert schema['$schema'] == 'https://json-schema.org/draft/2020-12/schema'
+          sample = {
+              'schema_version':'1.0','task_id':'ci','status':'investigating',
+              'intent':{'goal':'ci'},
+              'contract':{'requirements':[],'acceptance':[],'protected_behavior':[]},
+              'repo_facts':[],'decisions':[],'evidence':[],'changeset':{},
+              'verification':[],'outcome':{'status':'unknown'},'open_risks':[],'next':[]
+          }
+          assert validate_state(sample) == []
+          PY
