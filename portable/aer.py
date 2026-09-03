@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
-"""Portable AER distribution utility.
+"""Build, verify and install a truly isolated AER distribution.
 
-Build an offline bundle from the canonical repository, verify it, and install
-it into any target repository. The bundle carries the complete AER
-implementation under .ai-harness plus the provider-neutral Agent Skill.
-
-Examples:
-  python portable/aer.py build --output aer-portable.zip
-  python portable/aer.py install aer-portable.zip /path/to/repo
-  python portable/aer.py verify aer-portable.zip
+AER is installed outside project repositories. Target repositories are treated
+as workspaces only; installation never creates, replaces, deletes, or backs up
+files inside them. Repository-local source remains untouched by the bundle.
 """
 from __future__ import annotations
 
@@ -27,7 +22,12 @@ MANIFEST_NAME = "aer-bundle.json"
 PAYLOAD_ROOT = "payload"
 REQUIRED_PATHS = (".ai-harness", "skills/ai-coding-orchestrator")
 EXCLUDED_PARTS = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".git", "worktrees"}
-MUTABLE_FILE_NAMES = {"execution.journal.jsonl", "telemetry.jsonl", "task-memory.jsonl", "regression-events.jsonl"}
+MUTABLE_FILE_NAMES = {
+    "execution.journal.jsonl",
+    "telemetry.jsonl",
+    "task-memory.jsonl",
+    "regression-events.jsonl",
+}
 
 
 @dataclass(frozen=True)
@@ -88,15 +88,12 @@ def make_manifest(root: Path, files: list[Path]) -> dict:
         "name": BUNDLE_NAME,
         "harness_version": harness_version,
         "portable": True,
+        "isolated_install": True,
         "provider_neutral": True,
         "source_paths": list(REQUIRED_PATHS),
         "mutable_state_excluded": True,
-        "managed_install_paths": [
-            ".ai-harness",
-            ".agents/skills/ai-coding-orchestrator",
-            ".claude/skills/ai-coding-orchestrator",
-            ".gemini/skills/ai-coding-orchestrator",
-        ],
+        "target_repository_mutation": False,
+        "managed_install_paths": ["~/.aer", "~/.agents/skills/ai-coding-orchestrator", "~/.claude/skills/ai-coding-orchestrator", "~/.gemini/skills/ai-coding-orchestrator"],
         "files": records,
     }
 
@@ -113,12 +110,12 @@ def build(root: Path, output: Path) -> Path:
         launcher = root / "aer.py"
         if launcher.is_file():
             archive.write(launcher, "aer.py")
-        readme = (
+        archive.writestr(
+            f"{PAYLOAD_ROOT}/PORTABLE_BUNDLE.txt",
             "AER portable bundle\n\n"
-            "Install with: python aer.py install <bundle.zip> <target-repo>\n"
-            "The archive contains the portable AER control plane and Agent Skill.\n"
+            "Installation is user-scoped and repository-isolated.\n"
+            "The installer never writes AER files into a target repository.\n",
         )
-        archive.writestr(f"{PAYLOAD_ROOT}/PORTABLE_BUNDLE.txt", readme)
     return output
 
 
@@ -138,6 +135,8 @@ def verify_bundle(bundle: Path) -> dict:
         manifest = json.loads(archive.read(MANIFEST_NAME).decode("utf-8"))
         if manifest.get("format") != BUNDLE_FORMAT_VERSION:
             raise SystemExit("unsupported bundle format")
+        if manifest.get("target_repository_mutation") is not False:
+            raise SystemExit("bundle is not marked repository-isolated")
         root = Path(tempfile.mkdtemp(prefix="aer-verify-"))
         try:
             safe_extract(archive, root)
@@ -154,38 +153,68 @@ def verify_bundle(bundle: Path) -> dict:
             shutil.rmtree(root, ignore_errors=True)
 
 
-def backup(path: Path) -> None:
-    if not path.exists():
-        return
-    backup_path = path.with_name(path.name + ".aer-backup")
-    counter = 1
-    while backup_path.exists():
-        backup_path = path.with_name(f"{path.name}.aer-backup-{counter}")
-        counter += 1
-    if path.is_dir():
-        shutil.copytree(path, backup_path)
-    else:
-        shutil.copy2(path, backup_path)
+def _copy_tree_without_mutable_state(source: Path, destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    for item in source.rglob("*"):
+        rel = item.relative_to(source)
+        if any(part in EXCLUDED_PARTS for part in rel.parts):
+            continue
+        if item.is_file() and item.name in MUTABLE_FILE_NAMES:
+            continue
+        target = destination / rel
+        if item.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(item, target)
 
 
-def install(bundle: Path, target: Path, install_skill: str) -> None:
+def _install_skill(skill_source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        shutil.rmtree(destination)
+    shutil.copytree(skill_source, destination)
+
+
+def install(bundle: Path, install_skill: str, aer_home: Path | None = None) -> Path:
+    """Install AER into the user's machine, never into a project workspace."""
     manifest = verify_bundle(bundle)
-    target = target.resolve()
-    target.mkdir(parents=True, exist_ok=True)
+    home = Path.home()
+    root = (aer_home or (home / ".aer")).expanduser().resolve()
+    version = str(manifest.get("harness_version") or "unknown")
+    version_root = root / "versions" / f"v{version}"
     temp = Path(tempfile.mkdtemp(prefix="aer-install-"))
     try:
         with zipfile.ZipFile(bundle) as archive:
             safe_extract(archive, temp)
         payload = temp / PAYLOAD_ROOT
         source_harness = payload / ".ai-harness"
-        target_harness = target / ".ai-harness"
-        backup(target_harness)
+        target_harness = version_root / ".ai-harness"
         if target_harness.exists():
             shutil.rmtree(target_harness)
-        shutil.copytree(source_harness, target_harness)
+        _copy_tree_without_mutable_state(source_harness, target_harness)
+        launcher_source = temp / "aer.py"
+        if launcher_source.is_file():
+            (version_root / "aer.py").write_text(launcher_source.read_text(encoding="utf-8"), encoding="utf-8")
+        marker = {
+            "bundle_format": manifest["format"],
+            "harness_version": manifest.get("harness_version"),
+            "install_root": str(version_root),
+            "repository_isolated": True,
+        }
+        (version_root / "install.json").write_text(json.dumps(marker, indent=2) + "\n", encoding="utf-8")
+        current = root / "current"
+        if current.is_symlink() or current.exists():
+            if current.is_symlink() or current.is_file():
+                current.unlink()
+            else:
+                shutil.rmtree(current)
+        try:
+            current.symlink_to(version_root, target_is_directory=True)
+        except OSError:
+            _copy_tree_without_mutable_state(version_root, current)
 
         if install_skill != "none":
-            home = Path.home()
             skill_source = payload / "skills" / "ai-coding-orchestrator"
             skill_targets = {
                 "agents": home / ".agents" / "skills" / "ai-coding-orchestrator",
@@ -194,22 +223,18 @@ def install(bundle: Path, target: Path, install_skill: str) -> None:
             }
             selected = list(skill_targets) if install_skill == "all" else [install_skill]
             for name in selected:
-                destination = skill_targets[name]
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                backup(destination)
-                if destination.exists():
-                    shutil.rmtree(destination)
-                shutil.copytree(skill_source, destination)
+                _install_skill(skill_source, skill_targets[name])
 
-        print(f"Installed AER harness v{manifest.get('harness_version') or 'unknown'} into {target}")
-        print(f"Portable files: {len(manifest.get('files', []))}")
-        print("No MCP configuration, permissions, credentials, git settings, or production access were changed.")
+        print(f"Installed AER v{manifest.get('harness_version') or 'unknown'} into {current}")
+        print("Repository isolation: ON — no files were written to any target repository.")
+        print("AER state/config/runtime remains user-scoped under ~/.aer.")
+        return current
     finally:
         shutil.rmtree(temp, ignore_errors=True)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="aer", description="Build, verify, and install a portable AER bundle")
+    parser = argparse.ArgumentParser(prog="aer", description="Build, verify, and install an isolated AER distribution")
     sub = parser.add_subparsers(dest="command", required=True)
 
     build_parser = sub.add_parser("build", help="Build an offline bundle from this AER repository")
@@ -218,21 +243,21 @@ def main(argv: list[str] | None = None) -> int:
     verify_parser = sub.add_parser("verify", help="Verify a portable bundle")
     verify_parser.add_argument("bundle", type=Path)
 
-    install_parser = sub.add_parser("install", help="Install a bundle into any repository")
+    install_parser = sub.add_parser("install", help="Install AER user-scoped; never modify a project repository")
     install_parser.add_argument("bundle", type=Path)
-    install_parser.add_argument("target_repo", type=Path, nargs="?", default=Path.cwd())
     install_parser.add_argument("--skill", choices=("none", "agents", "claude", "gemini", "all"), default="agents")
+    install_parser.add_argument("--aer-home", type=Path, default=None)
 
     args = parser.parse_args(argv)
     if args.command == "build":
-        output = build(repo_root(), args.output.resolve())
-        print(output)
+        print(build(repo_root(), args.output.resolve()))
         return 0
     if args.command == "verify":
         manifest = verify_bundle(args.bundle.resolve())
         print(f"AER bundle verified: format={manifest['format']} files={len(manifest['files'])} harness={manifest.get('harness_version')}")
+        print("Repository mutation contract: PASS")
         return 0
-    install(args.bundle.resolve(), args.target_repo.resolve(), args.skill)
+    install(args.bundle.resolve(), args.skill, args.aer_home)
     return 0
 
 
