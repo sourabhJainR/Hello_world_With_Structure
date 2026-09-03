@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic language/runtime/toolchain compatibility profile for target repositories.
-
-The profile is advisory evidence: it tells coding agents which language version,
-framework target, package manager and compatibility constraints to preserve. It
-never upgrades a project or silently changes its toolchain.
-"""
+"""Deterministic language/runtime/toolchain compatibility profile for target repositories."""
 from __future__ import annotations
 
 import json
@@ -38,10 +33,12 @@ def build_compatibility_profile(root: Path = ROOT) -> dict[str, Any]:
     pyproject = root / "pyproject.toml"
     if pyproject.exists():
         text = _read(pyproject)
-        add("python", "pyproject.toml", _version(re.search(r"requires-python\\s*=\\s*[\"']([^\"']+)", text, re.I).group(1)) if re.search(r"requires-python\\s*=\\s*[\"']([^\"']+)", text, re.I) else None, "declared")
+        match = re.search(r"requires-python\s*=\s*[\"']([^\"']+)", text, re.I)
+        add("python", "pyproject.toml", _version(match.group(1)) if match else None, "declared")
     for name in (".python-version", "runtime.txt"):
         path = root / name
-        if path.exists(): add("python", name, _version(_read(path)), "runtime")
+        if path.exists():
+            add("python", name, _version(_read(path)), "runtime")
 
     package = root / "package.json"
     if package.exists():
@@ -51,38 +48,42 @@ def build_compatibility_profile(root: Path = ROOT) -> dict[str, Any]:
             add("node", "package.json", _version(str(engines.get("node", ""))), "declared")
             add("npm", "package.json", _version(str(engines.get("npm", ""))), "declared")
         except json.JSONDecodeError:
-            constraints.append("package.json could not be parsed; preserve existing Node/package-manager behavior and mark version UNRESOLVED")
+            constraints.append("package.json could not be parsed; version is UNRESOLVED VERSION")
     for name in (".nvmrc", ".node-version"):
         path = root / name
-        if path.exists(): add("node", name, _version(_read(path)), "runtime")
+        if path.exists():
+            add("node", name, _version(_read(path)), "runtime")
 
     for path in sorted(root.glob("*.csproj")) + sorted(root.glob("*.fsproj")) + sorted(root.glob("*.vbproj")):
         text = _read(path)
         match = re.search(r"<TargetFrameworks?>([^<]+)</TargetFrameworks?>", text, re.I)
-        if match: add("dotnet", path.name, _version(match.group(1)), "target-framework")
+        if match:
+            add("dotnet", path.name, _version(match.group(1)), "target-framework")
         match = re.search(r"<LangVersion>([^<]+)</LangVersion>", text, re.I)
-        if match: add("csharp", path.name, match.group(1).strip(), "language")
+        if match:
+            add("csharp", path.name, match.group(1).strip(), "language")
     for name in ("global.json", "Directory.Build.props"):
         path = root / name
         if path.exists():
             text = _read(path)
-            match = re.search(r'"version"\\s*:\\s*"([0-9.]+)"', text) if name == "global.json" else re.search(r"<LangVersion>([^<]+)</LangVersion>", text, re.I)
-            if match: add("dotnet" if name == "global.json" else "csharp", name, match.group(1).strip(), "toolchain")
+            match = re.search(r'"version"\s*:\s*"([0-9.]+)"', text) if name == "global.json" else re.search(r"<LangVersion>([^<]+)</LangVersion>", text, re.I)
+            if match:
+                add("dotnet" if name == "global.json" else "csharp", name, match.group(1).strip(), "toolchain")
 
     go = root / "go.mod"
     if go.exists():
-        match = re.search(r"^go\\s+([0-9.]+)", _read(go), re.M)
-        if match: add("go", "go.mod", match.group(1), "language")
+        match = re.search(r"^go\s+([0-9.]+)", _read(go), re.M)
+        add("go", "go.mod", match.group(1) if match else None, "language")
 
     cargo = root / "Cargo.toml"
     if cargo.exists():
         text = _read(cargo)
-        match = re.search(r"rust-version\\s*=\\s*[\"']([^\"']+)", text)
-        if match: add("rust", "Cargo.toml", _version(match.group(1)), "language")
+        match = re.search(r"rust-version\s*=\s*[\"']([^\"']+)", text)
+        add("rust", "Cargo.toml", _version(match.group(1)) if match else None, "language")
     rust_toolchain = root / "rust-toolchain.toml"
     if rust_toolchain.exists():
-        match = re.search(r"channel\\s*=\\s*[\"']([^\"']+)", _read(rust_toolchain))
-        if match: add("rust", "rust-toolchain.toml", _version(match.group(1)), "toolchain")
+        match = re.search(r"channel\s*=\s*[\"']([^\"']+)", _read(rust_toolchain))
+        add("rust", "rust-toolchain.toml", _version(match.group(1)) if match else None, "toolchain")
 
     pom = root / "pom.xml"
     if pom.exists():
@@ -92,19 +93,37 @@ def build_compatibility_profile(root: Path = ROOT) -> dict[str, Any]:
             if match:
                 add("java", "pom.xml", _version(match.group(1)), "language")
                 break
-
-    gradle = root / "build.gradle"
-    gradle_kts = root / "build.gradle.kts"
-    for path in (gradle, gradle_kts):
+    for path in (root / "build.gradle", root / "build.gradle.kts"):
         if path.exists():
-            match = re.search(r"(?:sourceCompatibility|jvmToolchain|JavaVersion\.VERSION_)(?:\\s*[=:(]|\\.)[^\\n]*?([0-9]{1,2}(?:\\.[0-9]+)?)", _read(path), re.I)
-            if match: add("java", path.name, _version(match.group(1)), "language")
+            match = re.search(r"(?:sourceCompatibility|jvmToolchain|JavaVersion\.VERSION_)[^\n]*?([0-9]{1,2}(?:\.[0-9]+)?)", _read(path), re.I)
+            if match:
+                add("java", path.name, _version(match.group(1)), "language")
+
+    composer = root / "composer.json"
+    if composer.exists():
+        try:
+            value = json.loads(_read(composer))
+            require = value.get("require", {}) if isinstance(value, dict) else {}
+            add("php", "composer.json", _version(str(require.get("php", ""))), "declared")
+        except json.JSONDecodeError:
+            constraints.append("composer.json could not be parsed; PHP version is UNRESOLVED VERSION")
+
+    gemfile = root / "Gemfile"
+    if gemfile.exists():
+        text = _read(gemfile)
+        match = re.search(r"ruby\s+[\"']([^\"']+)", text, re.I)
+        add("ruby", "Gemfile", _version(match.group(1)) if match else None, "declared")
+    for name in (".ruby-version", ".tool-versions"):
+        path = root / name
+        if path.exists():
+            text = _read(path)
+            match = re.search(r"ruby\s+([0-9.]+)", text) if name == ".tool-versions" else re.search(r"([0-9]+(?:\.[0-9]+){1,2})", text)
+            add("ruby", name, match.group(1) if match else None, "runtime")
 
     evidence.sort(key=lambda item: (item["language"], item["source"], item["kind"]))
-    languages = sorted({item["language"] for item in evidence})
     return {
         "schema_version": 1,
-        "languages": languages,
+        "languages": sorted({item["language"] for item in evidence}),
         "evidence": evidence,
         "constraints": constraints,
         "policy": {
