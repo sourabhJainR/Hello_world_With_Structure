@@ -100,7 +100,16 @@ class PortableAerTests(unittest.TestCase):
             self.assertEqual(status["latest_version"], "20.2.0")
             self.assertEqual(status["latest_commit"], "new")
 
-    def test_same_semver_different_commit_is_not_an_update(self) -> None:
+    def test_same_version_same_commit_is_not_an_update(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            aer_home = Path(tmp) / "aer-home"
+            aer_home.mkdir()
+            (aer_home / "active.json").write_text(json.dumps({"version": "20.1.0", "source_commit": "same"}), encoding="utf-8")
+            with patch("portable.aer._remote_target", return_value=("20.1.0", "same")):
+                status = check_update(aer_home)
+            self.assertFalse(status["update_available"])
+
+    def test_same_version_different_commit_is_an_update(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             aer_home = Path(tmp) / "aer-home"
             aer_home.mkdir()
