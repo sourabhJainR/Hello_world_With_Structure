@@ -1,0 +1,24 @@
+name: Collaborative Engineering Runtime
+
+on:
+  pull_request:
+    paths:
+      - '.ai-harness/**'
+      - '.github/workflows/collaborative-engineering.yml'
+
+jobs:
+  runtime-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile runtime modules
+        run: python -m compileall -q .ai-harness
+      - name: Run harness tests
+        run: python -m unittest discover -s .ai-harness/tests -v
+      - name: Build repository profile
+        run: python .ai-harness/project_profile.py > /tmp/project-profile.json
+      - name: Validate profile JSON
+        run: python -c "import json; json.load(open('/tmp/project-profile.json', encoding='utf-8'))"

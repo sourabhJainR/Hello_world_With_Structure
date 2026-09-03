@@ -21,6 +21,10 @@ SHARED_CONTRACT_MARKERS = (
     "evidence",
     "optional",
 )
+HARNESS_VERSION_COMPARISON = re.compile(
+    r"(?:harness(?:\s*['\"]?\s*\]\s*\[\s*['\"]?version['\"]?|\s*\.\s*version)|['\"]?version['\"]?\s*\]\s*\)?)\s*==\s*\d+",
+    re.IGNORECASE,
+)
 
 
 def load_json(path: Path) -> dict:
@@ -44,6 +48,23 @@ def validate_skill(path: Path, maximum_chars: int = 9000) -> str:
     return text
 
 
+def validate_no_hard_coded_harness_version() -> None:
+    workflow_root = ROOT / ".github" / "workflows"
+    if not workflow_root.is_dir():
+        return
+    violations: list[str] = []
+    for path in sorted(workflow_root.glob("*.y*ml")):
+        text = path.read_text(encoding="utf-8")
+        for line_number, line in enumerate(text.splitlines(), 1):
+            if HARNESS_VERSION_COMPARISON.search(line):
+                violations.append(f"{path.relative_to(ROOT)}:{line_number}: {line.strip()}")
+    if violations:
+        raise ValueError(
+            "workflows must derive harness version from .ai-harness/config.toml; "
+            "hard-coded numeric comparisons found:\n" + "\n".join(violations)
+        )
+
+
 def main() -> int:
     plugin = load_json(ROOT / ".claude-plugin" / "plugin.json")
     marketplace = load_json(ROOT / ".claude-plugin" / "marketplace.json")
@@ -55,6 +76,10 @@ def main() -> int:
     if missing:
         raise ValueError(f"plugin.json missing fields: {sorted(missing)}")
 
+    harness_version = config.get("harness", {}).get("version")
+    if not isinstance(harness_version, int) or harness_version <= 0:
+        raise ValueError("harness.version must be a positive integer")
+
     plugins = marketplace.get("plugins")
     if not isinstance(plugins, list) or not plugins:
         raise ValueError("marketplace.json must contain at least one plugin")
@@ -64,8 +89,14 @@ def main() -> int:
         raise ValueError("marketplace entry does not reference the plugin")
     if entry.get("version") != plugin["version"]:
         raise ValueError("marketplace and plugin versions must match")
-    if config.get("harness", {}).get("version") != int(plugin["version"].split(".", 1)[0]):
+    try:
+        plugin_major = int(str(plugin["version"]).split(".", 1)[0])
+    except (TypeError, ValueError) as exc:
+        raise ValueError("plugin version must use numeric semver") from exc
+    if harness_version != plugin_major:
         raise ValueError("harness config major version must match plugin major version")
+
+    validate_no_hard_coded_harness_version()
 
     skill_texts = [validate_skill(path) for path in SKILL_PATHS]
     missing_contract = {
@@ -80,9 +111,11 @@ def main() -> int:
     if configured_skill != "./skills/":
         raise ValueError("plugin skills root must remain ./skills/")
 
+    print(f"Harness version: {harness_version} (source: .ai-harness/config.toml)")
     print(f"Plugin manifest: {plugin['name']} {plugin['version']}")
     print(f"Marketplace: {marketplace['name']}")
     print(f"Skills: {len(SKILL_PATHS)} independently validated with shared contract")
+    print("Version source-of-truth guard: PASS")
     print("Context budget: PASS")
     print("Plugin validation: PASS")
     return 0

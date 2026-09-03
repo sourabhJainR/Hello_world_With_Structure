@@ -3,5 +3,6 @@
 .ai-harness/worktrees.json
 .ai-harness/memory/observations.jsonl
 .ai-harness/memory/patterns.jsonl
+.ai-harness/learning/*.sqlite3
 __pycache__/
 *.py[cod]

@@ -3,20 +3,20 @@ name: Repository Construct Traceability Check
 on:
   pull_request:
     paths:
-      - '.ai-harness/runtime/construct_index.py'
+      - '.ai-harness/runtime/**'
       - '.ai-harness/project_profile.py'
-      - '.ai-harness/tests/test_construct_index.py'
-      - '.ai-harness/CONSTRUCT_TRACEABILITY.md'
-      - '.ai-harness/CONSTRUCT_TRACEABILITY_HLD_LLD.md'
+      - '.ai-harness/tests/**'
       - '.ai-harness/config.toml'
+      - '.ai-harness/*.md'
+      - '.github/workflows/**'
   push:
     paths:
-      - '.ai-harness/runtime/construct_index.py'
+      - '.ai-harness/runtime/**'
       - '.ai-harness/project_profile.py'
-      - '.ai-harness/tests/test_construct_index.py'
-      - '.ai-harness/CONSTRUCT_TRACEABILITY.md'
-      - '.ai-harness/CONSTRUCT_TRACEABILITY_HLD_LLD.md'
+      - '.ai-harness/tests/**'
       - '.ai-harness/config.toml'
+      - '.ai-harness/*.md'
+      - '.github/workflows/**'
 
 jobs:
   traceability:
@@ -26,9 +26,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Compile construct traceability implementation
-        run: python -m py_compile .ai-harness/project_profile.py .ai-harness/runtime/construct_index.py .ai-harness/tests/test_construct_index.py
+      - name: Compile traceability implementations
+        run: python -m compileall -q .ai-harness
       - name: Validate construct index behavior
         run: python -m unittest discover -s .ai-harness/tests -p 'test_construct_index.py' -v
-      - name: Validate configuration
-        run: python -c "import tomllib; c=tomllib.load(open('.ai-harness/config.toml','rb')); assert c['harness']['version'] == 19; assert c['construct_traceability']['enabled'] is True"
+      - name: Validate harness configuration and version consistency
+        run: python scripts/validate_plugin.py
+      - name: Validate configuration feature flags
+        run: |
+          python - <<'PY'
+          import tomllib
+          c = tomllib.load(open('.ai-harness/config.toml', 'rb'))
+          assert isinstance(c['harness']['version'], int) and c['harness']['version'] > 0
+          assert c['construct_traceability']['enabled'] is True
+          assert c['compatibility']['enabled'] is True
+          assert c['learning']['feed_history_into_context'] is True
+          assert c['collaborative_development']['enabled'] is True
+          print(f"Harness version: {c['harness']['version']}")
+          PY

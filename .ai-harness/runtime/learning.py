@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded, evidence-driven learning for durable do/don't patterns and skill refinement proposals."""
+"""Bounded, evidence-driven learning for durable engineering patterns and task history."""
 from __future__ import annotations
 
 import hashlib
@@ -9,7 +9,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-VERSION = "1.1"
+from runtime import task_memory
+
+VERSION = "1.2"
 IMMUTABLE_TOPICS = {"security", "permissions", "approval", "dependency_allowlist", "architecture_policy", "repository_rules", "executable_harness"}
 
 
@@ -57,9 +59,7 @@ def _extract_candidates(manifest: dict[str, Any], run_dir: Path) -> list[dict[st
             topic = "general"
             for candidate_topic in IMMUTABLE_TOPICS:
                 aliases = {candidate_topic, candidate_topic.replace("_", " ")}
-                if any(alias in lower for alias in aliases):
-                    topic = candidate_topic
-                    break
+                if any(alias in lower for alias in aliases): topic = candidate_topic; break
             candidates.append({"kind": kind, "topic": topic, "text": _compact(clean), "success": success, "source_run": manifest.get("run_id"), "intent_digest": manifest.get("intent_digest"), "event_type": "task-completion"})
     for finding in outcome.get("review_findings", []) if isinstance(outcome.get("review_findings"), list) else []:
         text = _compact(str(finding))
@@ -76,9 +76,7 @@ def _aggregate(existing, candidates, now):
         key = _normalize(candidate["text"])
         if not key: continue
         row = records.setdefault(key, {"id": stable_id("learn", key), "version": VERSION, "kind": candidate["kind"], "topic": candidate["topic"], "text": candidate["text"], "observations": 0, "successes": 0, "contradictions": 0, "confidence": 0.0, "status": "candidate", "created_at": now, "last_seen_at": now, "source_runs": []})
-        row["observations"] = int(row.get("observations", 0)) + 1
-        row["successes"] = int(row.get("successes", 0)) + (1 if candidate.get("success") else 0)
-        row["last_seen_at"] = now
+        row["observations"] = int(row.get("observations", 0)) + 1; row["successes"] = int(row.get("successes", 0)) + (1 if candidate.get("success") else 0); row["last_seen_at"] = now
         runs = list(row.get("source_runs", [])); source_run = candidate.get("source_run")
         if source_run and source_run not in runs: runs.append(source_run)
         row["source_runs"] = runs[-20:]
@@ -99,10 +97,33 @@ def _promote(records, *, min_observations, min_success_rate, stale_after_days, n
         row["immutable"] = immutable; row["application"] = "advisory-only" if immutable else "context-advisory"
 
 
+def _record_run_history(manifest: dict[str, Any], run_dir: Path) -> int:
+    """Capture machine-observable failures so future runs can avoid repeating them."""
+    root = run_dir.parents[2] if len(run_dir.parents) > 2 else Path(".")
+    task = str(manifest.get("task", "")).strip()
+    run_id = str(manifest.get("run_id", ""))
+    count = 0
+    validation = manifest.get("validation", {}) if isinstance(manifest.get("validation"), dict) else {}
+    commands = validation.get("commands", []) if isinstance(validation.get("commands"), list) else []
+    for item in commands:
+        if not isinstance(item, dict): continue
+        command = str(item.get("command", item.get("cmd", ""))).strip()
+        passed = item.get("passed")
+        if command and passed is False:
+            task_memory.record(root, task=task, category="command", outcome="failed", detail=str(item.get("output", item.get("error", "validation command failed"))), command=command, run_id=run_id)
+            count += 1
+    status = str(manifest.get("status", ""))
+    if status not in {"completed", "success"}:
+        task_memory.record(root, task=task, category="verification", outcome="failed", detail=str(validation.get("error", manifest.get("error", "task did not complete"))), run_id=run_id)
+        count += 1
+    return count
+
+
 def evolve_run(run_dir: Path, config: dict[str, Any]) -> dict[str, Any]:
     manifest_path = run_dir / "manifest.json"
     if not manifest_path.exists(): return {"status": "skipped", "reason": "missing-manifest"}
     manifest = json.loads(manifest_path.read_text(encoding="utf-8")); now = int(time.time()); learning = config.get("learning", {}); root = run_dir.parents[2] if len(run_dir.parents) > 2 else Path("."); learn_dir = root / ".ai-harness" / "learning"; registry_path = learn_dir / "patterns.jsonl"
+    history_records = _record_run_history(manifest, run_dir)
     existing = _read_jsonl(registry_path); candidates = _extract_candidates(manifest, run_dir); records = _aggregate(existing, candidates, now)
     _promote(records, min_observations=int(learning.get("min_observations_for_promotion", 3)), min_success_rate=float(learning.get("min_success_rate_for_promotion", 0.75)), stale_after_days=int(learning.get("stale_after_days", 120)), now=now)
     records.sort(key=lambda row: (-float(row.get("confidence", 0)), -int(row.get("last_seen_at", 0)), str(row.get("id", "")))); records = records[:int(learning.get("max_memory_items", 250))]
@@ -113,7 +134,7 @@ def evolve_run(run_dir: Path, config: dict[str, Any]) -> dict[str, Any]:
         proposal = {"id": stable_id("skill-proposal", row["id"]), "version": VERSION, "source_pattern_id": row["id"], "kind": row["kind"], "topic": row["topic"], "text": row["text"], "status": "candidate", "requires_eval": True, "requires_review": True, "executable": False}
         if proposal["id"] not in existing_ids: _append_jsonl(proposal_path, proposal); existing_ids.add(proposal["id"])
     trusted = sum(1 for row in records if row.get("status") == "trusted"); deprecated = sum(1 for row in records if row.get("status") == "deprecated")
-    return {"status": "evolved", "observed": len(candidates), "patterns": len(records), "trusted": trusted, "deprecated": deprecated, "proposal_count": len(existing_ids)}
+    return {"status": "evolved", "observed": len(candidates), "patterns": len(records), "trusted": trusted, "deprecated": deprecated, "proposal_count": len(existing_ids), "task_history_records": history_records}
 
 
 def record_reported_regression(root: Path, *, original_run_id: str, intent_digest: str, summary: str, evidence_ids: list[str], rca_status: str = "unproven") -> dict[str, Any]:
@@ -124,10 +145,10 @@ def record_reported_regression(root: Path, *, original_run_id: str, intent_diges
     now = int(time.time()); root = Path(root); learn_dir = root / ".ai-harness" / "learning"; learn_dir.mkdir(parents=True, exist_ok=True)
     record = {"id": stable_id("regression", f"{original_run_id}|{summary}|{intent_digest}"), "version": VERSION, "event_type": "reported-regression", "reported_at": now, "original_run_id": str(original_run_id), "intent_digest": str(intent_digest), "summary": summary, "evidence_ids": sorted(set(str(x) for x in evidence_ids if str(x).strip())), "rca_status": rca_status, "patch_applied": False, "learning_status": "candidate"}
     _append_jsonl(learn_dir / "regression-events.jsonl", record)
+    task_memory.record(root, task=summary, category="regression", outcome="regressed", detail=summary, run_id=original_run_id, evidence_ids=evidence_ids)
     if record["evidence_ids"]:
         candidate = {"kind": "dont", "topic": "regression", "text": summary, "success": False, "source_run": original_run_id, "intent_digest": intent_digest, "event_type": "reported-regression"}
-        registry = _read_jsonl(learn_dir / "patterns.jsonl"); records = _aggregate(registry, [candidate], now)
-        _promote(records, min_observations=3, min_success_rate=0.75, stale_after_days=120, now=now)
+        registry = _read_jsonl(learn_dir / "patterns.jsonl"); records = _aggregate(registry, [candidate], now); _promote(records, min_observations=3, min_success_rate=0.75, stale_after_days=120, now=now)
         tmp = learn_dir / "patterns.tmp"; tmp.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in records), encoding="utf-8"); tmp.replace(learn_dir / "patterns.jsonl")
     return record
 
