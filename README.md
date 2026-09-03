@@ -1,49 +1,54 @@
 # Adaptive AI Coding Orchestrator
 
-A provider-neutral AI software-engineering control plane for Claude Code and compatible coding agents. It turns a natural-language task, Jira issue, bug, review, research question, or POC into a repository-aware workflow with bounded context, optional code intelligence, verification, review, repair, and evidence-backed learning.
+A provider-neutral AI software-engineering control plane for Claude Code and compatible coding agents. **AER (Adaptive Engineering Runtime)** is the engineering control-plane concept behind the orchestrator: it turns a natural-language task, Jira issue, bug, review, research question, or POC into a repository-aware workflow with bounded context, optional code intelligence, verification, review, repair, and evidence-backed learning.
 
 The product identity is `adaptive-ai-coding-orchestrator`; the GitHub repository name is retained temporarily for history compatibility.
 
-## What it does
+## What is AER?
+
+AER is the runtime/control-plane layer that governs how an AI coding agent moves from **intent to a verified engineering outcome**. The model is replaceable; AER owns the workflow, repository evidence, safety boundaries, verification, and proof.
 
 ```text
-User task / Jira / issue
-        |
-        v
-Minimal local contract + session state
-        |
-        v
-Task classification + risk
-        |
-        v
-Optional capability discovery
-        |
-        v
-Targeted AST / graph / exact / semantic evidence
-        |
-        v
-Bounded context + adaptive workflow
-        |
-        +--> research
-        +--> POC
-        +--> debug
-        +--> implement
-        +--> review / grill
-        |
-        v
-Repository-native verification
-        |
-        v
-Fresh-context review when warranted
-        |
-        v
-Focused entropy check + durable handoff
-        |
-        v
-Evaluation + safe learning signals
+User intent / Jira / issue
+          |
+          v
+       AER Control Plane
+          |
+   Intent -> Contract -> Repo Facts
+          |
+          v
+    Adaptive workflow
+          |
+   +------+------+------+------+------+
+   |      |      |      |      |      |
+Research  POC   Debug Implement Review Grill
+   |      |      |      |      |      |
+   +------+------+------+------+------+
+          |
+          v
+       Changeset
+          |
+          v
+   Verify -> Review -> Proof
+          |
+          v
+       Outcome
+          |
+          v
+   Safe evaluation + learning
 ```
 
-## Design principles
+For substantial work, the durable artifact chain is:
+
+`intent -> spec -> plan -> changeset -> verification -> review -> proof`
+
+The broader engineering state is:
+
+`INTENT -> CONTRACT -> REPO_FACTS -> DECISIONS -> EVIDENCE -> CHANGESET -> VERIFY -> OUTCOME -> OPEN_RISKS -> NEXT`
+
+AER is therefore more than a prompt library or model wrapper. It is the control plane around the coding agent.
+
+## AER design principles
 
 - Repository conventions before generic conventions.
 - Human-written, non-obvious instructions before generated context inventories.
@@ -63,6 +68,30 @@ Evaluation + safe learning signals
 - New dependencies require an explicit decision and disclosure.
 - Provider failure must degrade gracefully.
 - Learned behavior must be evaluated before becoming executable policy.
+
+## How AER fits with coding agents
+
+```text
+Claude / Codex / Gemini / compatible agent
+                    |
+                 Adapter
+                    |
+          AER Control Plane
+                    |
+       +------------+------------+
+       |            |            |
+     Policy       Context     Knowledge
+       |            |            |
+   risk/scope    retrieval    AST/graph/RAG
+       |            |            |
+       +------------+------------+
+                    |
+             Execute / Verify
+                    |
+              Review / Proof
+```
+
+The coding agent supplies model reasoning and tool interaction. AER supplies the repository-aware engineering process around it. Optional providers such as Graphify, code-mem, MCP servers, and compatible Agent Skills are capabilities discovered and selected when useful; they are not separate orchestration systems.
 
 ## Install for Claude Code
 
@@ -240,12 +269,12 @@ See `docs/AGENT_OPERATING_SYSTEM_REVIEW.md` and `docs/P0_OPERATING_CONTRACT.md`.
 
 The repository contains isolated reference applications for exercising the orchestrator against ordinary software problems. They are examples only and are not dependencies of the core system.
 
-See `examples/README.md` for:
+Both examples use the same AER lifecycle and scenario vocabulary; the domain changes the guardrails, not the control plane. See `examples/README.md` for:
 
-- `habit-tracker/` — CRUD, validation, streak logic, and regression tests.
-- `family-financial-register/` — a fake-data, offline continuity register for assets, liabilities, documents, and responsible roles. It intentionally excludes credentials and recovery secrets.
+- `habit-tracker/` — low-risk CRUD, validation, streak logic, and regression tests.
+- `family-financial-register/` — a higher-sensitivity fake-data, offline continuity register for assets, liabilities, documents, and responsible roles. It intentionally excludes credentials and recovery secrets.
 
-The examples are deliberately kept outside `.ai-harness`, `state`, and runtime packages so the core remains domain-neutral.
+The examples are deliberately kept outside `.ai-harness`, `state`, and runtime packages so the core remains domain-neutral. Their `HARNESS_SCENARIOS.md` files describe how the same AER contract is exercised without introducing example-specific orchestration logic.
 
 ## Evaluation
 
