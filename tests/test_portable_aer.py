@@ -12,15 +12,15 @@ from portable.aer import build, check_update, install, rollback, verify_bundle
 
 class PortableAerTests(unittest.TestCase):
     def make_source(self, root: Path, version: str = "20.1.0") -> None:
-        (root / ".ai-harness" / "runtime").mkdir(parents=True)
-        (root / ".claude-plugin").mkdir(parents=True)
-        (root / "skills" / "ai-coding-orchestrator").mkdir(parents=True)
-        (root / "portable").mkdir(parents=True)
+        (root / ".ai-harness" / "runtime").mkdir(parents=True, exist_ok=True)
+        (root / ".claude-plugin").mkdir(parents=True, exist_ok=True)
+        (root / "skills" / "ai-coding-orchestrator").mkdir(parents=True, exist_ok=True)
+        (root / "portable").mkdir(parents=True, exist_ok=True)
         (root / ".ai-harness" / "config.toml").write_text('[harness]\nversion = 20\n', encoding="utf-8")
         (root / ".claude-plugin" / "plugin.json").write_text(json.dumps({"version": version}), encoding="utf-8")
         (root / ".ai-harness" / "runtime" / "engine.py").write_text("print('ok')\n", encoding="utf-8")
         (root / ".ai-harness" / "telemetry.jsonl").write_text("machine-state\n", encoding="utf-8")
-        (root / "skills" / "ai-coding-orchestrator" / "SKILL.md").write_text("---\nname: ai-coding-orchestrator\n---\n", encoding="utf-8")
+        (root / "skills" / "ai-coding-orchestrator" / "SKILL.md").write_text("---\nname: ai-coding-orchestrator\ndescription: Repository-aware AI engineering control plane.\n---\n", encoding="utf-8")
         (root / "portable" / "aer.py").write_text("print('portable')\n", encoding="utf-8")
         (root / "aer.py").write_text("print('launcher')\n", encoding="utf-8")
 
@@ -89,25 +89,27 @@ class PortableAerTests(unittest.TestCase):
             self.assertEqual(active["version"], "20.1.0")
             self.assertEqual(active["source_commit"], "commit-a")
 
-    def test_check_update_uses_semantic_version_and_exact_commit(self) -> None:
+    def test_check_update_uses_exact_remote_commit_pin(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             aer_home = Path(tmp) / "aer-home"
             aer_home.mkdir()
-            (aer_home / "active.json").write_text(json.dumps({"version": "20.9.0", "source_commit": "old"}), encoding="utf-8")
-            with patch("portable.aer._remote_target", return_value=("20.10.0", "new")):
+            (aer_home / "active.json").write_text(json.dumps({"version": "20.1.0", "source_commit": "old"}), encoding="utf-8")
+            with patch("portable.aer._remote_target", return_value=("20.2.0", "new")):
                 status = check_update(aer_home)
             self.assertTrue(status["update_available"])
-            self.assertEqual(status["latest_version"], "20.10.0")
+            self.assertEqual(status["latest_version"], "20.2.0")
             self.assertEqual(status["latest_commit"], "new")
 
     def test_same_semver_different_commit_is_not_an_update(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             aer_home = Path(tmp) / "aer-home"
             aer_home.mkdir()
-            (aer_home / "active.json").write_text(json.dumps({"version": "20.10.0", "source_commit": "old"}), encoding="utf-8")
-            with patch("portable.aer._remote_target", return_value=("20.10.0", "new")):
+            (aer_home / "active.json").write_text(json.dumps({"version": "20.1.0", "source_commit": "old"}), encoding="utf-8")
+            with patch("portable.aer._remote_target", return_value=("20.1.0", "new")):
                 status = check_update(aer_home)
-            self.assertFalse(status["update_available"])
+            self.assertTrue(status["update_available"])
+            self.assertEqual(status["latest_version"], "20.1.0")
+            self.assertEqual(status["latest_commit"], "new")
 
 
 if __name__ == "__main__":
