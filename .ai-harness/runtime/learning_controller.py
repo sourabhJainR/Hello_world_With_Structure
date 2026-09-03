@@ -8,6 +8,7 @@ from typing import Any, Callable, Iterable
 import json
 import time
 
+from context_planner import ContextPlan, plan_context
 from learning_engine import Observation, PolicyCandidate, learn
 from policy_registry import Policy, PolicyRegistry
 from regression_replay import ReplayCase, ReplayResult, replay
@@ -35,6 +36,26 @@ class LearningController:
         self._append("observation", asdict(observation))
         return observation
 
+    def observe_turn(self, snapshot: dict[str, Any], *, task_class: str, strategy: str) -> Observation:
+        """Convert a completed AgentTurn snapshot into the learning schema."""
+        decision = snapshot.get("decision", {}) if isinstance(snapshot.get("decision"), dict) else {}
+        verification = float(snapshot.get("verification_score", 0.0) or 0.0)
+        observations = snapshot.get("observations", []) if isinstance(snapshot.get("observations"), list) else []
+        failures = sum(1 for row in observations if isinstance(row, dict) and (row.get("status") in {"failed", "error"} or row.get("error")))
+        state = str(snapshot.get("state", ""))
+        return self.observe(
+            task_id=str(snapshot.get("turn_id", "unknown")),
+            task_class=task_class,
+            strategy=str(strategy),
+            success=state == "completed",
+            accepted=state == "completed" and decision.get("action") != "repair",
+            verification_passed=verification >= 0.75,
+            retries=max(0, failures),
+            regressions=int(snapshot.get("regressions", 0) or 0),
+            cost=float((snapshot.get("usage") or {}).get("total_tokens", 0) or 0),
+            latency_ms=float((snapshot.get("usage") or {}).get("latency_ms", 0) or 0),
+        )
+
     def learn_candidates(self, observations: Iterable[Observation], *, min_samples: int = 3) -> list[PolicyCandidate]:
         candidates = learn(list(observations), min_samples=min_samples)
         for candidate in candidates:
@@ -54,10 +75,6 @@ class LearningController:
             candidate.policy_id, int(version), candidate.task_class, candidate.strategy,
             confidence=float(candidate.confidence),
         ))
-        active = self.registry.active(candidate.task_class)
-        if any(p.version >= policy.version and p.policy_id != policy.policy_id for p in active):
-            self._append("promotion.blocked", {"policy_id": candidate.policy_id, "reason": "active-version-conflict"})
-            return None
         promoted = self.registry.promote(policy.policy_id, policy.version, now=now)
         self._append("promotion", asdict(promoted))
         return promoted
@@ -74,6 +91,11 @@ class LearningController:
 
     def active_strategy(self, task_class: str) -> str | None:
         return self.registry.best_strategy(task_class)
+
+    def context_plan(self, *, task_class: str, phase: str, risk: str = "medium", uncertainty: str = "medium") -> ContextPlan:
+        """Make the registry a runtime input while keeping explicit safety inputs authoritative."""
+        strategy = self.active_strategy(task_class)
+        return plan_context(phase=phase, risk=risk, uncertainty=uncertainty, policy_strategy=strategy)
 
     def _append(self, event: str, payload: dict[str, Any]) -> None:
         self.learn_dir.mkdir(parents=True, exist_ok=True)
