@@ -63,7 +63,10 @@ def collect(task: str, config: dict[str, Any]) -> dict[str, Any]:
         if output: evidence.append(f"[{source['source']}]\n{output}")
     compatibility = build_compatibility_profile(ROOT); evidence.append(compatibility_instructions(compatibility)); evidence.append(task_memory.guidance(ROOT, task))
     budget = int(config.get("knowledge", {}).get("budget_chars", 6000)); joined = "\n\n".join(evidence)[:budget]
-    return {"available": status, "sources": [item["source"] for item in sources] + ["local-compatibility", "task-memory"], "evidence": joined or "No structural or historical knowledge source available.", "strategy": "construct index + language-version constraints + historical task evidence + AST/graph retrieval + targeted reads + verification"}
+    # ``sources`` is reserved for external knowledge providers/artifacts. Local
+    # compatibility and task-memory evidence is deterministic harness context,
+    # not an external source. Keep its provenance in the evidence payload.
+    return {"available": status, "sources": [item["source"] for item in sources], "evidence": joined or "No external structural or historical knowledge source available; local compatibility and task-memory context is still evaluated.", "strategy": "construct index + language-version constraints + historical task evidence + AST/graph retrieval + targeted reads + verification"}
 
 
 def main() -> int:
