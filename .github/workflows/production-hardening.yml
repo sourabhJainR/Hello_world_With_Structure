@@ -30,7 +30,27 @@ jobs:
       - name: Run focused hardening tests
         run: python -m unittest tests.test_security_gate tests.test_state_validator tests.test_provider tests.test_execution_controls tests.test_verification_gate -v
       - name: Validate configuration
-        run: python -c "import tomllib; c=tomllib.load(open('.ai-harness/config.toml','rb')); assert c['harness']['version'] >= 21; assert c['durability']['journal_failure_is_non_fatal'] is False; assert c['reviewers']['require_consensus_for_high_risk'] is True; assert c['knowledge']['require_fresh_index_for_high_risk'] is True"
+        run: python - <<'PY'
+          import json
+          import tomllib
+          from pathlib import Path
+
+          config = tomllib.load(open('.ai-harness/config.toml', 'rb'))
+          plugin = json.loads(Path('.claude-plugin/plugin.json').read_text())
+          harness_major = int(config['harness']['version'])
+          plugin_major = int(plugin['version'].split('.')[0])
+
+          assert harness_major == plugin_major, (
+              f'harness config major version {harness_major} must match '
+              f'plugin major version {plugin_major}'
+          )
+          assert config['durability']['journal_failure_is_non_fatal'] is False
+          assert config['reviewers']['require_consensus_for_high_risk'] is True
+          assert config['knowledge']['require_fresh_index_for_high_risk'] is True
+          assert config['verification']['require_acceptance_evidence'] is True
+          assert config['verification']['require_diff_check'] is True
+          assert config['execution']['require_new_evidence_for_retry'] is True
+          PY
       - name: Validate ledger schema and implementation contract
         run: |
           python - <<'PY'
