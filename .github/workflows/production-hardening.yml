@@ -32,7 +32,8 @@ jobs:
       - name: Validate configuration
         run: python -c "import tomllib; c=tomllib.load(open('.ai-harness/config.toml','rb')); assert c['harness']['version'] >= 21; assert c['durability']['journal_failure_is_non_fatal'] is False; assert c['reviewers']['require_consensus_for_high_risk'] is True"
       - name: Validate ledger schema and implementation contract
-        run: python - <<'PY'
+        run: |
+          python - <<'PY'
           import json
           from pathlib import Path
           import sys
