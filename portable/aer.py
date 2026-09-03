@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
 """Portable AER distribution utility.
 
-The command builds an offline bundle from the canonical repository and installs
-that bundle into any target repository. The bundle carries the complete AER
+Build an offline bundle from the canonical repository, verify it, and install
+it into any target repository. The bundle carries the complete AER
 implementation under .ai-harness plus the provider-neutral Agent Skill.
 
 Examples:
-  python portable/aer.py build --output aer-bundle.zip
-  python portable/aer.py install aer-bundle.zip /path/to/repo
-  python portable/aer.py verify aer-bundle.zip
-
-The installer never changes permissions, credentials, MCP configuration, git
-settings, or production access. Existing target files are backed up before a
-managed replacement.
+  python portable/aer.py build --output aer-portable.zip
+  python portable/aer.py install aer-portable.zip /path/to/repo
+  python portable/aer.py verify aer-portable.zip
 """
 from __future__ import annotations
 
@@ -20,7 +16,6 @@ import argparse
 import hashlib
 import json
 import shutil
-import sys
 import tempfile
 import zipfile
 from dataclasses import dataclass
@@ -30,24 +25,9 @@ BUNDLE_FORMAT_VERSION = 1
 BUNDLE_NAME = "aer-portable"
 MANIFEST_NAME = "aer-bundle.json"
 PAYLOAD_ROOT = "payload"
-REQUIRED_PATHS = (
-    ".ai-harness",
-    "skills/ai-coding-orchestrator",
-)
-EXCLUDED_PARTS = {
-    "__pycache__",
-    ".pytest_cache",
-    ".mypy_cache",
-    ".ruff_cache",
-    ".git",
-    "worktrees",
-}
-MUTABLE_FILE_NAMES = {
-    "execution.journal.jsonl",
-    "telemetry.jsonl",
-    "task-memory.jsonl",
-    "regression-events.jsonl",
-}
+REQUIRED_PATHS = (".ai-harness", "skills/ai-coding-orchestrator")
+EXCLUDED_PARTS = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".git", "worktrees"}
+MUTABLE_FILE_NAMES = {"execution.journal.jsonl", "telemetry.jsonl", "task-memory.jsonl", "regression-events.jsonl"}
 
 
 @dataclass(frozen=True)
@@ -66,10 +46,6 @@ def should_include(path: Path, root: Path) -> bool:
     if any(part in EXCLUDED_PARTS for part in rel.parts):
         return False
     if path.is_file() and path.name in MUTABLE_FILE_NAMES:
-        return False
-    # Repository-local generated state is intentionally not portable.
-    rel_text = rel.as_posix()
-    if rel_text.startswith(".ai-harness/worktrees/"):
         return False
     return path.is_file()
 
@@ -98,19 +74,13 @@ def make_manifest(root: Path, files: list[Path]) -> dict:
     if config_path.exists():
         for line in config_path.read_text(encoding="utf-8").splitlines():
             if line.strip().startswith("version ="):
-                raw = line.split("=", 1)[1].strip()
                 try:
-                    harness_version = int(raw.strip('"\''))
+                    harness_version = int(line.split("=", 1)[1].strip().strip('"\''))
                 except ValueError:
                     pass
                 break
-
     records = [
-        FileRecord(
-            path=p.relative_to(root).as_posix(),
-            sha256=sha256_file(p),
-            size=p.stat().st_size,
-        )
+        FileRecord(p.relative_to(root).as_posix(), sha256_file(p), p.stat().st_size).__dict__
         for p in files
     ]
     return {
@@ -121,8 +91,13 @@ def make_manifest(root: Path, files: list[Path]) -> dict:
         "provider_neutral": True,
         "source_paths": list(REQUIRED_PATHS),
         "mutable_state_excluded": True,
-        "managed_install_paths": [".ai-harness", ".agents/skills/ai-coding-orchestrator", ".claude/skills/ai-coding-orchestrator", ".gemini/skills/ai-coding-orchestrator"],
-        "files": [record.__dict__ for record in records],
+        "managed_install_paths": [
+            ".ai-harness",
+            ".agents/skills/ai-coding-orchestrator",
+            ".claude/skills/ai-coding-orchestrator",
+            ".gemini/skills/ai-coding-orchestrator",
+        ],
+        "files": records,
     }
 
 
@@ -135,10 +110,13 @@ def build(root: Path, output: Path) -> Path:
         for source in files:
             rel = source.relative_to(root).as_posix()
             archive.write(source, f"{PAYLOAD_ROOT}/{rel}")
+        launcher = root / "aer.py"
+        if launcher.is_file():
+            archive.write(launcher, "aer.py")
         readme = (
             "AER portable bundle\n\n"
             "Install with: python aer.py install <bundle.zip> <target-repo>\n"
-            "This archive contains the portable AER control plane and Agent Skill.\n"
+            "The archive contains the portable AER control plane and Agent Skill.\n"
         )
         archive.writestr(f"{PAYLOAD_ROOT}/PORTABLE_BUNDLE.txt", readme)
     return output
@@ -169,6 +147,8 @@ def verify_bundle(bundle: Path) -> dict:
                     raise SystemExit(f"bundle file missing: {record['path']}")
                 if sha256_file(path) != record["sha256"]:
                     raise SystemExit(f"bundle integrity failure: {record['path']}")
+            if not (root / "aer.py").is_file():
+                raise SystemExit("bundle launcher is missing: aer.py")
             return manifest
         finally:
             shutil.rmtree(root, ignore_errors=True)
@@ -182,7 +162,10 @@ def backup(path: Path) -> None:
     while backup_path.exists():
         backup_path = path.with_name(f"{path.name}.aer-backup-{counter}")
         counter += 1
-    shutil.copytree(path, backup_path) if path.is_dir() else shutil.copy2(path, backup_path)
+    if path.is_dir():
+        shutil.copytree(path, backup_path)
+    else:
+        shutil.copy2(path, backup_path)
 
 
 def install(bundle: Path, target: Path, install_skill: str) -> None:
@@ -209,7 +192,7 @@ def install(bundle: Path, target: Path, install_skill: str) -> None:
                 "claude": home / ".claude" / "skills" / "ai-coding-orchestrator",
                 "gemini": home / ".gemini" / "skills" / "ai-coding-orchestrator",
             }
-            selected = [install_skill] if install_skill != "all" else list(skill_targets)
+            selected = list(skill_targets) if install_skill == "all" else [install_skill]
             for name in selected:
                 destination = skill_targets[name]
                 destination.parent.mkdir(parents=True, exist_ok=True)
@@ -237,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
 
     install_parser = sub.add_parser("install", help="Install a bundle into any repository")
     install_parser.add_argument("bundle", type=Path)
-    install_parser.add_argument("target_repo", type=Path, default=Path.cwd())
+    install_parser.add_argument("target_repo", type=Path, nargs="?", default=Path.cwd())
     install_parser.add_argument("--skill", choices=("none", "agents", "claude", "gemini", "all"), default="agents")
 
     args = parser.parse_args(argv)
@@ -249,10 +232,8 @@ def main(argv: list[str] | None = None) -> int:
         manifest = verify_bundle(args.bundle.resolve())
         print(f"AER bundle verified: format={manifest['format']} files={len(manifest['files'])} harness={manifest.get('harness_version')}")
         return 0
-    if args.command == "install":
-        install(args.bundle.resolve(), args.target_repo.resolve(), args.skill)
-        return 0
-    return 2
+    install(args.bundle.resolve(), args.target_repo.resolve(), args.skill)
+    return 0
 
 
 if __name__ == "__main__":
