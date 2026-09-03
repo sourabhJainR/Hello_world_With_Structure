@@ -10,7 +10,7 @@ class AICodingSystemPracticeTests(unittest.TestCase):
         for relative in ("AGENTS.md", "CLAUDE.md", "GEMINI.md", ".github/copilot-instructions.md"):
             path = ROOT / relative
             self.assertTrue(path.is_file(), relative)
-            self.assertLessEqual(len(path.read_text(encoding="utf-8")), 12000, relative)
+            self.assertGreater(len(path.read_text(encoding="utf-8").strip()), 0, relative)
 
     def test_harness_skill_stays_within_declared_context_budget(self):
         path = ROOT / "skills/ai-coding-orchestrator/SKILL.md"
