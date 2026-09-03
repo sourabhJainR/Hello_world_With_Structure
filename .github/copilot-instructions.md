@@ -1,6 +1,6 @@
 # Copilot repository guidance
 
-Use `AGENTS.md` as the cross-agent engineering contract and `.ai-harness/ARCHITECTURE_POLICY.md` as the architecture authority.
+Use `AGENTS.md` as the cross-agent engineering contract and `.ai-harness/ARCHITECTURE_POLICY.md` as the architecture authority. Keep these always-on instructions concise; retrieve detailed policy only when the task needs it.
 
 For non-trivial work: explore first, plan when uncertainty/risk/multi-file scope warrants it, make the smallest compatible change, run repository-native verification, inspect the final diff, and use independent review for meaningful or high-risk changes.
 
