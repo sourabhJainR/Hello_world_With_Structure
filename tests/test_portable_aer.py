@@ -5,7 +5,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
-from portable.aer import build, verify_bundle, install
+from portable.aer import build, install, verify_bundle
 
 
 class PortableAerTests(unittest.TestCase):
@@ -28,34 +28,42 @@ class PortableAerTests(unittest.TestCase):
             self.assertEqual(manifest["harness_version"], 20)
             self.assertTrue(any(item["path"] == ".ai-harness/runtime/engine.py" for item in manifest["files"]))
             self.assertFalse(any(item["path"].endswith("telemetry.jsonl") for item in manifest["files"]))
+            self.assertFalse(manifest["target_repository_mutation"])
             with zipfile.ZipFile(bundle) as archive:
                 self.assertIn("aer.py", archive.namelist())
 
-    def test_install_creates_target_harness_and_skill(self) -> None:
+    def test_install_is_repository_isolated(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "source"
             target = Path(tmp) / "target"
+            aer_home = Path(tmp) / "aer-home"
             self.make_source(root)
+            target.mkdir()
+            (target / "README.md").write_text("user repository", encoding="utf-8")
+            before = {p.relative_to(target): p.read_bytes() for p in target.rglob("*") if p.is_file()}
             bundle = Path(tmp) / "aer.zip"
             build(root, bundle)
-            install(bundle, target, "none")
-            self.assertTrue((target / ".ai-harness" / "runtime" / "engine.py").is_file())
-            self.assertTrue((target / ".ai-harness" / "config.toml").is_file())
-            self.assertFalse((target / ".ai-harness" / "telemetry.jsonl").exists())
+            install(bundle, "none", aer_home)
+            after = {p.relative_to(target): p.read_bytes() for p in target.rglob("*") if p.is_file()}
+            self.assertEqual(before, after)
+            self.assertFalse((target / ".ai-harness").exists())
+            self.assertTrue((aer_home / "current" / ".ai-harness" / "runtime" / "engine.py").is_file())
+            self.assertTrue((aer_home / "current" / ".ai-harness" / "config.toml").is_file())
+            self.assertFalse((aer_home / "current" / ".ai-harness" / "telemetry.jsonl").exists())
 
-    def test_install_backs_up_existing_harness(self) -> None:
+    def test_install_does_not_backup_or_replace_target_harness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "source"
             target = Path(tmp) / "target"
+            aer_home = Path(tmp) / "aer-home"
             self.make_source(root)
             (target / ".ai-harness").mkdir(parents=True)
             (target / ".ai-harness" / "legacy.txt").write_text("preserve me", encoding="utf-8")
             bundle = Path(tmp) / "aer.zip"
             build(root, bundle)
-            install(bundle, target, "none")
-            backups = list(target.glob(".ai-harness.aer-backup*"))
-            self.assertTrue(backups)
-            self.assertEqual((backups[0] / "legacy.txt").read_text(encoding="utf-8"), "preserve me")
+            install(bundle, "none", aer_home)
+            self.assertEqual((target / ".ai-harness" / "legacy.txt").read_text(encoding="utf-8"), "preserve me")
+            self.assertFalse(list(target.glob(".ai-harness.aer-backup*")))
 
 
 if __name__ == "__main__":
