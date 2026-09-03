@@ -28,7 +28,7 @@ class CanaryEvaluatorTests(unittest.TestCase):
         self.assertEqual(report.failures, ("b",))
 
     def test_canary_enforces_required_verification(self):
-        report = evaluate_canary(self.candidate, self.cases, lambda _: (True, False), min_verification_rate=1.0)
+        report = evaluate_canary(self.candidate, self.cases, lambda _case, _candidate: (True, False), min_verification_rate=1.0)
         self.assertFalse(report.gate_passed)
 
     def test_runner_supports_structured_metrics(self):
