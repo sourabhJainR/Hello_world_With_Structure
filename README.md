@@ -21,7 +21,7 @@ Install it on another machine:
 python aer.py install aer-portable.zip
 ```
 
-Each installation records both the semantic AER version and the exact source Git commit. A version cannot silently move to another commit.
+Each installation records the semantic AER version, exact source Git commit, and bundle SHA-256. A semantic version cannot silently move to another commit.
 
 ### Self-update
 
@@ -37,7 +37,7 @@ Update only when the channel exposes a newer semantic version:
 python ~/.aer/current/aer.py update
 ```
 
-AER resolves the exact remote commit, downloads that commit, rebuilds and verifies the bundle, installs the new version, then switches the user-level `current` pointer. A changed commit without a newer version is rejected.
+AER resolves the exact remote commit, reads the version from that exact commit, downloads that commit, rebuilds and verifies the bundle, installs the new pinned version, then switches the user-level `current` pointer. A changed commit without a newer version is rejected.
 
 For a controlled release channel:
 
@@ -46,7 +46,7 @@ python ~/.aer/current/aer.py check-update --channel release
 python ~/.aer/current/aer.py update --channel release
 ```
 
-Rollback to the previous installed version or a specific version:
+Rollback to a previous installed version:
 
 ```bash
 python ~/.aer/current/aer.py rollback
@@ -59,8 +59,4 @@ See `portable/README.md` for the complete distribution, pinning, update and isol
 
 AER installation, update and rollback do **not** create, replace, delete or back up `.ai-harness` in the project. They do not add AER files to the working tree or index and do not modify `.git/config`, hooks, remotes, branches, or ignore files. MCP configuration, credentials, permissions, production access and merge authority are also untouched.
 
-AER may of course read the target repository and, when the user requests an engineering task, change the project's own source/tests/configuration. Those are task changes, not AER distribution artifacts.
-
-## What is AER?
-
-AER is the runtime/control-plane layer that governs how an AI coding agent moves from **intent to a verified engineering outcome**. The model is replaceable; AER owns the workflow, repository evidence, safety boundaries, verification, and proof.
+AER may read the target repository and, when the user requests an engineering task, change the project's own source/tests/configuration. Those are task changes, not AER distribution artifacts.
