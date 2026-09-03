@@ -21,6 +21,12 @@ class ContextPlannerTests(unittest.TestCase):
         self.assertIn("semantic", plan.retrieval_modes)
         self.assertIn("history", plan.retrieval_modes)
 
+    def test_policy_strategy_changes_retrieval_order_without_removing_safety(self):
+        plan = plan_context(phase="debug", risk="high", uncertainty="medium", policy_strategy="targeted_context")
+        self.assertEqual(plan.policy_strategy, "targeted_context")
+        self.assertEqual(plan.retrieval_modes[:3], ("instructions", "task_contract", "structural"))
+        self.assertIn("security", plan.retrieval_modes)
+
     def test_selection_is_ranked_deduplicated_and_bounded(self):
         candidates = [
             EvidenceCandidate("low", "source", "low", relevance=.2, confidence=.9, freshness=.9, cost=100),
