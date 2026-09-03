@@ -1,12 +1,12 @@
 # AER Portable Bundle
 
-The portable distribution is designed to move the current AER engineering control plane between machines and repositories without turning each target repository into a fork of the AER project.
+The portable distribution is **repository-isolated by design**. AER is installed under the user's machine-level `~/.aer` directory and the selected Agent Skill is installed in a user-level skill location. A target project is a workspace only; the installer does not vendor AER files into that project.
 
 ## What is carried
 
 The bundle contains the complete provider-neutral `.ai-harness` implementation plus the canonical `ai-coding-orchestrator` Agent Skill. This includes the current routing/context policies, context cache, learning engine and controller, policy registry, rollback controls, regression corpus, shadow/canary evaluation, verification controls, extension contracts, and supporting runtime modules present in the source `.ai-harness` tree.
 
-Mutable or machine-specific state is deliberately excluded: execution journals, telemetry, task-memory/regression event logs, worktrees, and Python caches. A target repository creates its own state after installation.
+Mutable or machine-specific state is excluded from the bundle: execution journals, telemetry, task-memory/regression event logs, worktrees, and Python caches.
 
 ## Build an offline bundle
 
@@ -19,23 +19,32 @@ python portable/aer.py verify aer-portable.zip
 
 The ZIP is content-addressed by a manifest and can be copied to another machine with no Git access required.
 
-## Install into any repository
-
-On the target machine:
+## Install on a machine
 
 ```bash
-python aer.py install aer-portable.zip /path/to/target-repo
+python aer.py install aer-portable.zip
 ```
 
-By default the generic Agent Skill is installed under `~/.agents/skills`. Use `--skill claude`, `--skill gemini`, `--skill all`, or `--skill none` when a different host layout is desired.
+The installer writes only to user-scoped AER/Agent-Skill locations such as `~/.aer` and `~/.agents/skills`. It accepts no target-repository path because installation must not mutate a project.
 
-The installer backs up an existing `.ai-harness` before replacing it and never changes git configuration, credentials, MCP configuration, permissions, production access, or merge authority.
+Use `--skill claude`, `--skill gemini`, `--skill all`, or `--skill none` for host selection.
 
-## Portability contract
+## Repository isolation contract
 
-A target repository only needs Python 3.11+ to unpack and install the bundle. The core remains dependency-light and provider-neutral. Claude, Codex, Gemini, MCP servers, Graphify, code-mem, and other tools remain optional capabilities selected by the installed harness rather than dependencies of the bundle.
+The following are hard guarantees of the portable installer:
 
-The bundle is the distribution unit; the target repository owns its repository-specific instructions, source code, tests, configuration, and learned state.
+- It does **not** create `.ai-harness` in a target repository.
+- It does **not** replace, delete, or back up existing target files.
+- It does **not** add files to the target Git working tree, index, or repository metadata.
+- It does **not** modify `.git/config`, hooks, branches, remotes, or ignore files.
+- It does **not** modify MCP configuration, credentials, permissions, production access, or merge authority.
+- A repository that was clean before launching AER remains clean after AER installation.
+
+Project-specific instructions remain owned by the project. AER implementation, configuration, caches, journals, learned state, and runtime code remain outside the project.
+
+## Using AER with any repository
+
+After the machine-level installation, open any repository with the supported coding agent and use the normal AER skill. The skill treats the current repository as the workspace and keeps the AER implementation outside it. Optional integrations remain opt-in and are never installed automatically.
 
 ## Lifecycle after installation
 
@@ -53,4 +62,4 @@ intent
   -> rollback when health degrades
 ```
 
-Learning stays advisory and safety-critical controls remain authoritative.
+Learned behavior remains advisory and safety-critical controls remain authoritative.
