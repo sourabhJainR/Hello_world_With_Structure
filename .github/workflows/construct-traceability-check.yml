@@ -1,0 +1,34 @@
+name: Repository Construct Traceability Check
+
+on:
+  pull_request:
+    paths:
+      - '.ai-harness/runtime/construct_index.py'
+      - '.ai-harness/project_profile.py'
+      - '.ai-harness/tests/test_construct_index.py'
+      - '.ai-harness/CONSTRUCT_TRACEABILITY.md'
+      - '.ai-harness/CONSTRUCT_TRACEABILITY_HLD_LLD.md'
+      - '.ai-harness/config.toml'
+  push:
+    paths:
+      - '.ai-harness/runtime/construct_index.py'
+      - '.ai-harness/project_profile.py'
+      - '.ai-harness/tests/test_construct_index.py'
+      - '.ai-harness/CONSTRUCT_TRACEABILITY.md'
+      - '.ai-harness/CONSTRUCT_TRACEABILITY_HLD_LLD.md'
+      - '.ai-harness/config.toml'
+
+jobs:
+  traceability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile construct traceability implementation
+        run: python -m py_compile .ai-harness/project_profile.py .ai-harness/runtime/construct_index.py .ai-harness/tests/test_construct_index.py
+      - name: Validate construct index behavior
+        run: python -m unittest discover -s .ai-harness/tests -p 'test_construct_index.py' -v
+      - name: Validate configuration
+        run: python -c "import tomllib; c=tomllib.load(open('.ai-harness/config.toml','rb')); assert c['harness']['version'] == 19; assert c['construct_traceability']['enabled'] is True"
