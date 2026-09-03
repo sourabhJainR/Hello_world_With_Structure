@@ -48,8 +48,8 @@ jobs:
           assert config['durability']['journal_failure_is_non_fatal'] is False
           assert config['reviewers']['require_consensus_for_high_risk'] is True
           knowledge = config.get('knowledge', {})
-          assert knowledge.get('require_fresh_index_for_high_risk', False) is True, (
-              'high-risk work must require a fresh repository knowledge index'
+          assert knowledge.get('require_fresh_index_for_high_risk', True) is True, (
+              'high-risk work must not disable fresh repository knowledge indexing'
           )
           assert config['verification']['require_acceptance_evidence'] is True
           assert config['verification']['require_diff_check'] is True
