@@ -13,6 +13,13 @@ def _has_any(patterns: tuple[str, ...]) -> bool:
     return any((ROOT / name).exists() for name in patterns)
 
 
+def _python_test_files() -> bool:
+    tests_root = ROOT / "tests"
+    if not tests_root.is_dir():
+        return False
+    return any(tests_root.rglob("test_*.py")) or any(tests_root.rglob("*_test.py"))
+
+
 def _node_test_command() -> list[str] | None:
     package = ROOT / 'package.json'
     if not package.exists():
@@ -33,11 +40,19 @@ def _node_test_command() -> list[str] | None:
 
 def discover_commands() -> list[list[str]]:
     if (ROOT / 'pyproject.toml').exists() or (ROOT / 'pytest.ini').exists() or (ROOT / 'tox.ini').exists() or (ROOT / 'setup.cfg').exists():
-        if shutil.which('pytest') and (any(ROOT.rglob('test_*.py')) or any(ROOT.rglob('*_test.py'))):
+        if shutil.which('pytest') and _python_test_files():
             return [['pytest', '-q']]
-        if any(ROOT.rglob('test_*.py')) or any(ROOT.rglob('*_test.py')):
+        if _python_test_files():
             return [['python', '-m', 'unittest', 'discover', '-v']]
         return [['python', '-m', 'compileall', '-q', '.']]
+
+    # A repository may intentionally keep its Python harness dependency-free and
+    # therefore have no packaging metadata. A concrete tests/ tree is still a
+    # deterministic verification surface and must not be mistaken for "no tests".
+    if _python_test_files():
+        if shutil.which('pytest'):
+            return [['pytest', '-q']]
+        return [['python', '-m', 'unittest', 'discover', '-v']]
 
     node_test = _node_test_command()
     if node_test:
