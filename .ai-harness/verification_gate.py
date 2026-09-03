@@ -39,6 +39,13 @@ def _node_test_command() -> list[str] | None:
 
 
 def discover_commands() -> list[list[str]]:
+    # The harness repository has its own full CI suite. Running that suite as a
+    # task-level validation command would recursively launch the dry-run tests
+    # that invoke the harness itself. Use deterministic syntax validation here;
+    # production repositories still use their concrete test/build commands.
+    if (ROOT / '.ai-harness' / 'config.toml').exists() and not _has_any(('pyproject.toml', 'pytest.ini', 'tox.ini', 'setup.cfg')):
+        return [['python', '-m', 'compileall', '-q', '.']]
+
     if (ROOT / 'pyproject.toml').exists() or (ROOT / 'pytest.ini').exists() or (ROOT / 'tox.ini').exists() or (ROOT / 'setup.cfg').exists():
         if shutil.which('pytest') and _python_test_files():
             return [['pytest', '-q']]
@@ -46,9 +53,6 @@ def discover_commands() -> list[list[str]]:
             return [['python', '-m', 'unittest', 'discover', '-v']]
         return [['python', '-m', 'compileall', '-q', '.']]
 
-    # A repository may intentionally keep its Python harness dependency-free and
-    # therefore have no packaging metadata. A concrete tests/ tree is still a
-    # deterministic verification surface and must not be mistaken for "no tests".
     if _python_test_files():
         if shutil.which('pytest'):
             return [['pytest', '-q']]
