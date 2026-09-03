@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -7,6 +8,9 @@ MODULE = ROOT / ".ai-harness/runtime/token_optimizer.py"
 spec = importlib.util.spec_from_file_location("token_optimizer", MODULE)
 optimizer = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
+# dataclasses and other runtime introspection expect dynamically loaded modules
+# to be registered in sys.modules before execution.
+sys.modules[spec.name] = optimizer
 spec.loader.exec_module(optimizer)
 
 
