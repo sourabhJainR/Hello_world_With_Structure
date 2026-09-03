@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-orchestrator"
-version = 18
+version = 19
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -171,6 +171,19 @@ log_level = "INFO"
 local_telemetry = true
 telemetry_file = "telemetry.jsonl"
 external_export = false
+
+[construct_traceability]
+enabled = true
+index_module = ".ai-harness/runtime/construct_index.py"
+artifact = "construct-index.json"
+references_artifact = "construct-references.json"
+require_actual_construct_references = true
+allow_unresolved_references = false
+include_files = true
+include_symbols = true
+include_sql_objects = true
+include_data_keys = true
+prompt_budget_chars = 9000
 
 [worktrees]
 enabled = true
