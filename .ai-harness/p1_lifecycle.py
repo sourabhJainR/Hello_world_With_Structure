@@ -30,7 +30,14 @@ def start(run_dir: Path, task: str, source: str, repo_profile: dict[str,Any], ro
     route_ev=evidence("tool","router","route selected",snapshot=json.dumps(route,sort_keys=True),confidence="high",provenance="engine.route")
     add_evidence(state,route_ev)
     state["repo_facts"].append({"evidence_id":route_ev["id"]})
-    contract=intent_contract or {"goal":task,"intent_digest":hashlib.sha256(task.encode()).hexdigest()[:16]}
+    if intent_contract is None:
+        contract_path=run_dir/"intent-contract.json"
+        if contract_path.is_file():
+            contract=json.loads(contract_path.read_text(encoding="utf-8"))
+        else:
+            contract={"goal":task,"intent_digest":hashlib.sha256(task.encode()).hexdigest()[:16]}
+    else:
+        contract=intent_contract
     artifacts=build_artifacts(run_dir,contract,route=route)
     artifact_ev=evidence("runtime","artifact-chain","intent/spec/plan artifacts created",snapshot=json.dumps(artifacts,sort_keys=True),confidence="high",provenance="p1_lifecycle.start")
     add_evidence(state,artifact_ev)
@@ -70,20 +77,9 @@ def finish(run_dir: Path, manifest: dict[str,Any]) -> dict[str,Any]:
         save_json(run_dir/"state-validation-errors.json", {"valid":False,"errors":errors})
         raise RuntimeError("Engineering State Ledger validation failed: " + "; ".join(errors))
     proof=proof_bundle(state)
-    nodes=[
-      graph_node("requirement",state["task_id"]),
-      graph_node("changeset",state["changeset"]["diff_identity"] or "none"),
-      graph_node("proof",proof["proof_id"]),
-      graph_node("outcome",outcome_status)
-    ]
-    edges=[
-      graph_edge(nodes[0]["id"],"implemented_by",nodes[1]["id"],[e["id"] for e in state["evidence"]]),
-      graph_edge(nodes[1]["id"],"verified_by",nodes[2]["id"],[]),
-      graph_edge(nodes[2]["id"],"resulted_in",nodes[3]["id"],[outcome_ev["id"]])
-    ]
+    nodes=[graph_node("requirement",state["task_id"]),graph_node("changeset",state["changeset"]["diff_identity"] or "none"),graph_node("proof",proof["proof_id"]),graph_node("outcome",outcome_status)]
+    edges=[graph_edge(nodes[0]["id"],"implemented_by",nodes[1]["id"],[e["id"] for e in state["evidence"]]),graph_edge(nodes[1]["id"],"verified_by",nodes[2]["id"],[]),graph_edge(nodes[2]["id"],"resulted_in",nodes[3]["id"],[outcome_ev["id"]])]
     regression=regression_case("task-completion:"+state["task_id"],state["status"],["preserve protected behavior","proof required"])
     genome={"version":"1.1","case":regression,"result":{"status":state["status"],"outcome":outcome_status},"affected_profile_fields":affected_profile_fields(changed)}
-    save_json(run_dir/"proof-bundle.json",proof)
-    save_json(run_dir/"proof-graph.json",{"version":"1.1","nodes":nodes,"edges":edges})
-    save_json(run_dir/"regression-genome.json",genome)
+    save_json(run_dir/"proof-bundle.json",proof); save_json(run_dir/"proof-graph.json",{"version":"1.1","nodes":nodes,"edges":edges}); save_json(run_dir/"regression-genome.json",genome)
     return proof
