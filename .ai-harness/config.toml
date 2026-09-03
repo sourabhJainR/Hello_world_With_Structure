@@ -131,13 +131,6 @@ max_task_chunks = 8
 max_recent_output_chars = 12000
 policy_file = ".ai-harness/EXECUTION_CONTROLS.md"
 
-[durability]
-enabled = true
-journal_file = "execution.journal.jsonl"
-hash_chain = true
-replay_projection = true
-journal_failure_is_non_fatal = false
-
 [extensions]
 registry = ".ai-harness/extension_registry.toml"
 install_optional = false
