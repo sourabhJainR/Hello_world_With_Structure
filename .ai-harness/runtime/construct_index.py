@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-IGNORED = {".git", ".ai-harness/runs", ".ai-harness/worktrees", "node_modules", ".venv", "venv", "bin", "obj", "dist", "build", "target", "__pycache__"}
+IGNORED_PREFIXES = (".git/", ".ai-harness/runs/", ".ai-harness/worktrees/", "node_modules/", ".venv/", "venv/", "bin/", "obj/", "dist/", "build/", "target/", "__pycache__/")
+IGNORED_FILES = {".git"}
 TEXT_EXTENSIONS = {
     ".py", ".cs", ".java", ".go", ".rs", ".ts", ".tsx", ".js", ".jsx", ".kt", ".swift", ".rb", ".php", ".c", ".cpp", ".h", ".hpp",
     ".sql", ".json", ".yaml", ".yml", ".toml", ".xml", ".md", ".graphql", ".gql", ".proto", ".csproj", ".sln",
@@ -30,8 +31,8 @@ class Construct:
 
 
 def _ignored(path: Path) -> bool:
-    parts = set(path.relative_to(ROOT).parts)
-    return bool(parts & {p.split("/")[0] for p in IGNORED}) or any(str(path.relative_to(ROOT)).startswith(p + "/") for p in IGNORED if "/" in p)
+    rel = str(path.relative_to(ROOT)).replace("\\", "/")
+    return path.name in IGNORED_FILES or any(rel.startswith(prefix) for prefix in IGNORED_PREFIXES)
 
 
 def _language(path: Path) -> str:
@@ -164,13 +165,7 @@ def build_index(root: Path = ROOT) -> dict[str, Any]:
             _scan_data(path, text, constructs)
         else:
             _scan_code(path, text, constructs)
-    return {
-        "schema_version": 1,
-        "root": str(root),
-        "files_scanned": files,
-        "construct_count": len(constructs),
-        "constructs": [asdict(item) for item in constructs],
-    }
+    return {"schema_version": 1, "root": str(root), "files_scanned": files, "construct_count": len(constructs), "constructs": [asdict(item) for item in constructs]}
 
 
 def compact_index(index: dict[str, Any], limit: int = 9000) -> str:
@@ -183,7 +178,7 @@ def compact_index(index: dict[str, Any], limit: int = 9000) -> str:
     text = "\n".join(lines)
     if len(text) <= limit:
         return text
-    return text[: max(1, limit - 80)] + "\n... [construct index compacted; full index in construct-index.json]"
+    return text[: max(1, limit - 80)] + "\n... [construct index compacted; full index is regenerated from the repository source]"
 
 
 def validate_references(text: str, index: dict[str, Any]) -> dict[str, Any]:
