@@ -85,7 +85,7 @@ Treat the repository as structured evidence. Prefer repository rules/acceptance,
 
 Keep stable context small, rank evidence, compact history by information value, preserve proof-bearing state, reuse summaries and avoid transcript replay. Optimize verified outcome per token, call, retry and latency.
 
-## State ledger
+## Engineering State Ledger
 
 For non-trivial work maintain:
 `INTENT | CONTRACT | REPO_FACTS | DECISIONS | EVIDENCE | CHANGESET | VERIFY | OUTCOME | OPEN_RISKS | NEXT`.
