@@ -31,20 +31,22 @@ Use `--skill claude`, `--skill gemini`, `--skill all`, or `--skill none` for hos
 
 ## Repository isolation contract
 
-The following are hard guarantees of the portable installer:
+These are hard guarantees of the portable installer:
 
 - It does **not** create `.ai-harness` in a target repository.
 - It does **not** replace, delete, or back up existing target files.
-- It does **not** add files to the target Git working tree, index, or repository metadata.
-- It does **not** modify `.git/config`, hooks, branches, remotes, or ignore files.
+- It does **not** add files to the target Git working tree or index.
+- It does **not** modify `.git/config`, hooks, remotes, branches, or ignore files.
 - It does **not** modify MCP configuration, credentials, permissions, production access, or merge authority.
-- A repository that was clean before launching AER remains clean after AER installation.
+- A repository that was clean before AER installation remains unchanged after AER installation.
 
-Project-specific instructions remain owned by the project. AER implementation, configuration, caches, journals, learned state, and runtime code remain outside the project.
+Project-specific instructions remain owned by the project. AER implementation, configuration, caches, journals, learned state, regression corpus, and runtime code remain outside the project.
 
 ## Using AER with any repository
 
-After the machine-level installation, open any repository with the supported coding agent and use the normal AER skill. The skill treats the current repository as the workspace and keeps the AER implementation outside it. Optional integrations remain opt-in and are never installed automatically.
+After machine-level installation, open any repository with the supported coding agent and use the normal AER skill. The skill treats the current repository as the workspace and keeps the AER implementation outside it. Optional integrations remain opt-in and are never installed automatically.
+
+AER may inspect the repository, run repository-native commands and change project files only when the user's engineering task requires those changes. Those are the user's requested product/code changes, not AER installation artifacts.
 
 ## Lifecycle after installation
 
