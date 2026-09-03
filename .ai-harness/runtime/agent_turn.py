@@ -240,6 +240,18 @@ class AgentTurnStateMachine:
         if self.turn.state not in self._allowed or state not in self._allowed[self.turn.state]:
             raise ValueError(f"Invalid terminal transition {self.turn.state} -> {state}")
         self.turn.state = state
+        self._event("learning.observation", {
+            "task_id": self.turn.turn_id,
+            "task_class": self.turn.phase,
+            "strategy": self.turn.decision.get("strategy", "unknown"),
+            "success": state == "completed",
+            "accepted": state == "completed" and self.turn.decision.get("action") != "repair",
+            "verification_passed": self.turn.verification_score >= 0.75,
+            "retries": sum(1 for o in self.turn.observations if o.status in {"failed", "error"} or o.error),
+            "regressions": 0,
+            "cost": self.turn.usage.total_tokens,
+            "latency_ms": 0,
+        })
         self._event("turn.complete", self.snapshot())
 
     def snapshot(self) -> dict[str, Any]:

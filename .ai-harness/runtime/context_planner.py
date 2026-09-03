@@ -3,7 +3,8 @@
 
 The planner turns task/risk/phase signals into a bounded retrieval plan. It does
 not retrieve files itself; providers supply evidence candidates and this layer
-ranks the evidence before prompt construction.
+ranks the evidence before prompt construction. Learned policy hints can tune
+retrieval without bypassing explicit risk, security, or repository rules.
 """
 from __future__ import annotations
 
@@ -40,9 +41,11 @@ class ContextPlan:
     budget: int
     max_items: int
     require_fresh_verification: bool
+    policy_strategy: str | None = None
 
 
-def plan_context(*, phase: str, risk: str = "medium", uncertainty: str = "medium") -> ContextPlan:
+def plan_context(*, phase: str, risk: str = "medium", uncertainty: str = "medium",
+                 policy_strategy: str | None = None) -> ContextPlan:
     """Select retrieval modes and a bounded budget for one agent phase."""
     phase = phase.lower().strip()
     risk = risk.lower().strip()
@@ -58,7 +61,20 @@ def plan_context(*, phase: str, risk: str = "medium", uncertainty: str = "medium
     if risk in {"high", "critical"}:
         modes += ["security", "history"]
 
-    # Preserve order while removing duplicates.
+    # Strategy hints may reorder or add retrieval modes, but must never remove
+    # modes required by risk/uncertainty controls.
+    required_modes = list(modes)
+    strategy = (policy_strategy or "").strip().lower()
+    if strategy in {"targeted_context", "structural_first"}:
+        preferred = ["instructions", "task_contract", "structural", "lexical"]
+        modes = preferred + [item for item in required_modes if item not in preferred]
+    elif strategy in {"semantic_first", "research_first"}:
+        modes = ["semantic"] + [item for item in required_modes if item != "semantic"]
+    elif strategy in {"history_first", "regression_history"}:
+        modes = ["history"] + [item for item in required_modes if item != "history"]
+    else:
+        modes = required_modes
+
     modes = list(dict.fromkeys(modes))
     budgets = {"low": 9000, "medium": 14000, "high": 20000, "critical": 24000}
     return ContextPlan(
@@ -67,6 +83,7 @@ def plan_context(*, phase: str, risk: str = "medium", uncertainty: str = "medium
         budget=budgets.get(risk, budgets["medium"]),
         max_items=24 if risk in {"high", "critical"} else 18,
         require_fresh_verification=risk in {"high", "critical"} or phase == "verify",
+        policy_strategy=policy_strategy,
     )
 
 
