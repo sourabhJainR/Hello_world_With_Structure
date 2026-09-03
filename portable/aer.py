@@ -201,6 +201,21 @@ def _set_current(root: Path, version_root: Path) -> None:
             shutil.rmtree(current) if current.is_dir() and not current.is_symlink() else current.unlink()
         temp_dir.replace(current)
 
+def _skill_destinations() -> dict[str, Path]:
+    return {
+        "agents": Path.home() / ".agents" / "skills" / "ai-coding-orchestrator",
+        "claude": Path.home() / ".claude" / "skills" / "ai-coding-orchestrator",
+        "gemini": Path.home() / ".gemini" / "skills" / "ai-coding-orchestrator",
+    }
+
+def _sync_skills(source: Path, mode: str) -> None:
+    destinations = _skill_destinations()
+    if mode == "none":
+        return
+    selected = list(destinations) if mode == "all" else ([name for name, path in destinations.items() if path.exists()] if mode == "auto" else [mode])
+    for name in selected:
+        _install_skill(source, destinations[name])
+
 def install(bundle: Path, install_skill: str = "agents", aer_home: Path | None = None) -> Path:
     manifest = verify_bundle(bundle)
     root = home_aer(aer_home)
@@ -234,16 +249,7 @@ def install(bundle: Path, install_skill: str = "agents", aer_home: Path | None =
         _atomic_json(root / "active.json", record)
         with (root / "history.jsonl").open("a", encoding="utf-8") as handle:
             handle.write(json.dumps({"event": "activate", **record}) + "\n")
-        if install_skill != "none":
-            skill_source = temp / PAYLOAD_ROOT / "skills" / "ai-coding-orchestrator"
-            destinations = {
-                "agents": Path.home() / ".agents" / "skills" / "ai-coding-orchestrator",
-                "claude": Path.home() / ".claude" / "skills" / "ai-coding-orchestrator",
-                "gemini": Path.home() / ".gemini" / "skills" / "ai-coding-orchestrator",
-            }
-            selected = list(destinations) if install_skill == "all" else [install_skill]
-            for name in selected:
-                _install_skill(skill_source, destinations[name])
+        _sync_skills(temp / PAYLOAD_ROOT / "skills" / "ai-coding-orchestrator", install_skill)
         print(f"Installed and pinned AER {version} ({manifest['source_commit'][:12]})")
         print(f"Active installation: {root / 'current'}")
         print("Repository isolation: ON")
@@ -272,8 +278,7 @@ def _remote_target(ref: str) -> tuple[str, str]:
     commit = commit_data.get("sha")
     if not isinstance(commit, str) or not commit:
         raise SystemExit("remote AER commit could not be resolved")
-    version_url = f"https://raw.githubusercontent.com/{AER_REPOSITORY}/{commit}/.claude-plugin/plugin.json"
-    plugin = _http_json(version_url)
+    plugin = _http_json(f"https://raw.githubusercontent.com/{AER_REPOSITORY}/{commit}/.claude-plugin/plugin.json")
     version = plugin.get("version")
     if not isinstance(version, str) or not version:
         raise SystemExit("remote AER version could not be resolved")
@@ -300,26 +305,21 @@ def check_update(aer_home: Path | None = None, ref: str = AER_BRANCH) -> dict:
     root = home_aer(aer_home)
     active = json.loads((root / "active.json").read_text(encoding="utf-8")) if (root / "active.json").is_file() else {}
     remote_version, remote_commit = _remote_target(ref)
-    return {
-        "current_version": active.get("version"),
-        "current_commit": active.get("source_commit"),
-        "latest_version": remote_version,
-        "latest_commit": remote_commit,
-        "update_available": remote_commit != active.get("source_commit"),
-        "channel": ref,
-    }
+    return {"current_version": active.get("version"), "current_commit": active.get("source_commit"), "latest_version": remote_version, "latest_commit": remote_commit, "update_available": remote_commit != active.get("source_commit"), "channel": ref}
 
 def update(aer_home: Path | None = None, ref: str = AER_BRANCH, force: bool = False) -> Path:
     status = check_update(aer_home, ref)
-    if not status["update_available"] and not force:
-        raise SystemExit("AER is already pinned to the latest channel commit")
+    if not force and status["latest_version"] <= str(status.get("current_version") or "0.0.0"):
+        if not status["update_available"]:
+            raise SystemExit("AER is already pinned to the latest channel commit")
+        raise SystemExit(f"remote commit changed without a version bump ({status['latest_version']}); refusing to move a pinned version")
     temp = Path(tempfile.mkdtemp(prefix="aer-update-"))
     try:
         source = _download_source(status["latest_commit"], temp)
         bundle = temp / "aer-portable.zip"
         build(source, bundle, source_commit=status["latest_commit"], source_ref=ref)
         verify_bundle(bundle)
-        return install(bundle, "none", aer_home)
+        return install(bundle, "auto", aer_home)
     finally:
         shutil.rmtree(temp, ignore_errors=True)
 
@@ -342,6 +342,7 @@ def rollback(aer_home: Path | None = None, version: str | None = None) -> Path:
     _atomic_json(root / "active.json", target)
     with (root / "history.jsonl").open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"event": "rollback", **target}) + "\n")
+    _sync_skills(target_root / "skills" / "ai-coding-orchestrator", "auto")
     print(f"Rolled back AER to {target['version']} ({target['source_commit'][:12]})")
     return root / "current"
 
