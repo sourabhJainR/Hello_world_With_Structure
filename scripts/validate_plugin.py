@@ -22,7 +22,7 @@ SHARED_CONTRACT_MARKERS = (
     "optional",
 )
 HARNESS_VERSION_COMPARISON = re.compile(
-    r"(?:harness(?:['\"]?\s*\[\s*['\"]version['\"]\s*\]|\.version)|['\"]version['\"]\s*\])\s*==\s*\d+",
+    r"(?:harness(?:\s*['\"]?\s*\]\s*\[\s*['\"]?version['\"]?|\s*\.\s*version)|['\"]?version['\"]?\s*\]\s*\)?)\s*==\s*\d+",
     re.IGNORECASE,
 )
 
