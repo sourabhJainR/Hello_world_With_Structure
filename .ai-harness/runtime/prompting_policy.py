@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-"""Provider-neutral prompting practices for autonomous coding runs.
-
-The policy turns the task into a complete job specification: intent, why,
-constraints, exit criteria, and response contract. It prefers reasons over
-arbitrary prohibitions and asks for clarification only when material
-ambiguity blocks safe execution. Deterministic harness verification remains
-separate; the prompt does not waste model tokens on redundant self-check
-instructions.
-"""
+"""Provider-neutral prompting practices for autonomous coding runs."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -31,15 +23,19 @@ class PromptQuality:
                     self.has_response_contract))
 
 
+def _has_heading(text: str, names: str) -> bool:
+    """Recognize Markdown H1-H3 headings so prompt format is not brittle."""
+    return bool(re.search(r"^#{1,3}\s*(?:" + names + r")\s*$", text, re.IGNORECASE | re.MULTILINE))
+
+
 def assess_prompt(prompt: str) -> PromptQuality:
-    text = str(prompt)
-    lower = text.lower()
-    task = bool(re.search(r"##\s*(task|goal|job)\b", lower))
-    context = bool(re.search(r"##\s*(context|repository|background|profile)\b", lower))
-    why = bool(re.search(r"##\s*(why|intent|purpose|outcome)\b", lower))
-    done = bool(re.search(r"##\s*(exit criteria|acceptance|done|completion)\b", lower))
-    guardrails = bool(re.search(r"##\s*(guardrails|constraints|boundaries|non-goals|non-negotiable)", lower))
-    response = bool(re.search(r"##\s*(response contract|output contract|deliverable|report format)", lower))
+    lower = str(prompt).lower()
+    task = _has_heading(lower, r"task|goal|job")
+    context = _has_heading(lower, r"context|repository|background|profile")
+    why = _has_heading(lower, r"why|intent|purpose|outcome")
+    done = _has_heading(lower, r"exit criteria|acceptance|done|completion")
+    guardrails = _has_heading(lower, r"guardrails|constraints|boundaries|non-goals|non-negotiable")
+    response = _has_heading(lower, r"response contract|output contract|deliverable|report format")
     return PromptQuality(task, context, why, done, guardrails, response,
                          needs_interview=task and (not why or not done))
 
