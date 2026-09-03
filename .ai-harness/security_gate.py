@@ -18,6 +18,11 @@ SAFE_BASE_ENV = {
     "LANG", "LC_ALL", "TMP", "TEMP", "TMPDIR", "SYSTEMROOT", "COMSPEC",
     "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY",
 }
+HARNESS_CONTROL_ENV = {
+    "HARNESS_RUN_DIR", "HARNESS_PHASE", "HARNESS_TURN_ID",
+    "HARNESS_LIVE_MAX_TOOL_CALLS", "HARNESS_LIVE_MAX_TOKENS",
+    "HARNESS_LIVE_MIN_PROGRESS_GAIN",
+}
 
 
 class SecurityGateError(RuntimeError):
@@ -28,6 +33,16 @@ def provider_name(command: list[str]) -> str:
     if not command:
         raise SecurityGateError("Provider command is empty")
     return Path(command[0]).name.lower()
+
+
+def _option_value(command: list[str], option: str) -> str | None:
+    lowered = [arg.lower() for arg in command]
+    for index, arg in enumerate(lowered):
+        if arg == option and index + 1 < len(command):
+            return command[index + 1].lower()
+        if arg.startswith(option + "="):
+            return arg.split("=", 1)[1].lower()
+    return None
 
 
 def validate_provider_command(command: list[str], *, analysis_only: bool = False) -> None:
@@ -43,33 +58,35 @@ def validate_provider_command(command: list[str], *, analysis_only: bool = False
         "--no-sandbox",
         "--approval-mode:auto",
         "--approval-mode=auto",
-        "--sandbox=workspace-write",
-        "--sandbox workspace-write",
     }
     if lowered & forbidden:
         raise SecurityGateError("Unsafe provider permission override detected")
 
+    sandbox = _option_value(command, "--sandbox")
+    if sandbox == "workspace-write":
+        raise SecurityGateError("Unsafe provider permission override detected")
+    approval = _option_value(command, "--approval-mode")
+    if approval == "auto":
+        raise SecurityGateError("Unsafe provider permission override detected")
+
     if analysis_only:
-        if name == "codex" and any(arg == "--sandbox" and i + 1 < len(command) and command[i + 1] != "read-only" for i, arg in enumerate(command)):
+        if name == "codex" and sandbox != "read-only":
             raise SecurityGateError("Analysis-only Codex invocation must use read-only sandbox")
-        if name == "claude" and "--permission-mode" in lowered:
-            idx = [x.lower() for x in command].index("--permission-mode")
-            if idx + 1 >= len(command) or command[idx + 1].lower() != "plan":
-                raise SecurityGateError("Analysis-only Claude invocation must use plan permission mode")
-        if name == "gemini" and "--approval-mode" in lowered:
-            idx = [x.lower() for x in command].index("--approval-mode")
-            if idx + 1 >= len(command) or command[idx + 1].lower() != "plan":
-                raise SecurityGateError("Analysis-only Gemini invocation must use plan approval mode")
+        if name == "claude" and _option_value(command, "--permission-mode") != "plan":
+            raise SecurityGateError("Analysis-only Claude invocation must use plan permission mode")
+        if name == "gemini" and approval != "plan":
+            raise SecurityGateError("Analysis-only Gemini invocation must use plan approval mode")
 
 
 def safe_environment(extra_allow: Iterable[str] = ()) -> dict[str, str]:
     """Return a conservative environment for provider execution.
 
     Provider authentication variables are retained because the provider itself needs them. Other
-    credential-like environment variables are removed unless explicitly allowlisted. This is not
-    a replacement for a secret broker or OS sandbox.
+    credential-like environment variables are removed unless explicitly allowlisted. Approved
+    HARNESS_* controls are also retained because they carry bounded execution metadata/limits,
+    not credentials. This is not a replacement for a secret broker or OS sandbox.
     """
-    allow = SAFE_BASE_ENV | {str(x) for x in extra_allow}
+    allow = SAFE_BASE_ENV | HARNESS_CONTROL_ENV | {str(x) for x in extra_allow}
     result: dict[str, str] = {}
     for key, value in os.environ.items():
         if key in allow:
@@ -78,7 +95,6 @@ def safe_environment(extra_allow: Iterable[str] = ()) -> dict[str, str]:
         upper = key.upper()
         if any(marker in upper for marker in SECRET_ENV_MARKERS):
             continue
-        # Do not pass arbitrary environment state to an agent unless explicitly allowlisted.
     return result
 
 
