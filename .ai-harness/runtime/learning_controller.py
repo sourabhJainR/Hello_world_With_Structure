@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Closed-loop learning controller: observe -> learn -> replay -> promote -> monitor -> rollback."""
+"""Closed-loop learning controller: observe -> learn -> shadow -> canary -> promote -> monitor -> rollback."""
 from __future__ import annotations
 
 from dataclasses import asdict
@@ -8,6 +8,7 @@ from typing import Any, Callable, Iterable
 import json
 import time
 
+from canary_evaluator import EvaluationReport, evaluate_canary, evaluate_shadow
 from context_planner import ContextPlan, plan_context
 from learning_engine import Observation, PolicyCandidate, learn
 from policy_registry import Policy, PolicyRegistry
@@ -59,7 +60,7 @@ class LearningController:
             retries=max(0, failures),
             regressions=int(snapshot.get("regressions", 0) or 0),
             cost=float((snapshot.get("usage") or {}).get("total_tokens", 0) or 0),
-            latency_ms=float((snapshot.get("usage") or {}).get("latency_ms", 0) or 0),
+            latency_ms=float((snapshot.get("latency_ms") or (snapshot.get("usage") or {}).get("latency_ms", 0)) or 0),
         )
 
     def learn_candidates(self, observations: Iterable[Observation], *, min_samples: int = 3) -> list[PolicyCandidate]:
@@ -73,9 +74,27 @@ class LearningController:
         self._append("replay", {"policy_id": candidate.policy_id, "passed": result.passed, "cases": result.cases, "failures": list(result.failures)})
         return result
 
-    def promote(self, candidate: PolicyCandidate, replay_result: ReplayResult, *, version: int | None = None, now: int | None = None) -> Policy | None:
-        if not replay_result.passed or candidate.risk not in {"low", "medium"} or candidate.confidence < 0.80:
-            self._append("promotion.blocked", {"policy_id": candidate.policy_id, "reason": "safety-gate", "replay_passed": replay_result.passed, "confidence": candidate.confidence, "risk": candidate.risk})
+    def shadow_candidate(self, candidate: PolicyCandidate, cases: Iterable[ReplayCase], runner: Callable[[ReplayCase, PolicyCandidate], Any]) -> EvaluationReport:
+        report = evaluate_shadow(candidate, cases, runner)
+        self._append("shadow", asdict(report))
+        return report
+
+    def canary_candidate(self, candidate: PolicyCandidate, cases: Iterable[ReplayCase], runner: Callable[[ReplayCase, PolicyCandidate], Any], *, min_pass_rate: float = 1.0, min_verification_rate: float = 1.0) -> EvaluationReport:
+        report = evaluate_canary(candidate, cases, runner, min_pass_rate=min_pass_rate, min_verification_rate=min_verification_rate)
+        self._append("canary", asdict(report))
+        return report
+
+    def promote(self, candidate: PolicyCandidate, replay_result: ReplayResult, *, canary_report: EvaluationReport | None = None, version: int | None = None, now: int | None = None) -> Policy | None:
+        canary_passed = canary_report is None or canary_report.gate_passed
+        if not replay_result.passed or not canary_passed or candidate.risk not in {"low", "medium"} or candidate.confidence < 0.80:
+            self._append("promotion.blocked", {
+                "policy_id": candidate.policy_id,
+                "reason": "safety-gate",
+                "replay_passed": replay_result.passed,
+                "canary_passed": canary_passed,
+                "confidence": candidate.confidence,
+                "risk": candidate.risk,
+            })
             return None
         selected_version = self.registry.next_version(candidate.task_class) if version is None else int(version)
         policy = self.registry.add_candidate(Policy(
@@ -108,8 +127,9 @@ class LearningController:
 
     def _persist_registry(self) -> None:
         self.learn_dir.mkdir(parents=True, exist_ok=True)
+        payload = self.registry.export_jsonl()
         tmp = self.registry_path.with_suffix(".tmp")
-        tmp.write_text(self.registry.export_jsonl() + ("\n" if self.registry.export_jsonl() else ""), encoding="utf-8")
+        tmp.write_text(payload + ("\n" if payload else ""), encoding="utf-8")
         tmp.replace(self.registry_path)
 
     def _append(self, event: str, payload: dict[str, Any]) -> None:
