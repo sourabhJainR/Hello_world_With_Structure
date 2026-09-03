@@ -41,7 +41,9 @@ def main() -> int:
         # Keep the canonical prompt immutable. The provider receives a derived
         # prompt carrying the common prompting contract, so audit evidence can
         # still distinguish the authored task from the effective model input.
-        effective_prompt = Path(tempfile.mkstemp(prefix="effective-prompt-", suffix=".md", dir=prompt_file.parent)[1])
+        fd, effective_path = tempfile.mkstemp(prefix="effective-prompt-", suffix=".md", dir=prompt_file.parent)
+        os.close(fd)
+        effective_prompt = Path(effective_path)
         effective_prompt.write_text(compose(prompt), encoding="utf-8")
 
         bridge = Path(__file__).resolve().with_name("provider.py")
