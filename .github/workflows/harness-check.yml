@@ -9,6 +9,8 @@ on:
       - '.claude-plugin/**'
       - 'skills/**'
       - 'scripts/**'
+      - 'portable/**'
+      - 'aer.py'
       - 'docs/**'
       - '.claude/**'
       - 'AGENTS.md'
@@ -27,6 +29,8 @@ on:
       - '.claude-plugin/**'
       - 'skills/**'
       - 'scripts/**'
+      - 'portable/**'
+      - 'aer.py'
       - 'docs/**'
       - '.claude/**'
       - 'AGENTS.md'
@@ -54,7 +58,20 @@ jobs:
           python -m unittest discover -s examples/habit-tracker/tests -v
           python -m unittest discover -s examples/family-financial-register/tests -v
       - name: Compile harness, runtime, extensions and installer
-        run: python -m py_compile .ai-harness/run.py .ai-harness/engine.py .ai-harness/context_engine.py .ai-harness/knowledge_fabric.py .ai-harness/extension_registry.py .ai-harness/provider.py .ai-harness/observability.py .ai-harness/project_profile.py .ai-harness/placement.py .ai-harness/worktree.py .ai-harness/review_agents.py .ai-harness/runtime/p0.py .ai-harness/runtime/p1.py .ai-harness/runtime/p1_pipeline.py .ai-harness/runtime/p2.py .ai-harness/runtime/p2_pipeline.py .ai-harness/runtime/legacy.py .ai-harness/runtime/execution_controls.py .ai-harness/runtime/intent_contract.py .ai-harness/runtime/learning.py .ai-harness/runtime/learning_engine.py .ai-harness/runtime/policy_registry.py .ai-harness/runtime/regression_replay.py .ai-harness/runtime/rollback_controller.py .ai-harness/runtime/learning_controller.py .ai-harness/runtime/canary_evaluator.py .ai-harness/runtime/rca.py .ai-harness/runtime/collaboration.py .ai-harness/runtime/second_brain.py .ai-harness/runtime/loop_engine.py .ai-harness/runtime/capability_catalog.py .ai-harness/runtime/instruction_loader.py .ai-harness/runtime/run_journal.py scripts/install_skill.py scripts/validate_plugin.py scripts/run_evals.py scripts/run_p0_evals.py scripts/run_p2_evals.py scripts/run_full_suite.py scripts/run_p1_evals.py scripts/report_regression.py scripts/heartbeat.py .ai-harness/p1_lifecycle.py examples/habit-tracker/app.py examples/family-financial-register/app.py
+        run: python -m py_compile .ai-harness/run.py .ai-harness/engine.py .ai-harness/context_engine.py .ai-harness/knowledge_fabric.py .ai-harness/extension_registry.py .ai-harness/provider.py .ai-harness/observability.py .ai-harness/project_profile.py .ai-harness/placement.py .ai-harness/worktree.py .ai-harness/review_agents.py .ai-harness/runtime/p0.py .ai-harness/runtime/p1.py .ai-harness/runtime/p1_pipeline.py .ai-harness/runtime/p2.py .ai-harness/runtime/p2_pipeline.py .ai-harness/runtime/legacy.py .ai-harness/runtime/execution_controls.py .ai-harness/runtime/intent_contract.py .ai-harness/runtime/learning.py .ai-harness/runtime/learning_engine.py .ai-harness/runtime/policy_registry.py .ai-harness/runtime/regression_replay.py .ai-harness/runtime/rollback_controller.py .ai-harness/runtime/learning_controller.py .ai-harness/runtime/canary_evaluator.py .ai-harness/runtime/rca.py .ai-harness/runtime/collaboration.py .ai-harness/runtime/second_brain.py .ai-harness/runtime/loop_engine.py .ai-harness/runtime/capability_catalog.py .ai-harness/runtime/instruction_loader.py .ai-harness/runtime/run_journal.py scripts/install_skill.py scripts/validate_plugin.py scripts/run_evals.py scripts/run_p0_evals.py scripts/run_p2_evals.py scripts/run_full_suite.py scripts/run_p1_evals.py scripts/report_regression.py scripts/heartbeat.py portable/aer.py aer.py .ai-harness/p1_lifecycle.py examples/habit-tracker/app.py examples/family-financial-register/app.py
+      - name: Validate portable bundle build and integrity
+        run: |
+          python aer.py build --output /tmp/aer-portable.zip
+          python aer.py verify /tmp/aer-portable.zip
+          python - <<'PY'
+          import json, zipfile
+          with zipfile.ZipFile('/tmp/aer-portable.zip') as archive:
+              manifest=json.loads(archive.read('aer-bundle.json'))
+              assert manifest['portable'] is True
+              assert manifest['provider_neutral'] is True
+              assert archive.getinfo('aer.py')
+              assert manifest['files']
+          PY
       - name: Validate configuration
         run: python -c "import tomllib; tomllib.load(open('.ai-harness/config.toml','rb')); tomllib.load(open('.ai-harness/extension_registry.toml','rb'))"
       - name: Validate regression corpus
@@ -83,7 +100,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           hits=[]
-          roots=[Path('.ai-harness'),Path('.agents'),Path('.claude'),Path('skills'),Path('state'),Path('scripts'),Path('README.md'),Path('AGENTS.md')]
+          roots=[Path('.ai-harness'),Path('.agents'),Path('.claude'),Path('skills'),Path('state'),Path('scripts'),Path('portable'),Path('aer.py'),Path('README.md'),Path('AGENTS.md')]
           for root in roots:
               files=[root] if root.is_file() else root.rglob('*')
               for path in files:

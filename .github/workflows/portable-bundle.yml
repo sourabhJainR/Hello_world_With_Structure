@@ -1,0 +1,40 @@
+name: AER Portable Bundle
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.ai-harness/**'
+      - 'skills/ai-coding-orchestrator/**'
+      - 'portable/**'
+      - 'aer.py'
+      - 'tests/test_portable_aer.py'
+      - '.github/workflows/portable-bundle.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run portable bundle tests
+        run: python -m unittest tests.test_portable_aer -v
+      - name: Build bundle
+        run: python aer.py build --output aer-portable.zip
+      - name: Verify bundle
+        run: python aer.py verify aer-portable.zip
+      - name: Upload portable bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: aer-portable
+          path: aer-portable.zip
+          if-no-files-found: error
+          retention-days: 30
