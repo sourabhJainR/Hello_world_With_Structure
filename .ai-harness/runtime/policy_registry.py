@@ -35,7 +35,11 @@ class PolicyRegistry:
         policy = self._policies[key]
         if policy.status != "candidate":
             raise ValueError("only candidates can be promoted")
-        promoted = Policy(**{**asdict(policy), "status": "active", "promoted_at": int(time.time()) if now is None else now})
+        timestamp = int(time.time()) if now is None else now
+        for old_key, old in list(self._policies.items()):
+            if old.task_class == policy.task_class and old.status == "active":
+                self._policies[old_key] = Policy(**{**asdict(old), "status": "superseded", "retired_at": timestamp})
+        promoted = Policy(**{**asdict(policy), "status": "active", "promoted_at": timestamp})
         self._policies[key] = promoted
         return promoted
 
@@ -54,7 +58,7 @@ class PolicyRegistry:
         if restore_previous:
             prior = [
                 p for p in self._policies.values()
-                if p.task_class == policy.task_class and p.status == "rolled_back" and p.version < policy.version
+                if p.task_class == policy.task_class and p.status == "superseded" and p.version < policy.version
             ]
             if prior:
                 previous = max(prior, key=lambda p: (p.version, p.confidence))
