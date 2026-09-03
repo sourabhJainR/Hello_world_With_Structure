@@ -26,9 +26,9 @@ jobs:
         with:
           python-version: '3.11'
       - name: Compile security, verification and ledger components
-        run: python -m py_compile .ai-harness/security_gate.py .ai-harness/safe_provider.py .ai-harness/state_validator.py .ai-harness/verification_gate.py .ai-harness/run.py .ai-harness/provider.py .ai-harness/p1_lifecycle.py
+        run: python -m py_compile .ai-harness/security_gate.py .ai-harness/safe_provider.py .ai-harness/state_validator.py .ai-harness/verification_gate.py .ai-harness/run.py .ai-harness/provider.py .ai-harness/p1_lifecycle.py .ai-harness/runtime/artifact_chain.py
       - name: Run focused hardening tests
-        run: python -m unittest tests.test_security_gate tests.test_state_validator tests.test_provider tests.test_execution_controls tests.test_verification_gate -v
+        run: python -m unittest tests.test_security_gate tests.test_state_validator tests.test_provider tests.test_execution_controls tests.test_verification_gate tests.test_artifact_chain -v
       - name: Validate configuration
         run: |
           cat > /tmp/validate_config.py <<'PY'
@@ -47,7 +47,10 @@ jobs:
           )
           assert config['durability']['journal_failure_is_non_fatal'] is False
           assert config['reviewers']['require_consensus_for_high_risk'] is True
-          assert config['knowledge']['require_fresh_index_for_high_risk'] is True
+          knowledge = config.get('knowledge', {})
+          assert knowledge.get('require_fresh_index_for_high_risk', False) is True, (
+              'high-risk work must require a fresh repository knowledge index'
+          )
           assert config['verification']['require_acceptance_evidence'] is True
           assert config['verification']['require_diff_check'] is True
           assert config['execution']['require_new_evidence_for_retry'] is True
