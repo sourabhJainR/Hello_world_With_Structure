@@ -89,7 +89,7 @@ class PortableAerTests(unittest.TestCase):
             self.assertEqual(active["version"], "20.1.0")
             self.assertEqual(active["source_commit"], "commit-a")
 
-    def test_check_update_uses_exact_remote_commit_pin(self) -> None:
+    def test_check_update_uses_semantic_version_and_exact_commit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             aer_home = Path(tmp) / "aer-home"
             aer_home.mkdir()
