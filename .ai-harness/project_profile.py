@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Detect repository conventions, naming, and coding style without dependencies."""
+"""Detect repository conventions and expose exact repository constructs to the coding workflow."""
 from __future__ import annotations
 
 import json
@@ -7,6 +7,8 @@ import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
+
+from runtime.construct_index import build_index, compact_index
 
 ROOT = Path(__file__).resolve().parent.parent
 IGNORED = {".git", ".ai-harness", ".venv", "venv", "node_modules", "bin", "obj", "dist", "build", "target"}
@@ -100,6 +102,7 @@ def build_profile() -> dict[str, Any]:
 
     file_naming = _naming_styles(source_files)
     type_naming = _type_naming(source_files)
+    construct_index = build_index(ROOT)
     return {
         "fresh_repository": len(source_files) == 0,
         "languages": languages,
@@ -118,6 +121,15 @@ def build_profile() -> dict[str, Any]:
         },
         "instruction_files": [name for name in ("AGENTS.md", "CLAUDE.md", "GEMINI.md", "README.md") if name in root_files],
         "third_party_policy": ".ai-harness/DEPENDENCIES.md",
+        "construct_traceability": {
+            "enabled": True,
+            "schema_version": construct_index["schema_version"],
+            "files_scanned": construct_index["files_scanned"],
+            "construct_count": construct_index["construct_count"],
+            "reference_format": "[construct-id] kind path:line::name",
+            "index": compact_index(construct_index, 9000),
+            "rule": "Use only constructs present in the index. If a construct cannot be resolved, mark it UNRESOLVED instead of inventing it.",
+        },
         "generated_by": "ai-coding-harness.project_profile",
     }
 
