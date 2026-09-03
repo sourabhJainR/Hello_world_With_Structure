@@ -21,7 +21,13 @@ class LearningController:
     def __init__(self, root: Path, *, registry: PolicyRegistry | None = None) -> None:
         self.root = Path(root)
         self.learn_dir = self.root / ".ai-harness" / "learning"
-        self.registry = registry or PolicyRegistry()
+        self.registry_path = self.learn_dir / "policy-registry.jsonl"
+        if registry is not None:
+            self.registry = registry
+        elif self.registry_path.exists():
+            self.registry = PolicyRegistry.from_jsonl(self.registry_path.read_text(encoding="utf-8"))
+        else:
+            self.registry = PolicyRegistry()
         self.audit_path = self.learn_dir / "policy-events.jsonl"
 
     def observe(self, *, task_id: str, task_class: str, strategy: str, success: bool,
@@ -67,15 +73,17 @@ class LearningController:
         self._append("replay", {"policy_id": candidate.policy_id, "passed": result.passed, "cases": result.cases, "failures": list(result.failures)})
         return result
 
-    def promote(self, candidate: PolicyCandidate, replay_result: ReplayResult, *, version: int = 1, now: int | None = None) -> Policy | None:
+    def promote(self, candidate: PolicyCandidate, replay_result: ReplayResult, *, version: int | None = None, now: int | None = None) -> Policy | None:
         if not replay_result.passed or candidate.risk not in {"low", "medium"} or candidate.confidence < 0.80:
             self._append("promotion.blocked", {"policy_id": candidate.policy_id, "reason": "safety-gate", "replay_passed": replay_result.passed, "confidence": candidate.confidence, "risk": candidate.risk})
             return None
+        selected_version = self.registry.next_version(candidate.task_class) if version is None else int(version)
         policy = self.registry.add_candidate(Policy(
-            candidate.policy_id, int(version), candidate.task_class, candidate.strategy,
+            candidate.policy_id, selected_version, candidate.task_class, candidate.strategy,
             confidence=float(candidate.confidence),
         ))
         promoted = self.registry.promote(policy.policy_id, policy.version, now=now)
+        self._persist_registry()
         self._append("promotion", asdict(promoted))
         return promoted
 
@@ -86,6 +94,7 @@ class LearningController:
             active = self.registry.active_for_id(health.policy_id)
             if active is not None:
                 retired = self.registry.rollback(active.policy_id, active.version, now=now, restore_previous=True)
+                self._persist_registry()
                 self._append("rollback", asdict(retired))
         return rollback
 
@@ -96,6 +105,12 @@ class LearningController:
         """Make the registry a runtime input while keeping explicit safety inputs authoritative."""
         strategy = self.active_strategy(task_class)
         return plan_context(phase=phase, risk=risk, uncertainty=uncertainty, policy_strategy=strategy)
+
+    def _persist_registry(self) -> None:
+        self.learn_dir.mkdir(parents=True, exist_ok=True)
+        tmp = self.registry_path.with_suffix(".tmp")
+        tmp.write_text(self.registry.export_jsonl() + ("\n" if self.registry.export_jsonl() else ""), encoding="utf-8")
+        tmp.replace(self.registry_path)
 
     def _append(self, event: str, payload: dict[str, Any]) -> None:
         self.learn_dir.mkdir(parents=True, exist_ok=True)
