@@ -24,11 +24,27 @@ class PolicyRegistry:
     def __init__(self, policies: Iterable[Policy] = ()) -> None:
         self._policies: dict[tuple[str, int], Policy] = {(p.policy_id, p.version): p for p in policies}
 
+    @classmethod
+    def from_jsonl(cls, text: str) -> "PolicyRegistry":
+        policies: list[Policy] = []
+        for line in text.splitlines():
+            try:
+                row = json.loads(line)
+                if isinstance(row, dict):
+                    policies.append(Policy(**row))
+            except (json.JSONDecodeError, TypeError):
+                continue
+        return cls(policies)
+
     def add_candidate(self, policy: Policy) -> Policy:
         if policy.status != "candidate":
             raise ValueError("new policies must start as candidate")
         self._policies[(policy.policy_id, policy.version)] = policy
         return policy
+
+    def next_version(self, task_class: str) -> int:
+        versions = [p.version for p in self._policies.values() if p.task_class == task_class]
+        return max(versions, default=0) + 1
 
     def promote(self, policy_id: str, version: int, *, now: int | None = None) -> Policy:
         key = (policy_id, version)
