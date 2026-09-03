@@ -17,7 +17,7 @@ jobs:
       - name: Compile runtime modules
         run: python -m compileall -q .ai-harness
       - name: Run harness tests
-        run: python -m pytest -q .ai-harness/tests
+        run: python -m unittest discover -s .ai-harness/tests -v
       - name: Build repository profile
         run: python .ai-harness/project_profile.py > /tmp/project-profile.json
       - name: Validate profile JSON
