@@ -37,8 +37,8 @@ The updater resolves the remote commit first, reads the version from that exact 
 The default channel is the AER repository `main` branch. Controlled environments can use another stable branch or tag as the channel:
 
 ```bash
-python ~/.aer/current/aer_cli.py check-update --channel release
-python ~/.aer/current/aer_cli.py update --channel release
+python ~/.aer/current/aer_cli.py check-update --ref release
+python ~/.aer/current/aer_cli.py update --ref release
 ```
 
 ## Version pinning
