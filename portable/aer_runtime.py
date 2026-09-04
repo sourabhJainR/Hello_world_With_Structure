@@ -150,47 +150,50 @@ def _manifest_record_path(root: Path, record_path: str) -> Path:
         raise SystemExit(f"unsafe manifest path: {record_path}")
     if record_path == LAUNCHER_PATH:
         return root / LAUNCHER_PATH
-    if not record_path.startswith(tuple(f"{prefix}/" for prefix in REQUIRED_PATHS)):
+    if not any(record_path == prefix or record_path.startswith(f"{prefix}/") for prefix in REQUIRED_PATHS):
         raise SystemExit(f"unexpected manifest path: {record_path}")
     return root / PAYLOAD_ROOT / record_path
 
 def verify_bundle(bundle: Path) -> dict:
-    with zipfile.ZipFile(bundle) as archive:
-        if MANIFEST_NAME not in archive.namelist():
-            raise SystemExit("bundle manifest is missing")
-        manifest = json.loads(archive.read(MANIFEST_NAME).decode("utf-8"))
-        if manifest.get("format") != BUNDLE_FORMAT_VERSION:
-            raise SystemExit("unsupported bundle format")
-        if manifest.get("target_repository_mutation") is not False:
-            raise SystemExit("bundle is not marked repository-isolated")
-        if not manifest.get("version") or not manifest.get("source_commit"):
-            raise SystemExit("bundle must carry a version and exact source commit pin")
-        records = manifest.get("files")
-        if not isinstance(records, list) or not records:
-            raise SystemExit("bundle manifest file inventory is missing")
-        root = Path(tempfile.mkdtemp(prefix="aer-verify-"))
-        try:
-            safe_extract(archive, root)
-            seen: set[str] = set()
-            for record in records:
-                if not isinstance(record, dict) or not isinstance(record.get("path"), str) or not isinstance(record.get("sha256"), str):
-                    raise SystemExit("invalid bundle file record")
-                record_path = record["path"]
-                if record_path in seen:
-                    raise SystemExit(f"duplicate bundle file record: {record_path}")
-                seen.add(record_path)
-                path = _manifest_record_path(root, record_path)
-                if not path.is_file() or sha256_file(path) != record["sha256"]:
-                    raise SystemExit(f"bundle integrity failure: {record_path}")
-                if "size" in record and record["size"] != path.stat().st_size:
-                    raise SystemExit(f"bundle size mismatch: {record_path}")
-            if LAUNCHER_PATH not in seen:
-                raise SystemExit(f"bundle launcher is not covered by manifest: {LAUNCHER_PATH}")
-            if not (root / LAUNCHER_PATH).is_file():
-                raise SystemExit("bundle launcher is missing: aer_cli.py")
-            return manifest
-        finally:
-            shutil.rmtree(root, ignore_errors=True)
+    try:
+        with zipfile.ZipFile(bundle) as archive:
+            if MANIFEST_NAME not in archive.namelist():
+                raise SystemExit("bundle manifest is missing")
+            manifest = json.loads(archive.read(MANIFEST_NAME).decode("utf-8"))
+            if manifest.get("format") != BUNDLE_FORMAT_VERSION:
+                raise SystemExit("unsupported bundle format")
+            if manifest.get("target_repository_mutation") is not False:
+                raise SystemExit("bundle is not marked repository-isolated")
+            if not manifest.get("version") or not manifest.get("source_commit"):
+                raise SystemExit("bundle must carry a version and exact source commit pin")
+            records = manifest.get("files")
+            if not isinstance(records, list) or not records:
+                raise SystemExit("bundle manifest file inventory is missing")
+            root = Path(tempfile.mkdtemp(prefix="aer-verify-"))
+            try:
+                safe_extract(archive, root)
+                seen: set[str] = set()
+                for record in records:
+                    if not isinstance(record, dict) or not isinstance(record.get("path"), str) or not isinstance(record.get("sha256"), str):
+                        raise SystemExit("invalid bundle file record")
+                    record_path = record["path"]
+                    if record_path in seen:
+                        raise SystemExit(f"duplicate bundle file record: {record_path}")
+                    seen.add(record_path)
+                    path = _manifest_record_path(root, record_path)
+                    if not path.is_file() or sha256_file(path) != record["sha256"]:
+                        raise SystemExit(f"bundle integrity failure: {record_path}")
+                    if "size" in record and record["size"] != path.stat().st_size:
+                        raise SystemExit(f"bundle size mismatch: {record_path}")
+                if LAUNCHER_PATH not in seen:
+                    raise SystemExit(f"bundle launcher is not covered by manifest: {LAUNCHER_PATH}")
+                if not (root / LAUNCHER_PATH).is_file():
+                    raise SystemExit("bundle launcher is missing: aer_cli.py")
+                return manifest
+            finally:
+                shutil.rmtree(root, ignore_errors=True)
+    except (OSError, zipfile.BadZipFile, json.JSONDecodeError) as exc:
+        raise SystemExit(f"invalid AER bundle: {exc}") from exc
 
 def _copy_tree_without_mutable_state(source: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
@@ -338,8 +341,11 @@ def _download_source(ref: str, destination: Path) -> Path:
         raise SystemExit(f"unable to download AER update source: {exc}") from exc
     root = destination / "source"
     root.mkdir()
-    with zipfile.ZipFile(archive_path) as archive:
-        safe_extract(archive, root)
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            safe_extract(archive, root)
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise SystemExit(f"downloaded AER source is invalid: {exc}") from exc
     candidates = [p for p in root.iterdir() if p.is_dir()]
     if len(candidates) != 1:
         raise SystemExit("unexpected AER source archive layout")
@@ -367,32 +373,56 @@ def check_update(aer_home: Path | None = None, ref: str = AER_BRANCH) -> dict:
         "update_available": update_available,
     }
 
+def _history_records(root: Path) -> list[dict]:
+    history = root / "history.jsonl"
+    if not history.is_file():
+        return []
+    records: list[dict] = []
+    for line in history.read_text(encoding="utf-8").splitlines():
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict) and value.get("event") in {"activate", "rollback"}:
+            records.append(value)
+    return records
+
 def rollback(aer_home: Path | None = None) -> Path:
     root = home_aer(aer_home)
-    versions = []
-    for path in (root / "versions").glob("v*") if (root / "versions").exists() else []:
-        record = path / "install.json"
-        if record.is_file():
-            versions.append((json.loads(record.read_text(encoding="utf-8")), path))
     active = json.loads((root / "active.json").read_text(encoding="utf-8")) if (root / "active.json").is_file() else {}
-    candidates = [item for item in versions if item[0].get("source_commit") != active.get("source_commit") or item[0].get("bundle_sha256") != active.get("bundle_sha256")]
-    if not candidates:
+    active_key = (active.get("source_commit"), active.get("bundle_sha256"))
+    target: dict | None = None
+    for record in reversed(_history_records(root)):
+        key = (record.get("source_commit"), record.get("bundle_sha256"))
+        if key != active_key:
+            target = record
+            break
+    if target is None:
         raise SystemExit("no previous immutable AER version is available")
-    candidates.sort(key=lambda item: (_version_tuple(str(item[0].get("version", "0.0.0"))), str(item[0].get("installed_at", ""))))
-    record, version_root = candidates[-1]
+    version_root = root / "versions" / f"v{target.get('version')}"
+    if not (version_root / "install.json").is_file() or not (version_root / LAUNCHER_PATH).is_file():
+        raise SystemExit(f"rollback target is incomplete: {version_root}")
     _set_current(root, version_root)
-    _atomic_json(root / "active.json", record)
+    _atomic_json(root / "active.json", target)
     with (root / "history.jsonl").open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps({"event": "rollback", **record}) + "\n")
+        handle.write(json.dumps({"event": "rollback", **target}) + "\n")
     _sync_skills(version_root / "skills" / "ai-coding-orchestrator", "agents")
-    print(f"Rolled back AER to {record['version']} ({record['source_commit'][:12]})")
+    print(f"Rolled back AER to {target['version']} ({str(target.get('source_commit', ''))[:12]})")
     return root / "current"
 
 def update(aer_home: Path | None = None, ref: str = AER_BRANCH, install_skill: str = "agents") -> Path:
     remote_version, remote_commit = _remote_target(ref)
     root = home_aer(aer_home)
     active = json.loads((root / "active.json").read_text(encoding="utf-8")) if (root / "active.json").is_file() else {}
-    if remote_version == active.get("version") and remote_commit == active.get("source_commit"):
+    current_version = str(active.get("version") or "0.0.0")
+    current_commit = str(active.get("source_commit") or "")
+    comparison = (_version_tuple(remote_version), remote_commit)
+    current_comparison = (_version_tuple(current_version), current_commit)
+    if remote_version == current_version and remote_commit == current_commit:
+        raise SystemExit("AER is already up to date")
+    if _version_tuple(remote_version) < _version_tuple(current_version):
+        raise SystemExit(f"refusing downgrade from {current_version} to {remote_version}; use rollback for a pinned previous version")
+    if comparison == current_comparison:
         raise SystemExit("AER is already up to date")
     with tempfile.TemporaryDirectory(prefix="aer-update-") as tmp:
         source = _download_source(remote_commit, Path(tmp))
