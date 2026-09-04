@@ -8,6 +8,7 @@ on:
   pull_request:
     paths:
       - '.ai-harness/**'
+      - '.claude-plugin/**'
       - 'skills/ai-coding-orchestrator/**'
       - 'portable/**'
       - 'aer_cli.py'
@@ -38,6 +39,27 @@ jobs:
         run: python aer_cli.py build --output aer-portable.zip
       - name: Verify bundle
         run: python aer_cli.py verify aer-portable.zip
+      - name: Verify Claude plugin payload
+        run: |
+          python - <<'PY'
+          import json
+          import zipfile
+          with zipfile.ZipFile('aer-portable.zip') as z:
+              names = set(z.namelist())
+              required = {
+                  'payload/.claude-plugin/plugin.json',
+                  'payload/.claude-plugin/marketplace.json',
+                  'payload/skills/ai-coding-orchestrator/SKILL.md',
+                  'payload/skills/ai-coding-orchestrator/hooks/aer_prompt.py',
+              }
+              missing = sorted(required - names)
+              if missing:
+                  raise SystemExit('missing Claude integration payload: ' + ', '.join(missing))
+              plugin = json.loads(z.read('payload/.claude-plugin/plugin.json'))
+              assert plugin['version'] == '20.1.1', plugin
+              assert 'UserPromptSubmit' in plugin['hooks'], plugin
+          print('Claude plugin payload verified')
+          PY
       - name: Stage portable bundle
         if: always()
         run: |
