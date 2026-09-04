@@ -5,18 +5,20 @@ on:
   pull_request:
     paths:
       - '.ai-harness/**'
+      - 'portable/**'
+      - 'aer_cli.py'
       - 'state/**'
       - 'tests/**'
       - '.github/workflows/production-hardening.yml'
-      - '.github/actions/publish-ci-artifacts/**'
   push:
     branches: [main]
     paths:
       - '.ai-harness/**'
+      - 'portable/**'
+      - 'aer_cli.py'
       - 'state/**'
       - 'tests/**'
       - '.github/workflows/production-hardening.yml'
-      - '.github/actions/publish-ci-artifacts/**'
 
 jobs:
   hardening:
@@ -28,15 +30,35 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Prepare CI artifacts
+
+      - name: Prepare distribution artifacts
         if: always()
         run: mkdir -p ci-artifacts
-      - name: Compile security, verification and ledger components
-        run: python -m py_compile .ai-harness/security_gate.py .ai-harness/safe_provider.py .ai-harness/state_validator.py .ai-harness/verification_gate.py .ai-harness/run.py .ai-harness/provider.py .ai-harness/p1_lifecycle.py .ai-harness/runtime/artifact_chain.py
+
+      - name: Compile AER components
+        run: |
+          python -m py_compile \
+            aer_cli.py \
+            portable/aer_runtime.py \
+            .ai-harness/security_gate.py \
+            .ai-harness/safe_provider.py \
+            .ai-harness/state_validator.py \
+            .ai-harness/verification_gate.py \
+            .ai-harness/run.py \
+            .ai-harness/provider.py \
+            .ai-harness/p1_lifecycle.py \
+            .ai-harness/runtime/artifact_chain.py
+
       - name: Run focused hardening tests
         run: |
-          mkdir -p ci-artifacts
-          python -m unittest tests.test_security_gate tests.test_state_validator tests.test_provider tests.test_execution_controls tests.test_verification_gate tests.test_artifact_chain -v 2>&1 | tee ci-artifacts/hardening-tests.log
+          python -m unittest \
+            tests.test_security_gate \
+            tests.test_state_validator \
+            tests.test_provider \
+            tests.test_execution_controls \
+            tests.test_verification_gate \
+            tests.test_artifact_chain -v 2>&1 | tee ci-artifacts/hardening-tests.log
+
       - name: Validate configuration
         run: |
           cat > /tmp/validate_config.py <<'PY'
@@ -49,22 +71,17 @@ jobs:
           harness_major = int(config['harness']['version'])
           plugin_major = int(plugin['version'].split('.')[0])
 
-          assert harness_major == plugin_major, (
-              f'harness config major version {harness_major} must match '
-              f'plugin major version {plugin_major}'
-          )
+          assert harness_major == plugin_major
           assert config['durability']['journal_failure_is_non_fatal'] is False
           assert config['reviewers']['require_consensus_for_high_risk'] is True
-          knowledge = config.get('knowledge', {})
-          assert knowledge.get('require_fresh_index_for_high_risk', True) is True, (
-              'high-risk work must not disable fresh repository knowledge indexing'
-          )
+          assert config.get('knowledge', {}).get('require_fresh_index_for_high_risk', True) is True
           assert config['verification']['require_acceptance_evidence'] is True
           assert config['verification']['require_diff_check'] is True
           assert config['execution']['require_new_evidence_for_retry'] is True
           print(f'Validated harness/plugin major version: {harness_major}')
           PY
           python /tmp/validate_config.py 2>&1 | tee ci-artifacts/config-validation.log
+
       - name: Validate ledger schema and implementation contract
         run: |
           python - <<'PY' 2>&1 | tee ci-artifacts/ledger-validation.log
@@ -85,18 +102,48 @@ jobs:
           assert validate_state(sample) == []
           print('Ledger schema and implementation contract validated successfully')
           PY
-      - name: Collect hardening metadata
+
+      - name: Build AER portable distribution
+        run: |
+          python aer_cli.py build --output ci-artifacts/aer-portable.zip
+          test -s ci-artifacts/aer-portable.zip
+
+      - name: Verify AER portable distribution
+        run: |
+          python aer_cli.py verify ci-artifacts/aer-portable.zip 2>&1 | tee ci-artifacts/aer-verification.log
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+
+          bundle = Path('ci-artifacts/aer-portable.zip')
+          with zipfile.ZipFile(bundle) as z:
+              names = set(z.namelist())
+              required = {
+                  'aer-bundle.json',
+                  'aer_cli.py',
+                  'payload/portable/aer_runtime.py',
+              }
+              missing = sorted(required - names)
+              if missing:
+                  raise SystemExit(f'AER portable bundle is missing: {missing}')
+          print('AER portable bundle contains the CLI, portable runtime, and manifest')
+          PY
+
+      - name: Publish AER distribution artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aer-portable
+          path: |
+            ci-artifacts/aer-portable.zip
+            aer_cli.py
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Collect CI metadata
         if: always()
         run: |
           printf 'commit=%s\n' "$GITHUB_SHA" > ci-artifacts/run-metadata.txt
           printf 'run_id=%s\n' "$GITHUB_RUN_ID" >> ci-artifacts/run-metadata.txt
           printf 'workflow=%s\n' "$GITHUB_WORKFLOW" >> ci-artifacts/run-metadata.txt
           printf 'ref=%s\n' "$GITHUB_REF" >> ci-artifacts/run-metadata.txt
-      - name: Publish CI artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: production-hardening-results
-          path: ci-artifacts/
-          if-no-files-found: error
-          retention-days: 14
