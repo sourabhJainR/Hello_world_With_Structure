@@ -11,7 +11,7 @@ Mutable machine/session state is excluded from the bundle: execution journals, t
 ## Install
 
 ```bash
-python aer.py install aer-portable.zip
+python aer_cli.py install aer-portable.zip
 ```
 
 AER is installed under `~/.aer/versions/v<version>/` and selected through `~/.aer/current`. The exact semantic version, source Git commit, bundle SHA-256 and installation time are recorded in `install.json` and `active.json`.
@@ -23,13 +23,13 @@ The Agent Skill is installed only in user-level locations. The installer accepts
 Check the configured update channel:
 
 ```bash
-python ~/.aer/current/aer.py check-update
+python ~/.aer/current/aer_cli.py check-update
 ```
 
 Update only when the channel exposes a newer semantic version:
 
 ```bash
-python ~/.aer/current/aer.py update
+python ~/.aer/current/aer_cli.py update
 ```
 
 The updater resolves the remote commit first, reads the version from that exact commit, downloads that exact commit, rebuilds and integrity-verifies the bundle, installs the new pinned version, and then switches the `current` pointer. A commit change without a semantic version bump is rejected.
@@ -37,8 +37,8 @@ The updater resolves the remote commit first, reads the version from that exact 
 The default channel is the AER repository `main` branch. Controlled environments can use another stable branch or tag as the channel:
 
 ```bash
-python ~/.aer/current/aer.py check-update --channel release
-python ~/.aer/current/aer.py update --channel release
+python ~/.aer/current/aer_cli.py check-update --channel release
+python ~/.aer/current/aer_cli.py update --channel release
 ```
 
 ## Version pinning
@@ -56,13 +56,13 @@ The `current` pointer is the active selection. Previous pinned versions remain a
 Rollback to the most recently installed different version:
 
 ```bash
-python ~/.aer/current/aer.py rollback
+python ~/.aer/current/aer_cli.py rollback
 ```
 
 Or select an exact version:
 
 ```bash
-python ~/.aer/current/aer.py rollback --version 20.1.0
+python ~/.aer/current/aer_cli.py rollback --version 20.1.0
 ```
 
 Rollback affects only AER's user-scoped installation and already-selected user-level Agent Skill surfaces.
