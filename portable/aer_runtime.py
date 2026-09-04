@@ -126,7 +126,7 @@ def build(root: Path, output: Path, source_commit: str | None = None, source_ref
         archive.writestr(MANIFEST_NAME, json.dumps(manifest, indent=2, sort_keys=True) + "\n")
         for source in files:
             archive.write(source, f"{PAYLOAD_ROOT}/{source.relative_to(root).as_posix()}")
-        archive.write(root / "aer.py", "aer.py")
+        archive.write(root / "aer_cli.py", "aer_cli.py")
         archive.writestr(f"{PAYLOAD_ROOT}/PORTABLE_BUNDLE.txt", "AER portable bundle\nInstallation is user-scoped and repository-isolated.\nVersion and exact source commit are pinned in the manifest.\n")
     return output
 
@@ -156,8 +156,8 @@ def verify_bundle(bundle: Path) -> dict:
                 path = root / PAYLOAD_ROOT / record["path"]
                 if not path.is_file() or sha256_file(path) != record["sha256"]:
                     raise SystemExit(f"bundle integrity failure: {record['path']}")
-            if not (root / "aer.py").is_file():
-                raise SystemExit("bundle launcher is missing: aer.py")
+            if not (root / "aer_cli.py").is_file():
+                raise SystemExit("bundle launcher is missing: aer_cli.py")
             return manifest
         finally:
             shutil.rmtree(root, ignore_errors=True)
@@ -184,7 +184,7 @@ def _copy_payload(payload: Path, version_root: Path) -> None:
     skill = payload / "skills" / "ai-coding-orchestrator"
     if skill.is_dir():
         _copy_tree_without_mutable_state(skill, version_root / "skills" / "ai-coding-orchestrator")
-    shutil.copy2(payload.parent / "aer.py", version_root / "aer.py")
+    shutil.copy2(payload.parent / "aer_cli.py", version_root / "aer_cli.py")
 
 def _atomic_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
