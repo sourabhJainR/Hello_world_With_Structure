@@ -140,20 +140,35 @@ jobs:
           rm -rf dist/aer-portable
           mkdir -p dist/aer-portable
           python - <<'PY'
+          import shutil
           import zipfile
           from pathlib import Path
 
           bundle = Path('dist/aer-portable.zip')
+          staging = Path('dist/aer-portable-staging')
           destination = Path('dist/aer-portable')
+          shutil.rmtree(staging, ignore_errors=True)
+          staging.mkdir(parents=True)
           with zipfile.ZipFile(bundle) as z:
-              z.extractall(destination)
-          for required in (
+              z.extractall(staging)
+
+          payload = staging / 'payload'
+          for name in ('.ai-harness', 'portable', 'skills'):
+              source = payload / name
+              if source.exists():
+                  shutil.copytree(source, destination / name, dirs_exist_ok=True)
+          shutil.copy2(staging / 'aer_cli.py', destination / 'aer_cli.py')
+          shutil.copy2(staging / 'aer-bundle.json', destination / 'aer-bundle.json')
+          shutil.rmtree(staging, ignore_errors=True)
+
+          required = (
               destination / 'aer-bundle.json',
               destination / 'aer_cli.py',
-              destination / 'payload' / 'portable' / 'aer_runtime.py',
-          ):
-              if not required.is_file():
-                  raise SystemExit(f'Missing distribution file: {required}')
+              destination / 'portable' / 'aer_runtime.py',
+          )
+          for path in required:
+              if not path.is_file():
+                  raise SystemExit(f'Missing directly runnable distribution file: {path}')
           print('Directly runnable AER distribution assembled')
           PY
 
@@ -176,8 +191,8 @@ jobs:
         with:
           name: aer-portable
           path: |
-            dist/aer-portable.zip
             dist/aer-portable/
+            dist/aer-portable.zip
           if-no-files-found: error
           retention-days: 14
           include-hidden-files: true
