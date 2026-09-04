@@ -13,6 +13,7 @@ on:
       - 'aer_cli.py'
       - 'tests/test_portable_aer.py'
       - '.github/workflows/portable-bundle.yml'
+      - '.github/actions/publish-ci-artifacts/**'
 
 permissions:
   contents: read
@@ -25,16 +26,35 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Prepare CI artifacts
+        run: |
+          rm -rf ci-artifacts
+          mkdir -p ci-artifacts
       - name: Run portable bundle tests
-        run: python -m unittest tests.test_portable_aer -v
+        run: |
+          set -o pipefail
+          python -m unittest tests.test_portable_aer -v 2>&1 | tee ci-artifacts/portable-tests.log
       - name: Build bundle
         run: python aer_cli.py build --output aer-portable.zip
       - name: Verify bundle
         run: python aer_cli.py verify aer-portable.zip
-      - name: Upload portable bundle
-        uses: actions/upload-artifact@v4
+      - name: Stage portable bundle
+        if: always()
+        run: |
+          if [ -f aer-portable.zip ]; then cp aer-portable.zip ci-artifacts/aer-portable.zip; fi
+      - name: Collect CI metadata
+        if: always()
+        run: |
+          {
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'workflow=%s\n' "$GITHUB_WORKFLOW"
+            printf 'ref=%s\n' "$GITHUB_REF"
+          } > ci-artifacts/run-metadata.txt
+      - name: Publish CI artifacts
+        if: always()
+        uses: ./.github/actions/publish-ci-artifacts
         with:
-          name: aer-portable
-          path: aer-portable.zip
-          if-no-files-found: error
-          retention-days: 30
+          artifact-name: aer-portable
+          path: ci-artifacts/
+          retention-days: '30'
