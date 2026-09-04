@@ -6,8 +6,13 @@ from dataclasses import dataclass, asdict
 from typing import Callable, Iterable, Any
 import json
 
-from learning_engine import PolicyCandidate
-from regression_replay import ReplayCase
+try:
+    from .learning_engine import PolicyCandidate
+    from .regression_replay import ReplayCase
+except ImportError:
+    # Keep direct execution/import compatibility for the standalone runtime.
+    from learning_engine import PolicyCandidate
+    from regression_replay import ReplayCase
 
 
 @dataclass(frozen=True, slots=True)
