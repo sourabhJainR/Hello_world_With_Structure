@@ -14,6 +14,7 @@ import importlib.util
 import shutil
 import sys
 import tempfile
+import types
 import zipfile
 from pathlib import Path
 
@@ -31,11 +32,24 @@ def _load_runtime_from(root: Path):
     if runtime_root not in sys.path:
         sys.path.insert(0, runtime_root)
 
+    # The runtime uses dataclasses and is loaded dynamically. Register the
+    # module before execution so dataclasses can resolve ``__module__``.
+    package = sys.modules.get("portable")
+    if package is None:
+        package = types.ModuleType("portable")
+        package.__path__ = [runtime_root]
+        sys.modules["portable"] = package
+
     spec = importlib.util.spec_from_file_location("portable.aer_runtime", runtime)
     if spec is None or spec.loader is None:
         raise SystemExit(f"unable to load AER runtime: {runtime}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(spec.name, None)
+        raise
     return module
 
 
@@ -47,7 +61,6 @@ def _load_runtime_from_bundle(bundle: Path):
             names = {name.rstrip("/") for name in archive.namelist()}
             runtime_name = "payload/portable/aer_runtime.py"
             if runtime_name not in names:
-                # A downloaded GitHub artifact normally wraps aer-portable.zip.
                 nested = [
                     name for name in names
                     if name.lower().endswith(".zip") and Path(name).name.lower() == "aer-portable.zip"
@@ -76,8 +89,6 @@ def _load_runtime(argv: list[str]):
     if module is not None:
         return module, None
 
-    # When invoked from a downloaded artifact, the CLI is beside the bundle
-    # rather than beside the Python package. Load the runtime from that bundle.
     bundle_candidates = [Path(arg).expanduser() for arg in argv if not arg.startswith("-")]
     for candidate in bundle_candidates:
         if candidate.is_file() and candidate.suffix.lower() == ".zip":
@@ -92,7 +103,6 @@ def _load_runtime(argv: list[str]):
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
 
-    # Friendly shorthand for the common downloaded-bundle flow.
     if len(args) == 1 and Path(args[0]).suffix.lower() == ".zip":
         args = ["install", *args]
 
