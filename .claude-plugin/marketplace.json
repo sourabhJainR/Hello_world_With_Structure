@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "adaptive-ai-engineering",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Repository-aware AI engineering control plane with adaptive routing, bounded context, specialist planning, durable execution history, verification, and optional extensions.",
   "owner": {
     "name": "Sourabh Jain",
@@ -11,7 +11,7 @@
     {
       "name": "adaptive-ai-coding-orchestrator",
       "source": "./",
-      "version": "20.1.0",
+      "version": "20.1.1",
       "description": "Adaptive coding orchestration for implementation, debugging, research, POCs, reviews, Jira tasks, safe repository changes, and evidence-backed learning.",
       "author": {
         "name": "Sourabh Jain",
