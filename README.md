@@ -35,6 +35,16 @@ python ~/.aer/current/aer_cli.py update
 python ~/.aer/current/aer_cli.py rollback
 ```
 
+## Artifacts
+
+| Artifact | Description |
+|---|---|
+| [`aer_cli.py`](aer_cli.py) | Public AER command-line entry point |
+| [`portable/aer_runtime.py`](portable/aer_runtime.py) | Portable AER runtime used by the CLI and distribution bundle |
+| `aer-portable.zip` | Versioned portable AER distribution produced by CI |
+
+The latest successful CI run publishes the `aer-portable` ZIP as a workflow artifact.
+
 ## What AER is
 
 AER is the **control plane around an AI coding agent**, not another coding model. It helps an agent decide what evidence to collect, which capabilities are justified, how much context to consume, when to verify, when to review or repair, and what should be remembered for future work.
