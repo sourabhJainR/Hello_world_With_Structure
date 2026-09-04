@@ -57,6 +57,12 @@ AER is distributed as a versioned offline ZIP bundle. The installed control plan
 - A Git checkout is needed when building the bundle locally.
 - A compatible coding agent is needed to actually perform AI-assisted engineering work using the installed Agent Skill.
 
+### CLI naming
+
+The AER command-line entry point is **`aer_cli.py`**. The portable distribution implementation is **`portable/aer_runtime.py`**. These names are intentionally different so the user-facing CLI is not confused with the internal portable runtime.
+
+If you are working from a source checkout, run the commands below from the repository root. You do not need to locate or download a separate `aer.py` file.
+
 ### 1. Get the AER bundle
 
 There are two supported ways to get the bundle.
@@ -76,7 +82,7 @@ From a checkout of the repository:
 ```bash
 git clone https://github.com/sourabhJainR/Hello_world_With_Structure.git
 cd Hello_world_With_Structure
-python aer.py build --output aer-portable.zip
+python aer_cli.py build --output aer-portable.zip
 ```
 
 For a source checkout, AER records the exact source Git commit in the bundle manifest. Builds intended for distribution should therefore be made from a clean, known commit.
@@ -86,17 +92,17 @@ For a source checkout, AER records the exact source Git commit in the bundle man
 Before installing a bundle obtained from another machine or from CI, verify it:
 
 ```bash
-python aer.py verify aer-portable.zip
+python aer_cli.py verify aer-portable.zip
 ```
 
 Successful verification confirms that the manifest exists, the bundle format is supported, the bundle is marked repository-isolated, an exact source commit is pinned, and packaged files match their recorded SHA-256 hashes.
 
 ### 3. Install AER
 
-Run the installer from the repository checkout that contains `aer.py`:
+Run the installer from the repository checkout that contains **`aer_cli.py`**:
 
 ```bash
-python aer.py install aer-portable.zip
+python aer_cli.py install aer-portable.zip
 ```
 
 AER is installed under:
@@ -116,10 +122,10 @@ The installation records the semantic version, exact source Git commit, bundle S
 By default the canonical Agent Skill is installed to the user-level `~/.agents/skills/ai-coding-orchestrator` location. You can select another supported user-level skill surface explicitly:
 
 ```bash
-python aer.py install aer-portable.zip --skill agents
-python aer.py install aer-portable.zip --skill claude
-python aer.py install aer-portable.zip --skill gemini
-python aer.py install aer-portable.zip --skill all
+python aer_cli.py install aer-portable.zip --skill agents
+python aer_cli.py install aer-portable.zip --skill claude
+python aer_cli.py install aer-portable.zip --skill gemini
+python aer_cli.py install aer-portable.zip --skill all
 ```
 
 The installer accepts no target-repository path and does not modify the project where you will use AER.
@@ -260,7 +266,7 @@ semantic version -> exact source Git commit -> bundle SHA-256
 ### 9. Check for updates
 
 ```bash
-python ~/.aer/current/aer.py check-update
+python ~/.aer/current/aer_cli.py check-update
 ```
 
 The updater resolves the exact remote commit and compares both the installed semantic version and exact source commit. A changed commit at the same semantic version is treated as an update candidate rather than being silently ignored.
@@ -268,7 +274,7 @@ The updater resolves the exact remote commit and compares both the installed sem
 ### 10. Update AER
 
 ```bash
-python ~/.aer/current/aer.py update
+python ~/.aer/current/aer_cli.py update
 ```
 
 The update flow resolves the exact remote commit, reads the version from that exact commit, downloads that commit, rebuilds and verifies the bundle, installs the new pinned version, and switches the user-level `current` pointer.
@@ -276,8 +282,8 @@ The update flow resolves the exact remote commit, reads the version from that ex
 You can explicitly choose the source ref used as the update channel:
 
 ```bash
-python ~/.aer/current/aer.py check-update --ref main
-python ~/.aer/current/aer.py update --ref main
+python ~/.aer/current/aer_cli.py check-update --ref main
+python ~/.aer/current/aer_cli.py update --ref main
 ```
 
 A changed commit is never allowed to overwrite an existing installation that is already pinned to another commit under the same semantic version.
@@ -287,7 +293,7 @@ A changed commit is never allowed to overwrite an existing installation that is 
 Rollback to the most recently installed different immutable version:
 
 ```bash
-python ~/.aer/current/aer.py rollback
+python ~/.aer/current/aer_cli.py rollback
 ```
 
 Rollback changes only the user-scoped AER installation and selected user-level Agent Skill surfaces. Project files are not modified by the rollback operation.
@@ -308,7 +314,7 @@ none    -> do not install a skill copy
 For example:
 
 ```bash
-python aer.py install aer-portable.zip --skill all
+python aer_cli.py install aer-portable.zip --skill all
 ```
 
 Use the skill surface that matches the coding-agent environment you actually use.
@@ -366,23 +372,23 @@ cd Hello_world_With_Structure
 
 # Build
 aer_build="aer-portable.zip"
-python aer.py build --output "$aer_build"
+python aer_cli.py build --output "$aer_build"
 
 # Verify
-python aer.py verify "$aer_build"
+python aer_cli.py verify "$aer_build"
 
 # Install
-python aer.py install "$aer_build" --skill agents
+python aer_cli.py install "$aer_build" --skill agents
 
 # Inspect installed provenance
 cat ~/.aer/current/install.json
 
 # Check and update
-python ~/.aer/current/aer.py check-update
-python ~/.aer/current/aer.py update
+python ~/.aer/current/aer_cli.py check-update
+python ~/.aer/current/aer_cli.py update
 
 # Roll back
-python ~/.aer/current/aer.py rollback
+python ~/.aer/current/aer_cli.py rollback
 ```
 
 ## Architecture at a glance
