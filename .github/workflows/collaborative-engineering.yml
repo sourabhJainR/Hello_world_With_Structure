@@ -14,11 +14,35 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Prepare CI artifacts
+        run: |
+          rm -rf ci-artifacts
+          mkdir -p ci-artifacts
       - name: Compile runtime modules
         run: python -m compileall -q .ai-harness
       - name: Run harness tests
-        run: python -m unittest discover -s .ai-harness/tests -v
+        run: |
+          set -o pipefail
+          python -m unittest discover -s .ai-harness/tests -v 2>&1 | tee ci-artifacts/harness-tests.log
       - name: Build repository profile
-        run: python .ai-harness/project_profile.py > /tmp/project-profile.json
+        run: |
+          set -o pipefail
+          python .ai-harness/project_profile.py 2>&1 | tee ci-artifacts/project-profile.json
       - name: Validate profile JSON
-        run: python -c "import json; json.load(open('/tmp/project-profile.json', encoding='utf-8'))"
+        run: python -c "import json; json.load(open('ci-artifacts/project-profile.json', encoding='utf-8'))"
+      - name: Collect CI metadata
+        if: always()
+        run: |
+          {
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'workflow=%s\n' "$GITHUB_WORKFLOW"
+            printf 'ref=%s\n' "$GITHUB_REF"
+          } > ci-artifacts/run-metadata.txt
+      - name: Publish CI artifacts
+        if: always()
+        uses: ./.github/actions/publish-ci-artifacts
+        with:
+          artifact-name: collaborative-engineering-results
+          path: ci-artifacts/
+          retention-days: '14'
