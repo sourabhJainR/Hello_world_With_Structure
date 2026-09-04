@@ -51,6 +51,20 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Prepare CI artifacts
+        if: always()
+        run: |
+          rm -rf ci-artifacts
+          mkdir -p ci-artifacts
+          cp aer_cli.py ci-artifacts/aer_cli.py
+          printf 'Repository: %s\nCommit: %s\nRun: %s\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_RUN_ID" > ci-artifacts/run-metadata.txt
+          cat > ci-artifacts/AER_CLI.md <<EOF
+          # AER CLI
+
+          The public AER command-line entry point is **aer_cli.py**.
+
+          [View aer_cli.py in this exact commit](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/aer_cli.py)
+          EOF
       - name: Validate Python harness
         run: python -m unittest discover -s tests -v
       - name: Validate reference applications
@@ -63,6 +77,7 @@ jobs:
         run: |
           python aer_cli.py build --output /tmp/aer-portable.zip
           python aer_cli.py verify /tmp/aer-portable.zip
+          cp /tmp/aer-portable.zip ci-artifacts/aer-portable.zip
           python - <<'PY'
           import json, zipfile
           with zipfile.ZipFile('/tmp/aer-portable.zip') as archive:
@@ -133,3 +148,21 @@ jobs:
         run: python .ai-harness/worktree.py list
       - name: Run complete deterministic system suite
         run: python scripts/run_full_suite.py
+      - name: Publish CI artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aer-harness-results
+          path: ci-artifacts/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish AER CLI link
+        if: always()
+        run: |
+          {
+            echo '## AER CLI'
+            echo
+            echo "[View aer_cli.py in this exact commit](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_SHA}/aer_cli.py)"
+            echo
+            echo 'The same aer_cli.py is included in the aer-harness-results artifact.'
+          } >> "$GITHUB_STEP_SUMMARY"
