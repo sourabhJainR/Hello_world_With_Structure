@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/aer_prompt.py",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/ai-coding-orchestrator/hooks/aer_prompt.py",
             "timeout": 10
           }
         ]
