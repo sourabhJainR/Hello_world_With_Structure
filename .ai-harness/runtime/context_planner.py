@@ -61,8 +61,6 @@ def plan_context(*, phase: str, risk: str = "medium", uncertainty: str = "medium
     if risk in {"high", "critical"}:
         modes += ["security", "history"]
 
-    # Strategy hints may reorder or add retrieval modes, but must never remove
-    # modes required by risk/uncertainty controls.
     required_modes = list(modes)
     strategy = (policy_strategy or "").strip().lower()
     if strategy in {"targeted_context", "structural_first"}:
@@ -88,18 +86,27 @@ def plan_context(*, phase: str, risk: str = "medium", uncertainty: str = "medium
 
 
 def select_evidence(candidates: Iterable[EvidenceCandidate], *, budget: int, max_items: int) -> list[EvidenceCandidate]:
-    """Rank, deduplicate by evidence id and fit candidates into a hard budget."""
-    ranked = sorted(candidates, key=lambda item: (item.score(), item.evidence_id), reverse=True)
-    selected: list[EvidenceCandidate] = []
+    """Rank unique evidence records and fit them into a hard budget.
+
+    Evidence IDs represent the same logical source. Deduplicate before scoring
+    so a later duplicate cannot displace the first occurrence and accidentally
+    change the selected evidence set merely because its metadata is different.
+    """
+    unique: list[EvidenceCandidate] = []
     seen: set[str] = set()
-    used = 0
-    for item in ranked:
+    for item in candidates:
         if item.evidence_id in seen:
             continue
+        seen.add(item.evidence_id)
+        unique.append(item)
+
+    ranked = sorted(unique, key=lambda item: (item.score(), item.evidence_id), reverse=True)
+    selected: list[EvidenceCandidate] = []
+    used = 0
+    for item in ranked:
         if item.cost < 0 or item.cost > budget - used:
             continue
         selected.append(item)
-        seen.add(item.evidence_id)
         used += item.cost
         if len(selected) >= max(1, int(max_items)):
             break
