@@ -8,12 +8,22 @@ from typing import Any, Callable, Iterable
 import json
 import time
 
-from canary_evaluator import EvaluationReport, evaluate_canary, evaluate_shadow
-from context_planner import ContextPlan, plan_context
-from learning_engine import Observation, PolicyCandidate, learn
-from policy_registry import Policy, PolicyRegistry
-from regression_replay import ReplayCase, ReplayResult, replay
-from rollback_controller import PolicyHealth, should_rollback
+# Support both package imports (runtime.learning_controller) and the legacy
+# harness path where .ai-harness/runtime is placed directly on sys.path.
+try:
+    from .canary_evaluator import EvaluationReport, evaluate_canary, evaluate_shadow
+    from .context_planner import ContextPlan, plan_context
+    from .learning_engine import Observation, PolicyCandidate, learn
+    from .policy_registry import Policy, PolicyRegistry
+    from .regression_replay import ReplayCase, ReplayResult, replay
+    from .rollback_controller import PolicyHealth, should_rollback
+except ImportError:
+    from canary_evaluator import EvaluationReport, evaluate_canary, evaluate_shadow
+    from context_planner import ContextPlan, plan_context
+    from learning_engine import Observation, PolicyCandidate, learn
+    from policy_registry import Policy, PolicyRegistry
+    from regression_replay import ReplayCase, ReplayResult, replay
+    from rollback_controller import PolicyHealth, should_rollback
 
 
 class LearningController:
