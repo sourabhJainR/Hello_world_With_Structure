@@ -16,23 +16,40 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Prepare CI artifacts
+        if: always()
+        run: |
+          rm -rf ci-artifacts
+          mkdir -p ci-artifacts
+          printf 'commit=%s\nrun_id=%s\nworkflow=%s\nref=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_WORKFLOW" "$GITHUB_REF" > ci-artifacts/run-metadata.txt
       - name: Validate package
         run: |
-          python scripts/validate_plugin.py
-          python -m py_compile scripts/install_skill.py scripts/validate_plugin.py
-          python -m unittest discover -s tests -v
+          set -o pipefail
+          {
+            python scripts/validate_plugin.py
+            python -m py_compile scripts/install_skill.py scripts/validate_plugin.py
+            python -m unittest discover -s tests -v
+          } 2>&1 | tee ci-artifacts/release-validation.log
       - name: Validate tag matches plugin version
         env:
           TAG: ${{ github.ref_name }}
         run: |
-          python - <<'PY'
+          python - <<'PY' 2>&1 | tee ci-artifacts/tag-validation.log
           import json, os
           version = json.load(open('.claude-plugin/plugin.json', encoding='utf-8'))['version']
           tag = os.environ['TAG']
           expected = f'v{version}'
           if tag != expected:
               raise SystemExit(f'tag {tag} does not match plugin version {expected}')
+          print(f'tag {tag} matches plugin version {version}')
           PY
+      - name: Publish CI artifacts
+        if: always()
+        uses: ./.github/actions/publish-ci-artifacts
+        with:
+          artifact-name: plugin-release-validation
+          path: ci-artifacts/
+          retention-days: '30'
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
