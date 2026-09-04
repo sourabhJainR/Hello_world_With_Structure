@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
@@ -22,6 +25,7 @@ class PortableAerTests(unittest.TestCase):
         (root / ".ai-harness" / "telemetry.jsonl").write_text("machine-state\n", encoding="utf-8")
         (root / "skills" / "ai-coding-orchestrator" / "SKILL.md").write_text("---\nname: ai-coding-orchestrator\ndescription: Repository-aware AI engineering control plane.\n---\n", encoding="utf-8")
         (root / "portable" / "aer_runtime.py").write_text("print('portable')\n", encoding="utf-8")
+        (root / "portable" / "__init__.py").write_text("from .aer_runtime import main\n", encoding="utf-8")
         (root / "aer_cli.py").write_text("print('launcher')\n", encoding="utf-8")
 
     def test_build_verify_and_exclude_mutable_state(self) -> None:
@@ -34,10 +38,60 @@ class PortableAerTests(unittest.TestCase):
             self.assertEqual(manifest["version"], "20.1.0")
             self.assertEqual(manifest["source_commit"], "test-commit")
             self.assertFalse(any(item["path"].endswith("telemetry.jsonl") for item in manifest["files"]))
+            self.assertTrue(any(item["path"] == "aer_cli.py" for item in manifest["files"]))
             self.assertFalse(manifest["target_repository_mutation"])
             with zipfile.ZipFile(bundle) as archive:
                 self.assertIn("aer_cli.py", archive.namelist())
                 self.assertIn("payload/portable/aer_runtime.py", archive.namelist())
+
+    def test_verify_rejects_tampered_launcher(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "source"
+            self.make_source(root)
+            bundle = Path(tmp) / "aer.zip"
+            build(root, bundle, source_commit="test-commit")
+            tampered = Path(tmp) / "tampered.zip"
+            with zipfile.ZipFile(bundle) as source, zipfile.ZipFile(tampered, "w", zipfile.ZIP_DEFLATED) as target:
+                for item in source.infolist():
+                    data = source.read(item.filename)
+                    if item.filename == "aer_cli.py":
+                        data += b"tampered\n"
+                    target.writestr(item, data)
+            with self.assertRaises(SystemExit):
+                verify_bundle(tampered)
+
+    def test_verify_rejects_unsafe_manifest_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "source"
+            self.make_source(root)
+            bundle = Path(tmp) / "aer.zip"
+            build(root, bundle, source_commit="test-commit")
+            unsafe = Path(tmp) / "unsafe.zip"
+            with zipfile.ZipFile(bundle) as source:
+                manifest = json.loads(source.read("aer-bundle.json"))
+                manifest["files"].append({"path": "../../outside.txt", "sha256": "0" * 64, "size": 0})
+                with zipfile.ZipFile(unsafe, "w", zipfile.ZIP_DEFLATED) as target:
+                    for item in source.infolist():
+                        data = source.read(item.filename)
+                        if item.filename == "aer-bundle.json":
+                            data = (json.dumps(manifest, sort_keys=True) + "\n").encode("utf-8")
+                        target.writestr(item, data)
+            with self.assertRaises(SystemExit):
+                verify_bundle(unsafe)
+
+    def test_launcher_works_from_unrelated_working_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "source"
+            self.make_source(root)
+            launcher = root / "aer_cli.py"
+            result = subprocess.run(
+                [sys.executable, str(launcher), "--help"],
+                cwd=Path(tmp),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_install_is_repository_isolated_and_version_pinned(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -58,6 +112,7 @@ class PortableAerTests(unittest.TestCase):
             self.assertEqual(record["version"], "20.1.0")
             self.assertEqual(record["source_commit"], "commit-20.1.0")
             self.assertTrue(record["repository_isolated"])
+            self.assertTrue((aer_home / "current" / "aer_cli.py").is_file())
 
     def test_install_rejects_same_version_with_different_commit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
