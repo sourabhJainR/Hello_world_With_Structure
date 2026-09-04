@@ -30,7 +30,7 @@ class AdaptiveHarnessTests(unittest.TestCase):
         self.assertTrue(run_dirs)
         run_dir = max(run_dirs, key=lambda path: path.stat().st_mtime)
         manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["version"], 6)
+        self.assertEqual(manifest["version"], 7)
         self.assertEqual(manifest["workflow"], "adaptive")
         self.assertIn("route", manifest)
         self.assertIn("task_chunks", manifest)
