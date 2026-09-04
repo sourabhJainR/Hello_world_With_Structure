@@ -4,44 +4,125 @@ A provider-neutral AI software-engineering control plane for Claude Code and com
 
 ## AER CLI naming
 
-The public command-line entry point is **`aer_cli.py`**.
+The **downloadable portable bundle is self-contained**. It includes the application launcher **`app_cli.py`**, the portable runtime, AER skills, and Claude Code plugin metadata.
 
-The portable distribution implementation is **`portable/aer_runtime.py`**.
+The source repository also contains the developer/build launcher `aer_cli.py`. You normally do **not** need the source checkout to install AER on a target machine.
 
-The old `aer.py` launcher name has been retired. Do not use or reference it.
+## Quick start — install from the portable ZIP
 
-## Quick start
+1. Download the `aer-portable.zip` artifact from a successful GitHub Actions run.
+2. Extract the ZIP to a local directory.
+3. Open a terminal in the extracted AER directory.
+4. Run the bundled application CLI.
 
-```bash
-git clone https://github.com/sourabhJainR/Hello_world_With_Structure.git
-cd Hello_world_With_Structure
+### Windows PowerShell
 
-# Build
-aer_build="aer-portable.zip"
-python aer_cli.py build --output "$aer_build"
-
-# Verify
-python aer_cli.py verify "$aer_build"
-
-# Install - auto-detects Claude Code and activates the plugin
-python aer_cli.py install "$aer_build"
+```powershell
+Expand-Archive .\aer-portable.zip -DestinationPath .\aer
+cd .\aer
+python .\app_cli.py install
 ```
 
-After installation, restart Claude Code or run `/reload-plugins`. Then confirm:
+### macOS / Linux
+
+```bash
+unzip aer-portable.zip -d aer
+cd aer
+python3 ./app_cli.py install
+```
+
+The bundle is intended to be portable: `app_cli.py` discovers the bundled runtime and installs AER into the user-level `~/.aer` location. The target repository is not used as an installation location.
+
+If Claude Code is installed and available on `PATH`, the installer also registers the bundled local Claude marketplace and installs the `adaptive-ai-coding-orchestrator` plugin at user scope.
+
+You can explicitly select the Claude integration:
+
+```bash
+python app_cli.py install --skill claude
+```
+
+For a machine without Claude Code, install the AER runtime first and add Claude later; the AER installation remains provider-neutral.
+
+## Verify the installation
+
+From the extracted bundle directory:
+
+```bash
+python app_cli.py verify
+```
+
+Then check the installed AER state:
+
+```bash
+python ~/.aer/current/aer_cli.py check-update
+```
+
+For Claude Code, restart Claude Code or run:
+
+```text
+/reload-plugins
+```
+
+Then open:
 
 ```text
 /plugin
 ```
 
-The Installed tab should contain `adaptive-ai-coding-orchestrator`. The skill is exposed as:
+The Installed tab should contain:
+
+```text
+adaptive-ai-coding-orchestrator
+```
+
+The AER skill is exposed as:
 
 ```text
 /adaptive-ai-coding-orchestrator:ai-coding-orchestrator
 ```
 
-For engineering prompts, the plugin's `UserPromptSubmit` hook also injects a small AER control-plane reminder before Claude processes the prompt. This is what makes AER behavior active instead of leaving the skill as a passive file on disk.
+For normal engineering prompts, the plugin's `UserPromptSubmit` hook injects a small AER control-plane reminder before Claude processes the prompt. The detailed skill is then available for repository-aware engineering work. Claude Code skills can also be invoked directly when needed. citeturn0news0turn0news4
 
-After installation:
+## Using AER after installation
+
+Once installed, AER is machine-scoped. You can work in any repository without copying AER files into that repository.
+
+Start Claude Code from the repository you want to work on:
+
+```bash
+claude
+```
+
+Then give Claude a normal engineering request, for example:
+
+```text
+Fix the failing login test. Inspect repository instructions and the existing authentication flow first. Identify the root cause with evidence, make the smallest compatible change, run the relevant tests, and report what changed and what was verified.
+```
+
+Or invoke the AER skill explicitly:
+
+```text
+/adaptive-ai-coding-orchestrator:ai-coding-orchestrator
+```
+
+The intended flow is:
+
+```text
+User prompt
+    -> AER prompt hook
+    -> AER engineering guidance
+    -> repository evidence
+    -> implementation
+    -> verification
+    -> review
+    -> learning/evidence
+```
+
+AER is a control plane around Claude Code, not a second coding model. Claude remains responsible for the interactive agent work; AER provides the engineering discipline, evidence flow, verification, policy, and learning controls.
+
+## Update and rollback
+
+After installation, use the installed CLI rather than the copy in the downloaded ZIP:
 
 ```bash
 python ~/.aer/current/aer_cli.py check-update
@@ -49,103 +130,50 @@ python ~/.aer/current/aer_cli.py update
 python ~/.aer/current/aer_cli.py rollback
 ```
 
-## Artifacts
-
-| Artifact | Description |
-|---|---|
-| [`aer_cli.py`](aer_cli.py) | Public AER command-line entry point |
-| [`portable/aer_runtime.py`](portable/aer_runtime.py) | Portable AER runtime used by the CLI and distribution bundle |
-| `aer-portable.zip` | Versioned portable AER distribution produced by CI |
-
-The latest successful CI run publishes the `aer-portable` ZIP as a workflow artifact.
-
-## What AER is
-
-AER is the **control plane around an AI coding agent**, not another coding model. It helps an agent decide what evidence to collect, which capabilities are justified, how much context to consume, when to verify, when to review or repair, and what should be remembered for future work.
-
-The normal lifecycle is:
-
-```text
-Understand
-  -> Profile repository
-  -> Protect task contract
-  -> Retrieve evidence
-  -> Route capabilities
-  -> Execute
-  -> Verify
-  -> Review
-  -> Repair when justified
-  -> Learn from evidence
-  -> Stop
-```
-
-AER normally performs one bounded adaptive run. It does not recursively loop forever unless the user explicitly requests a bounded loop.
-
-## Key capabilities
-
-| Capability | Purpose |
-|---|---|
-| Repository profiling | Understand instructions, structure, dependencies, git state, tests, and local patterns |
-| Protected intent | Preserve goal, scope, constraints, and acceptance criteria through execution and retries |
-| Evidence-driven execution | Prefer repository evidence and deterministic verification over model confidence |
-| Adaptive routing | Select only the planner, explorer, researcher, builder, verifier, reviewer, security, or RCA capability needed |
-| Context optimization | Rank, bound, cache, and compact evidence to reduce context waste |
-| Learning engine | Learn from verified outcomes and reviewer findings without changing safety authority |
-| Policy registry | Keep learned behavior governed by explicit policies and immutable safety controls |
-| Regression replay | Test candidate strategies against deterministic regression cases before promotion |
-| Shadow/canary | Evaluate new behavior without immediate activation and promote only when gates pass |
-| Rollback | Restore the previous known-good AER version or learned strategy |
-| Repository isolation | Keep AER installation under `~/.aer` rather than modifying target repositories |
-| Provider neutrality | Keep the engineering contract independent of a specific coding model/provider |
-
-## Portable distribution
-
-AER is distributed as a versioned offline ZIP bundle. The installed control plane is machine-scoped under `~/.aer`; the target repository remains a workspace.
-
-### Prerequisites
-
-- Python 3.11 or later for the portable tooling
-- Git when building from source
-- Claude Code or another compatible coding agent for AI-assisted engineering
-
-### Build locally
+You can select an explicit update channel/reference:
 
 ```bash
+python ~/.aer/current/aer_cli.py check-update --ref main
+python ~/.aer/current/aer_cli.py update --ref main
+```
+
+Previous pinned versions remain available for deterministic rollback.
+
+## Build a new portable bundle from source
+
+If you are developing AER itself, use the source checkout and the developer launcher:
+
+```bash
+git clone https://github.com/sourabhJainR/Hello_world_With_Structure.git
+cd Hello_world_With_Structure
 python aer_cli.py build --output aer-portable.zip
-```
-
-The bundle records the exact source Git commit, semantic version, and file SHA-256 values. The Claude plugin metadata is included in the bundle so installation is self-contained.
-
-### Verify
-
-```bash
 python aer_cli.py verify aer-portable.zip
 ```
 
-### Install
+A successful CI run also publishes the portable ZIP as the `aer-portable` workflow artifact. CI verifies that the bundle contains the Claude plugin manifest, marketplace metadata, AER skill, and `UserPromptSubmit` hook.
 
-Recommended:
+## What is inside the portable ZIP
 
-```bash
-python aer_cli.py install aer-portable.zip
+The portable ZIP is the distribution unit. The important files are:
+
+```text
+aer-portable.zip
+|
++-- app_cli.py                         # user-facing bundle launcher
++-- payload/
+    +-- portable/aer_runtime.py       # AER runtime
+    +-- .claude-plugin/
+    |   +-- plugin.json               # Claude plugin manifest
+    |   +-- marketplace.json          # local marketplace metadata
+    +-- skills/
+        +-- ai-coding-orchestrator/
+            +-- SKILL.md
+            +-- hooks/aer_prompt.py   # UserPromptSubmit hook
 ```
 
-The launcher now defaults to provider auto-detection. If Claude Code is on `PATH`, AER registers the local `adaptive-ai-engineering` marketplace and installs `adaptive-ai-coding-orchestrator` at user scope. You can still explicitly choose:
+The extracted bundle is the thing you install and run. Do not manually copy `payload` files into your project.
 
-```bash
-python aer_cli.py install aer-portable.zip --skill claude
-python aer_cli.py install aer-portable.zip --skill agents
-python aer_cli.py install aer-portable.zip --skill gemini
-python aer_cli.py install aer-portable.zip --skill all
-```
-
-Supported skill targets are `agents`, `claude`, `gemini`, `all`, `auto`, and `none`.
-
-### CI bundle
-
-A successful CI run builds and verifies the portable bundle before publishing the artifact. The CI verification also checks that the Claude plugin manifest, skill, and UserPromptSubmit hook are present in the bundle.
-
-## Installed version and provenance
+## Installed state
 
 AER stores the active installation under:
 
@@ -163,23 +191,6 @@ semantic version -> exact source Git commit -> bundle SHA-256
 ```
 
 The same semantic version cannot silently be overwritten by a different source commit.
-
-## Update and rollback
-
-```bash
-python ~/.aer/current/aer_cli.py check-update
-python ~/.aer/current/aer_cli.py update
-python ~/.aer/current/aer_cli.py rollback
-```
-
-You can select an explicit update channel/reference:
-
-```bash
-python ~/.aer/current/aer_cli.py check-update --ref main
-python ~/.aer/current/aer_cli.py update --ref main
-```
-
-Previous pinned versions remain available for deterministic rollback.
 
 ## Repository isolation and safety
 
@@ -272,17 +283,6 @@ Investigate why the nightly import occasionally drops records. Do not modify cod
 Review this change for correctness, compatibility, security, regression risk, observability, and missing verification. Do not rewrite unrelated code.
 ```
 
-## Operational recommendations
-
-1. Keep repository instructions and acceptance criteria explicit.
-2. Give AER the smallest useful scope.
-3. Require deterministic verification for meaningful changes.
-4. Use RCA mode when diagnosis must not modify code.
-5. Build distributable bundles from known commits and verify them before installation.
-6. Keep project-specific AER artifacts out of source control unless intentionally required.
-7. Treat learned recommendations as advisory until they have enough evidence and regression coverage.
-8. For Claude Code, verify the plugin is present in `/plugin > Installed` after installation.
-
 ## Reference documentation
 
 See [`portable/README.md`](portable/README.md) for the detailed distribution, version-pinning, update, rollback, lifecycle, and repository-isolation contract.
@@ -309,7 +309,7 @@ User task / Jira / bug / review / research
         +-----------+-----------+
                     |
                     v
-         Compatible coding agent
+             Claude Code / agent
                     |
                     v
               Target repository
