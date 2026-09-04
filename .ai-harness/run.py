@@ -122,14 +122,14 @@ def _trusted_learning_text(limit: int = 1800) -> str:
     return engine.compact("\n".join(lines), limit)
 
 
-def optimized_build_prompt(phase, task, source, jira, route, repo_map, memory, profile, history):
+def optimized_build_prompt(phase, task, source, jira, route, repo_map, memory, profile, history, context_plan=None):
     review_isolation = phase == "review"
     context_history = "" if review_isolation else history
     repo_tile, memory_tile, history_tile, metadata = context_engine.flash_context_prompt(
         task, repo_map, memory, context_history, budget_chars=12000
     )
     prompt = _original_build_prompt(
-        phase, task, source, jira, route, repo_tile, memory_tile, profile, history_tile
+        phase, task, source, jira, route, repo_tile, memory_tile, profile, history_tile, context_plan
     )
     knowledge = str(_knowledge.get("evidence", "No external structural knowledge available."))[:6000]
     sources = ", ".join(_knowledge.get("sources", [])) or "none"
