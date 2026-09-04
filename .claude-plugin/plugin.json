@@ -1,7 +1,7 @@
 {
   "name": "adaptive-ai-coding-orchestrator",
   "description": "Adaptive repository-aware engineering control plane for coding, debugging, research, POCs, reviews, and safe changes, with bounded context, deterministic specialist planning, durable execution history, and optional code-intelligence extensions.",
-  "version": "20.1.0",
+  "version": "20.1.1",
   "author": {
     "name": "Sourabh Jain",
     "url": "https://github.com/sourabhJainR"
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/skills/ai-coding-orchestrator/hooks/aer_prompt.py",
+            "command": "python ${CLAUDE_PLUGIN_ROOT}/skills/ai-coding-orchestrator/hooks/aer_prompt.py",
             "timeout": 10
           }
         ]
