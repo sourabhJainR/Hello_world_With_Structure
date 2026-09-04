@@ -44,6 +44,39 @@ class PortableAerTests(unittest.TestCase):
                 self.assertIn("aer_cli.py", archive.namelist())
                 self.assertIn("payload/portable/aer_runtime.py", archive.namelist())
 
+    def test_verify_and_install_accept_github_artifact_wrapper(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "source"
+            aer_home = Path(tmp) / "aer-home"
+            self.make_source(root)
+            bundle = Path(tmp) / "aer-portable.zip"
+            artifact = Path(tmp) / "artifact-download.zip"
+            build(root, bundle, source_commit="artifact-commit")
+
+            # GitHub Actions upload-artifact wraps uploaded files in another ZIP.
+            with zipfile.ZipFile(artifact, "w", zipfile.ZIP_DEFLATED) as wrapper:
+                wrapper.write(bundle, "aer-portable.zip")
+
+            manifest = verify_bundle(artifact)
+            self.assertEqual(manifest["source_commit"], "artifact-commit")
+            install(artifact, "none", aer_home)
+            record = json.loads((aer_home / "current" / "install.json").read_text(encoding="utf-8"))
+            self.assertEqual(record["source_commit"], "artifact-commit")
+            self.assertTrue((aer_home / "current" / "aer_cli.py").is_file())
+
+    def test_verify_rejects_artifact_with_multiple_zip_payloads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "source"
+            self.make_source(root)
+            bundle = Path(tmp) / "aer-portable.zip"
+            build(root, bundle, source_commit="artifact-commit")
+            artifact = Path(tmp) / "ambiguous.zip"
+            with zipfile.ZipFile(artifact, "w", zipfile.ZIP_DEFLATED) as wrapper:
+                wrapper.write(bundle, "aer-portable.zip")
+                wrapper.write(bundle, "other.zip")
+            with self.assertRaises(SystemExit):
+                verify_bundle(artifact)
+
     def test_verify_rejects_tampered_launcher(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "source"
