@@ -9,6 +9,7 @@ on:
       - '.ai-harness/config.toml'
       - '.ai-harness/*.md'
       - '.github/workflows/**'
+      - 'aer_cli.py'
   push:
     paths:
       - '.ai-harness/runtime/**'
@@ -17,21 +18,26 @@ on:
       - '.ai-harness/config.toml'
       - '.ai-harness/*.md'
       - '.github/workflows/**'
+      - 'aer_cli.py'
 
 jobs:
   traceability:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Prepare CI artifacts
+        if: always()
+        run: mkdir -p ci-artifacts
       - name: Compile traceability implementations
         run: python -m compileall -q .ai-harness
       - name: Validate construct index behavior
         run: |
-          python - <<'PY'
-          import pathlib
+          python - <<'PY' 2>&1 | tee ci-artifacts/construct-index-tests.log
           import unittest
 
           suite = unittest.defaultTestLoader.discover(
@@ -47,10 +53,10 @@ jobs:
           print(f'Collected and passed {count} construct-index tests')
           PY
       - name: Validate harness configuration and version consistency
-        run: python scripts/validate_plugin.py
+        run: python scripts/validate_plugin.py 2>&1 | tee ci-artifacts/plugin-validation.log
       - name: Validate configuration feature flags
         run: |
-          python - <<'PY'
+          python - <<'PY' 2>&1 | tee ci-artifacts/feature-flags-validation.log
           import tomllib
           c = tomllib.load(open('.ai-harness/config.toml', 'rb'))
           assert isinstance(c['harness']['version'], int) and c['harness']['version'] > 0
@@ -60,3 +66,33 @@ jobs:
           assert c['collaborative_development']['enabled'] is True
           print(f"Harness version: {c['harness']['version']}")
           PY
+      - name: Validate AER CLI
+        run: |
+          python -m py_compile aer_cli.py
+          cp aer_cli.py ci-artifacts/aer_cli.py
+          printf '# AER CLI\n\nDownload or view the [aer_cli.py source](https://github.com/sourabhJainR/Hello_world_With_Structure/blob/%s/aer_cli.py).\n' "$GITHUB_SHA" > ci-artifacts/AER_CLI.md
+      - name: Collect run metadata
+        if: always()
+        run: |
+          {
+            printf 'commit=%s\n' "$GITHUB_SHA"
+            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
+            printf 'workflow=%s\n' "$GITHUB_WORKFLOW"
+            printf 'ref=%s\n' "$GITHUB_REF"
+          } > ci-artifacts/run-metadata.txt
+      - name: Upload traceability artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: traceability-results
+          path: ci-artifacts/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish AER CLI link
+        if: always()
+        run: |
+          echo '## AER CLI' >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo '[View aer_cli.py in this exact commit](https://github.com/sourabhJainR/Hello_world_With_Structure/blob/'"$GITHUB_SHA"'/aer_cli.py)' >> "$GITHUB_STEP_SUMMARY"
+          echo '' >> "$GITHUB_STEP_SUMMARY"
+          echo 'The same file is included inside the `traceability-results` workflow artifact.' >> "$GITHUB_STEP_SUMMARY"
