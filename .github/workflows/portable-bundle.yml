@@ -10,7 +10,7 @@ on:
       - '.ai-harness/**'
       - 'skills/ai-coding-orchestrator/**'
       - 'portable/**'
-      - 'aer.py'
+      - 'aer_cli.py'
       - 'tests/test_portable_aer.py'
       - '.github/workflows/portable-bundle.yml'
 
@@ -28,9 +28,9 @@ jobs:
       - name: Run portable bundle tests
         run: python -m unittest tests.test_portable_aer -v
       - name: Build bundle
-        run: python aer.py build --output aer-portable.zip
+        run: python aer_cli.py build --output aer-portable.zip
       - name: Verify bundle
-        run: python aer.py verify aer-portable.zip
+        run: python aer_cli.py verify aer-portable.zip
       - name: Upload portable bundle
         uses: actions/upload-artifact@v4
         with:
