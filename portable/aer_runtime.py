@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import shutil
 import subprocess
@@ -154,7 +155,42 @@ def _manifest_record_path(root: Path, record_path: str) -> Path:
         raise SystemExit(f"unexpected manifest path: {record_path}")
     return root / PAYLOAD_ROOT / record_path
 
-def verify_bundle(bundle: Path) -> dict:
+def _native_bundle(bundle: Path) -> tuple[Path, Path | None]:
+    """Return a native AER bundle, transparently unwrapping upload-artifact ZIPs.
+
+    GitHub Actions ``upload-artifact`` packages every uploaded file in another
+    ZIP archive. Therefore downloading an artifact containing ``aer-portable.zip``
+    produces ``artifact.zip -> aer-portable.zip``. The CLI accepts both forms so
+    users can pass the downloaded artifact directly to ``install`` or ``verify``.
+    """
+    bundle = Path(bundle).expanduser().resolve()
+    if not bundle.is_file():
+        raise SystemExit(f"AER bundle does not exist: {bundle}")
+    try:
+        with zipfile.ZipFile(bundle) as archive:
+            names = [name for name in archive.namelist() if not name.endswith("/")]
+            if MANIFEST_NAME in names:
+                return bundle, None
+            zip_members = [name for name in names if name.lower().endswith(".zip")]
+            if len(zip_members) == 1 and Path(zip_members[0]).name.lower() == f"{BUNDLE_NAME}.zip":
+                temp_root = Path(tempfile.mkdtemp(prefix="aer-artifact-"))
+                inner = temp_root / f"{BUNDLE_NAME}.zip"
+                inner.write_bytes(archive.read(zip_members[0]))
+                try:
+                    with zipfile.ZipFile(inner) as nested:
+                        if MANIFEST_NAME not in [name for name in nested.namelist() if not name.endswith("/")]:
+                            raise SystemExit("artifact contains aer-portable.zip, but it is not a valid AER bundle")
+                except zipfile.BadZipFile as exc:
+                    raise SystemExit(f"artifact contains an invalid aer-portable.zip: {exc}") from exc
+                return inner, temp_root
+    except zipfile.BadZipFile as exc:
+        raise SystemExit(f"invalid AER bundle: {exc}") from exc
+    raise SystemExit(
+        "invalid AER bundle: expected aer-bundle.json at the archive root; "
+        "if this is a GitHub Actions artifact, it must contain exactly aer-portable.zip"
+    )
+
+def _verify_native_bundle(bundle: Path) -> dict:
     try:
         with zipfile.ZipFile(bundle) as archive:
             if MANIFEST_NAME not in archive.namelist():
@@ -194,6 +230,14 @@ def verify_bundle(bundle: Path) -> dict:
                 shutil.rmtree(root, ignore_errors=True)
     except (OSError, zipfile.BadZipFile, json.JSONDecodeError) as exc:
         raise SystemExit(f"invalid AER bundle: {exc}") from exc
+
+def verify_bundle(bundle: Path) -> dict:
+    native, temp_root = _native_bundle(bundle)
+    try:
+        return _verify_native_bundle(native)
+    finally:
+        if temp_root is not None:
+            shutil.rmtree(temp_root, ignore_errors=True)
 
 def _copy_tree_without_mutable_state(source: Path, destination: Path) -> None:
     destination.mkdir(parents=True, exist_ok=True)
@@ -271,46 +315,51 @@ def _install_skill(source: Path, destination: Path) -> None:
     shutil.copytree(source, destination)
 
 def install(bundle: Path, install_skill: str = "agents", aer_home: Path | None = None) -> Path:
-    manifest = verify_bundle(bundle)
-    root = home_aer(aer_home)
-    version = str(manifest["version"])
-    version_root = root / "versions" / f"v{version}"
-    temp = Path(tempfile.mkdtemp(prefix="aer-install-"))
+    native_bundle, temp_root = _native_bundle(bundle)
     try:
-        with zipfile.ZipFile(bundle) as archive:
-            safe_extract(archive, temp)
-        existing = version_root / "install.json"
-        bundle_hash = sha256_file(bundle)
-        if existing.is_file():
-            prior = json.loads(existing.read_text(encoding="utf-8"))
-            if prior.get("source_commit") != manifest["source_commit"] or prior.get("bundle_sha256") != bundle_hash:
-                raise SystemExit(f"version {version} is already pinned to a different build; refusing overwrite")
-        elif version_root.exists():
-            raise SystemExit(f"version directory exists without a pin: {version_root}")
-        _copy_payload(temp / PAYLOAD_ROOT, version_root)
-        record = {
-            "format": BUNDLE_FORMAT_VERSION,
-            "version": version,
-            "harness_version": manifest.get("harness_version"),
-            "source_repository": manifest.get("source_repository"),
-            "source_ref": manifest.get("source_ref"),
-            "source_commit": manifest.get("source_commit"),
-            "bundle_sha256": bundle_hash,
-            "installed_at": datetime.now(timezone.utc).isoformat(),
-            "repository_isolated": True,
-        }
-        _atomic_json(version_root / "install.json", record)
-        _set_current(root, version_root)
-        _atomic_json(root / "active.json", record)
-        with (root / "history.jsonl").open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps({"event": "activate", **record}) + "\n")
-        _sync_skills(temp / PAYLOAD_ROOT / "skills" / "ai-coding-orchestrator", install_skill)
-        print(f"Installed and pinned AER {version} ({manifest['source_commit'][:12]})")
-        print(f"Active installation: {root / 'current'}")
-        print("Repository isolation: ON")
-        return root / "current"
+        manifest = _verify_native_bundle(native_bundle)
+        root = home_aer(aer_home)
+        version = str(manifest["version"])
+        version_root = root / "versions" / f"v{version}"
+        temp = Path(tempfile.mkdtemp(prefix="aer-install-"))
+        try:
+            with zipfile.ZipFile(native_bundle) as archive:
+                safe_extract(archive, temp)
+            existing = version_root / "install.json"
+            bundle_hash = sha256_file(native_bundle)
+            if existing.is_file():
+                prior = json.loads(existing.read_text(encoding="utf-8"))
+                if prior.get("source_commit") != manifest["source_commit"] or prior.get("bundle_sha256") != bundle_hash:
+                    raise SystemExit(f"version {version} is already pinned to a different build; refusing overwrite")
+            elif version_root.exists():
+                raise SystemExit(f"version directory exists without a pin: {version_root}")
+            _copy_payload(temp / PAYLOAD_ROOT, version_root)
+            record = {
+                "format": BUNDLE_FORMAT_VERSION,
+                "version": version,
+                "harness_version": manifest.get("harness_version"),
+                "source_repository": manifest.get("source_repository"),
+                "source_ref": manifest.get("source_ref"),
+                "source_commit": manifest.get("source_commit"),
+                "bundle_sha256": bundle_hash,
+                "installed_at": datetime.now(timezone.utc).isoformat(),
+                "repository_isolated": True,
+            }
+            _atomic_json(version_root / "install.json", record)
+            _set_current(root, version_root)
+            _atomic_json(root / "active.json", record)
+            with (root / "history.jsonl").open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps({"event": "activate", **record}) + "\n")
+            _sync_skills(temp / PAYLOAD_ROOT / "skills" / "ai-coding-orchestrator", install_skill)
+            print(f"Installed and pinned AER {version} ({manifest['source_commit'][:12]})")
+            print(f"Active installation: {root / 'current'}")
+            print("Repository isolation: ON")
+            return root / "current"
+        finally:
+            shutil.rmtree(temp, ignore_errors=True)
     finally:
-        shutil.rmtree(temp, ignore_errors=True)
+        if temp_root is not None:
+            shutil.rmtree(temp_root, ignore_errors=True)
 
 def _http_json(url: str) -> dict:
     request = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "aer-portable"})
