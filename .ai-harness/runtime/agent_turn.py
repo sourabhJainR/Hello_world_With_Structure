@@ -99,7 +99,10 @@ class AgentTurnStateMachine:
     _allowed = {
         "idle": {"planning", "acting", "failed"},
         "planning": {"acting", "failed"},
-        "acting": {"observing", "completed", "failed"},
+        # decide_live() can make a decision immediately after a provider call.
+        # Keep the direct acting -> deciding transition valid for that live path;
+        # the fuller acting -> observing -> verifying -> deciding path remains valid.
+        "acting": {"observing", "deciding", "completed", "failed"},
         "observing": {"acting", "verifying", "failed"},
         "verifying": {"deciding", "failed"},
         "deciding": {"acting", "repairing", "stopped", "completed", "failed"},
