@@ -7,7 +7,7 @@ import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
-from portable.aer import build, check_update, install, rollback, verify_bundle
+from portable.aer_runtime import build, check_update, install, rollback, verify_bundle
 
 
 class PortableAerTests(unittest.TestCase):
@@ -21,8 +21,8 @@ class PortableAerTests(unittest.TestCase):
         (root / ".ai-harness" / "runtime" / "engine.py").write_text("print('ok')\n", encoding="utf-8")
         (root / ".ai-harness" / "telemetry.jsonl").write_text("machine-state\n", encoding="utf-8")
         (root / "skills" / "ai-coding-orchestrator" / "SKILL.md").write_text("---\nname: ai-coding-orchestrator\ndescription: Repository-aware AI engineering control plane.\n---\n", encoding="utf-8")
-        (root / "portable" / "aer.py").write_text("print('portable')\n", encoding="utf-8")
-        (root / "aer.py").write_text("print('launcher')\n", encoding="utf-8")
+        (root / "portable" / "aer_runtime.py").write_text("print('portable')\n", encoding="utf-8")
+        (root / "aer_cli.py").write_text("print('launcher')\n", encoding="utf-8")
 
     def test_build_verify_and_exclude_mutable_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -36,8 +36,8 @@ class PortableAerTests(unittest.TestCase):
             self.assertFalse(any(item["path"].endswith("telemetry.jsonl") for item in manifest["files"]))
             self.assertFalse(manifest["target_repository_mutation"])
             with zipfile.ZipFile(bundle) as archive:
-                self.assertIn("aer.py", archive.namelist())
-                self.assertIn("payload/portable/aer.py", archive.namelist())
+                self.assertIn("aer_cli.py", archive.namelist())
+                self.assertIn("payload/portable/aer_runtime.py", archive.namelist())
 
     def test_install_is_repository_isolated_and_version_pinned(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -94,7 +94,7 @@ class PortableAerTests(unittest.TestCase):
             aer_home = Path(tmp) / "aer-home"
             aer_home.mkdir()
             (aer_home / "active.json").write_text(json.dumps({"version": "20.1.0", "source_commit": "old"}), encoding="utf-8")
-            with patch("portable.aer._remote_target", return_value=("20.2.0", "new")):
+            with patch("portable.aer_runtime._remote_target", return_value=("20.2.0", "new")):
                 status = check_update(aer_home)
             self.assertTrue(status["update_available"])
             self.assertEqual(status["latest_version"], "20.2.0")
@@ -105,7 +105,7 @@ class PortableAerTests(unittest.TestCase):
             aer_home = Path(tmp) / "aer-home"
             aer_home.mkdir()
             (aer_home / "active.json").write_text(json.dumps({"version": "20.1.0", "source_commit": "same"}), encoding="utf-8")
-            with patch("portable.aer._remote_target", return_value=("20.1.0", "same")):
+            with patch("portable.aer_runtime._remote_target", return_value=("20.1.0", "same")):
                 status = check_update(aer_home)
             self.assertFalse(status["update_available"])
 
@@ -114,7 +114,7 @@ class PortableAerTests(unittest.TestCase):
             aer_home = Path(tmp) / "aer-home"
             aer_home.mkdir()
             (aer_home / "active.json").write_text(json.dumps({"version": "20.1.0", "source_commit": "old"}), encoding="utf-8")
-            with patch("portable.aer._remote_target", return_value=("20.1.0", "new")):
+            with patch("portable.aer_runtime._remote_target", return_value=("20.1.0", "new")):
                 status = check_update(aer_home)
             self.assertTrue(status["update_available"])
             self.assertEqual(status["latest_version"], "20.1.0")
