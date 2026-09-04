@@ -37,45 +37,34 @@ class EvaluationReport:
     failures: tuple[str, ...]
 
 
-def evaluate_shadow(
-    candidate: PolicyCandidate,
-    cases: Iterable[ReplayCase],
-    runner: Callable[[ReplayCase, PolicyCandidate], Any],
-) -> EvaluationReport:
+def evaluate_shadow(candidate: PolicyCandidate, cases: Iterable[ReplayCase], runner: Callable[[ReplayCase, PolicyCandidate], Any]) -> EvaluationReport:
     """Run a candidate against the corpus without making it active."""
     return _evaluate(candidate, cases, runner, mode="shadow")
 
 
-def evaluate_canary(
-    candidate: PolicyCandidate,
-    cases: Iterable[ReplayCase],
-    runner: Callable[[ReplayCase, PolicyCandidate], Any],
-    *,
-    min_pass_rate: float = 1.0,
-    min_verification_rate: float = 1.0,
-) -> EvaluationReport:
+def evaluate_canary(candidate: PolicyCandidate, cases: Iterable[ReplayCase], runner: Callable[[ReplayCase, PolicyCandidate], Any], *, min_pass_rate: float = 1.0, min_verification_rate: float = 1.0) -> EvaluationReport:
     """Run a bounded canary gate; failures prevent promotion."""
     report = _evaluate(candidate, cases, runner, mode="canary")
-    gate = (
-        report.total > 0
-        and report.pass_rate >= min_pass_rate
-        and report.verification_rate >= min_verification_rate
-    )
+    gate = report.total > 0 and report.pass_rate >= min_pass_rate and report.verification_rate >= min_verification_rate
     return EvaluationReport(**{**asdict(report), "gate_passed": gate})
 
 
-def _evaluate(candidate, cases, runner, *, mode: str) -> EvaluationReport:
+def _evaluate(candidate: PolicyCandidate, cases: Iterable[ReplayCase], runner: Callable[[ReplayCase, PolicyCandidate], Any], *, mode: str) -> EvaluationReport:
     outcomes: list[EvaluationOutcome] = []
     failures: list[str] = []
     for case in cases:
-        raw = runner(case, candidate)
-        success, verified, latency_ms, token_cost, error = _normalize(raw)
+        try:
+            raw = runner(case, candidate)
+            success, verified, latency_ms, token_cost, error = _normalize(raw)
+        except Exception as exc:
+            success, verified, latency_ms, token_cost, error = False, False, 0.0, 0.0, f"runner error: {exc}"
         outcome = EvaluationOutcome(case.case_id, mode, success, verified, latency_ms, token_cost, error)
         outcomes.append(outcome)
         if success != case.expected_success or verified != case.expected_verification:
             failures.append(case.case_id)
+
     total = len(outcomes)
-    passed = sum(x.success for x in outcomes)
+    passed = total - len(failures)
     verified = sum(x.verified for x in outcomes)
     return EvaluationReport(
         policy_id=candidate.policy_id,
