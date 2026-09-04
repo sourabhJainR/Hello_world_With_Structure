@@ -23,5 +23,18 @@
     "durable-execution",
     "claude-code"
   ],
-  "skills": "./skills/"
+  "skills": "./skills/",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/aer_prompt.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
 }
