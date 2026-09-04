@@ -9,6 +9,7 @@ on:
       - '.ai-harness/config.toml'
       - '.ai-harness/*.md'
       - '.github/workflows/**'
+      - '.github/actions/publish-ci-artifacts/**'
       - 'aer_cli.py'
   push:
     paths:
@@ -18,6 +19,7 @@ on:
       - '.ai-harness/config.toml'
       - '.ai-harness/*.md'
       - '.github/workflows/**'
+      - '.github/actions/publish-ci-artifacts/**'
       - 'aer_cli.py'
 
 jobs:
@@ -80,14 +82,13 @@ jobs:
             printf 'workflow=%s\n' "$GITHUB_WORKFLOW"
             printf 'ref=%s\n' "$GITHUB_REF"
           } > ci-artifacts/run-metadata.txt
-      - name: Upload traceability artifacts
+      - name: Publish CI artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: ./.github/actions/publish-ci-artifacts
         with:
-          name: traceability-results
+          artifact-name: traceability-results
           path: ci-artifacts/
-          if-no-files-found: error
-          retention-days: 14
+          retention-days: '14'
       - name: Publish AER CLI link
         if: always()
         run: |
