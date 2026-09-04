@@ -23,9 +23,23 @@ python aer_cli.py build --output "$aer_build"
 # Verify
 python aer_cli.py verify "$aer_build"
 
-# Install
-python aer_cli.py install "$aer_build" --skill agents
+# Install - auto-detects Claude Code and activates the plugin
+python aer_cli.py install "$aer_build"
 ```
+
+After installation, restart Claude Code or run `/reload-plugins`. Then confirm:
+
+```text
+/plugin
+```
+
+The Installed tab should contain `adaptive-ai-coding-orchestrator`. The skill is exposed as:
+
+```text
+/adaptive-ai-coding-orchestrator:ai-coding-orchestrator
+```
+
+For engineering prompts, the plugin's `UserPromptSubmit` hook also injects a small AER control-plane reminder before Claude processes the prompt. This is what makes AER behavior active instead of leaving the skill as a passive file on disk.
 
 After installation:
 
@@ -92,7 +106,7 @@ AER is distributed as a versioned offline ZIP bundle. The installed control plan
 
 - Python 3.11 or later for the portable tooling
 - Git when building from source
-- A compatible coding agent for AI-assisted engineering
+- Claude Code or another compatible coding agent for AI-assisted engineering
 
 ### Build locally
 
@@ -100,7 +114,7 @@ AER is distributed as a versioned offline ZIP bundle. The installed control plan
 python aer_cli.py build --output aer-portable.zip
 ```
 
-The bundle records the exact source Git commit, semantic version, and file SHA-256 values.
+The bundle records the exact source Git commit, semantic version, and file SHA-256 values. The Claude plugin metadata is included in the bundle so installation is self-contained.
 
 ### Verify
 
@@ -110,15 +124,26 @@ python aer_cli.py verify aer-portable.zip
 
 ### Install
 
+Recommended:
+
 ```bash
+python aer_cli.py install aer-portable.zip
+```
+
+The launcher now defaults to provider auto-detection. If Claude Code is on `PATH`, AER registers the local `adaptive-ai-engineering` marketplace and installs `adaptive-ai-coding-orchestrator` at user scope. You can still explicitly choose:
+
+```bash
+python aer_cli.py install aer-portable.zip --skill claude
 python aer_cli.py install aer-portable.zip --skill agents
+python aer_cli.py install aer-portable.zip --skill gemini
+python aer_cli.py install aer-portable.zip --skill all
 ```
 
 Supported skill targets are `agents`, `claude`, `gemini`, `all`, `auto`, and `none`.
 
 ### CI bundle
 
-A successful CI run builds and verifies the portable bundle before publishing the artifact. Download the `aer-portable` artifact from the repository's Actions workflow.
+A successful CI run builds and verifies the portable bundle before publishing the artifact. The CI verification also checks that the Claude plugin manifest, skill, and UserPromptSubmit hook are present in the bundle.
 
 ## Installed version and provenance
 
@@ -256,6 +281,7 @@ Review this change for correctness, compatibility, security, regression risk, ob
 5. Build distributable bundles from known commits and verify them before installation.
 6. Keep project-specific AER artifacts out of source control unless intentionally required.
 7. Treat learned recommendations as advisory until they have enough evidence and regression coverage.
+8. For Claude Code, verify the plugin is present in `/plugin > Installed` after installation.
 
 ## Reference documentation
 
