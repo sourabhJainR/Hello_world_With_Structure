@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/**'
+      - '.github/actions/publish-ci-artifacts/**'
       - '.ai-harness/**'
       - '.agents/**'
       - '.claude-plugin/**'
@@ -42,6 +43,7 @@ on:
       - 'state/**'
       - 'tests/**'
       - 'examples/**'
+      - '.github/actions/publish-ci-artifacts/**'
 
 jobs:
   harness:
@@ -150,12 +152,11 @@ jobs:
         run: python scripts/run_full_suite.py
       - name: Publish CI artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: ./.github/actions/publish-ci-artifacts
         with:
-          name: aer-harness-results
+          artifact-name: aer-harness-results
           path: ci-artifacts/
-          if-no-files-found: error
-          retention-days: 14
+          retention-days: '14'
       - name: Publish AER CLI link
         if: always()
         run: |
