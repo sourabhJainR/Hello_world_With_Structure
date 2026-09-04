@@ -1,6 +1,7 @@
 name: Production AI Harness Hardening
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - '.ai-harness/**'
@@ -93,8 +94,9 @@ jobs:
           printf 'ref=%s\n' "$GITHUB_REF" >> ci-artifacts/run-metadata.txt
       - name: Publish CI artifacts
         if: always()
-        uses: ./.github/actions/publish-ci-artifacts
+        uses: actions/upload-artifact@v4
         with:
-          artifact-name: production-hardening-results
+          name: production-hardening-results
           path: ci-artifacts/
-          retention-days: '14'
+          if-no-files-found: error
+          retention-days: 14
