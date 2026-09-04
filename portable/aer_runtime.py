@@ -19,7 +19,7 @@ import urllib.request
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 BUNDLE_FORMAT_VERSION = 2
 BUNDLE_NAME = "aer-portable"
@@ -27,6 +27,7 @@ AER_REPOSITORY = "sourabhJainR/Hello_world_With_Structure"
 AER_BRANCH = "main"
 MANIFEST_NAME = "aer-bundle.json"
 PAYLOAD_ROOT = "payload"
+LAUNCHER_PATH = "aer_cli.py"
 REQUIRED_PATHS = (".ai-harness", "skills/ai-coding-orchestrator", "portable")
 EXCLUDED_PARTS = {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".git", "worktrees"}
 MUTABLE_FILE_NAMES = {"execution.journal.jsonl", "telemetry.jsonl", "task-memory.jsonl", "regression-events.jsonl"}
@@ -99,6 +100,11 @@ def _git_head(root: Path) -> str | None:
 
 def make_manifest(root: Path, files: list[Path], source_commit: str | None = None, source_ref: str = AER_BRANCH) -> dict:
     records = [FileRecord(p.relative_to(root).as_posix(), sha256_file(p), p.stat().st_size).__dict__ for p in files]
+    launcher = root / LAUNCHER_PATH
+    if not launcher.is_file():
+        raise SystemExit(f"required launcher is missing: {launcher}")
+    records.append(FileRecord(LAUNCHER_PATH, sha256_file(launcher), launcher.stat().st_size).__dict__)
+    records.sort(key=lambda item: item["path"])
     version = _plugin_version(root)
     return {
         "format": BUNDLE_FORMAT_VERSION,
@@ -126,7 +132,7 @@ def build(root: Path, output: Path, source_commit: str | None = None, source_ref
         archive.writestr(MANIFEST_NAME, json.dumps(manifest, indent=2, sort_keys=True) + "\n")
         for source in files:
             archive.write(source, f"{PAYLOAD_ROOT}/{source.relative_to(root).as_posix()}")
-        archive.write(root / "aer_cli.py", "aer_cli.py")
+        archive.write(root / LAUNCHER_PATH, LAUNCHER_PATH)
         archive.writestr(f"{PAYLOAD_ROOT}/PORTABLE_BUNDLE.txt", "AER portable bundle\nInstallation is user-scoped and repository-isolated.\nVersion and exact source commit are pinned in the manifest.\n")
     return output
 
@@ -137,6 +143,16 @@ def safe_extract(archive: zipfile.ZipFile, destination: Path) -> None:
         if destination != target and destination not in target.parents:
             raise SystemExit(f"unsafe archive path: {member.filename}")
     archive.extractall(destination)
+
+def _manifest_record_path(root: Path, record_path: str) -> Path:
+    relative = PurePosixPath(record_path)
+    if relative.is_absolute() or ".." in relative.parts or not record_path or "\\" in record_path:
+        raise SystemExit(f"unsafe manifest path: {record_path}")
+    if record_path == LAUNCHER_PATH:
+        return root / LAUNCHER_PATH
+    if not record_path.startswith(tuple(f"{prefix}/" for prefix in REQUIRED_PATHS)):
+        raise SystemExit(f"unexpected manifest path: {record_path}")
+    return root / PAYLOAD_ROOT / record_path
 
 def verify_bundle(bundle: Path) -> dict:
     with zipfile.ZipFile(bundle) as archive:
@@ -149,14 +165,28 @@ def verify_bundle(bundle: Path) -> dict:
             raise SystemExit("bundle is not marked repository-isolated")
         if not manifest.get("version") or not manifest.get("source_commit"):
             raise SystemExit("bundle must carry a version and exact source commit pin")
+        records = manifest.get("files")
+        if not isinstance(records, list) or not records:
+            raise SystemExit("bundle manifest file inventory is missing")
         root = Path(tempfile.mkdtemp(prefix="aer-verify-"))
         try:
             safe_extract(archive, root)
-            for record in manifest.get("files", []):
-                path = root / PAYLOAD_ROOT / record["path"]
+            seen: set[str] = set()
+            for record in records:
+                if not isinstance(record, dict) or not isinstance(record.get("path"), str) or not isinstance(record.get("sha256"), str):
+                    raise SystemExit("invalid bundle file record")
+                record_path = record["path"]
+                if record_path in seen:
+                    raise SystemExit(f"duplicate bundle file record: {record_path}")
+                seen.add(record_path)
+                path = _manifest_record_path(root, record_path)
                 if not path.is_file() or sha256_file(path) != record["sha256"]:
-                    raise SystemExit(f"bundle integrity failure: {record['path']}")
-            if not (root / "aer_cli.py").is_file():
+                    raise SystemExit(f"bundle integrity failure: {record_path}")
+                if "size" in record and record["size"] != path.stat().st_size:
+                    raise SystemExit(f"bundle size mismatch: {record_path}")
+            if LAUNCHER_PATH not in seen:
+                raise SystemExit(f"bundle launcher is not covered by manifest: {LAUNCHER_PATH}")
+            if not (root / LAUNCHER_PATH).is_file():
                 raise SystemExit("bundle launcher is missing: aer_cli.py")
             return manifest
         finally:
@@ -184,7 +214,10 @@ def _copy_payload(payload: Path, version_root: Path) -> None:
     skill = payload / "skills" / "ai-coding-orchestrator"
     if skill.is_dir():
         _copy_tree_without_mutable_state(skill, version_root / "skills" / "ai-coding-orchestrator")
-    shutil.copy2(payload.parent / "aer_cli.py", version_root / "aer_cli.py")
+    launcher = payload.parent / LAUNCHER_PATH
+    if not launcher.is_file():
+        raise SystemExit("bundle launcher is missing: aer_cli.py")
+    shutil.copy2(launcher, version_root / LAUNCHER_PATH)
 
 def _atomic_json(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
