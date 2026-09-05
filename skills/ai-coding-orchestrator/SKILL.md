@@ -13,6 +13,17 @@ Always active:
 Task contract:
 `GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS | intent_digest`.
 
+## Provider-native capability routing
+Before selecting an agent team or hook strategy, discover the provider capabilities that are actually available. Prefer native `subagent`, `hooks`, `session_resume`, `structured_output`, `tool_interception`, `mcp` or `background_execution` when evidence says the active provider supports them. If a capability is unavailable, use the AER fallback instead of pretending it exists.
+
+The portable runtime exposes this contract through `portable.provider_fabric.ProviderFabric`. Provider manifests may extend discovery under `~/.aer/providers/`. Native capability selection is an optimization only; AER security, acceptance, verification and promotion rules remain authoritative.
+
+## Lifecycle hooks
+Map provider-native lifecycle events onto AER's hook phases when possible:
+`session_start | plan_start | before_agent | after_agent | before_tool | after_tool | before_verify | after_verify | before_promotion | after_promotion | session_end | recovery`.
+
+Hooks may annotate or veto execution. Hook failures are fail-closed. A hook must never silently weaken security, permission, verification, regression or self-modification gates.
+
 ## Progressive discovery
 Do not preload methodology, policies, frameworks, history, capability catalogs, repository dumps or transcripts. Runtime:
 `DISCOVER -> SCORE -> LEASE -> USE -> COMPRESS -> RELEASE`.
@@ -29,11 +40,16 @@ Read repository/team instructions, git state, structure, dependencies and tests 
 For any non-trivial task, use the graph agent team whenever the provider supports agent execution. The team is task-scoped and dependency-aware:
 `Planner -> Explorer/Researcher/RCA -> Builder -> Verifier -> Parallel Reviewers -> Synthesizer`.
 
-Every agent receives the latest shared memory for the current `intent_digest` and must publish evidence, findings, decisions and unresolved risks back to that memory. Independent read-only roles may run in parallel. Mutating roles are serialized and must not edit the same surface concurrently. A single-agent phase is the fallback only when the graph team is unavailable, unnecessary for a trivial task, or explicitly disabled.
+When native subagents/background execution are available, prefer them for independent read-only work. Keep shared task memory bounded and evidence-based. Mutating roles are serialized and must not edit the same surface concurrently. A single-agent phase is the fallback only when the graph team is unavailable, unnecessary for a trivial task, or explicitly disabled.
 
 Do not create disconnected sub-agents that independently rediscover the repository. Downstream agents must consume upstream shared memory and verify important claims against the repository. The synthesizer is responsible for the final team view; model confidence never replaces verification.
 
 Every retry has explicit attempt/time/token/risk limits. Never run an unrestricted autonomous loop.
+
+## Durable recovery
+For work spanning multiple turns, batches or sessions, persist a checkpoint using `portable.session_state.SessionStore`. The checkpoint must include `session_id | task_id | project_key | stage | completed_batches | remaining_batches | active_provider | attempt | last_error | state_digest`.
+
+On restart, load and validate the checkpoint before doing new work. Resume from the first incomplete batch. After transient provider/network failure, record the error, retry within the bounded policy, and continue from the durable checkpoint rather than reconstructing state from chat history.
 
 ## Evidence and verification
 Verification outranks model confidence. Use:
@@ -49,7 +65,7 @@ Shared task memory is ephemeral to the active run unless explicitly promoted int
 ## Learning
 `Observe -> Outcome -> Candidate -> Regression Replay -> Safety -> Shadow/Canary -> Promote -> Monitor -> Rollback`.
 
-Executable orchestration changes remain candidates until deterministic regression and safety gates pass. Load `context/learning.md` only when learning/self-improvement is relevant.
+Executable orchestration changes remain candidates until deterministic regression and safety gates pass. A learning engine may propose changes to orchestration or provider routing, but it must not silently activate executable changes. Load `context/learning.md` only when learning/self-improvement is relevant.
 
 ## State, recovery and precedence
 Engineering State Ledger:
