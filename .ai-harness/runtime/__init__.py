@@ -22,18 +22,30 @@ def _install_graph_team_bridge() -> None:
         return
 
     original_invoke = engine.invoke
-    eligible = {"execute", "debug", "poc", "research"}
+    trigger_for_mode = {
+        "implement": "execute",
+        "debug": "debug",
+        "research": "research",
+        "poc": "poc",
+        "review": "review",
+        "grill": "grill",
+    }
 
     def graph_invoke(provider: dict[str, Any], prompt_file: Path, phase: str,
                      run_dir: Path, timeout: int, dry_run: bool, logger):
         marker = run_dir / "graph-team.json"
-        if phase not in eligible or marker.exists():
+        if marker.exists():
             return original_invoke(provider, prompt_file, phase, run_dir, timeout, dry_run, logger)
 
         try:
             manifest_path = run_dir / "manifest.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
             route = manifest.get("route") if isinstance(manifest.get("route"), dict) else engine.heuristic_route(str(manifest.get("task", "")))
+            mode = str(route.get("mode", "implement"))
+            trigger_phase = trigger_for_mode.get(mode, "execute")
+            if phase != trigger_phase:
+                return original_invoke(provider, prompt_file, phase, run_dir, timeout, dry_run, logger)
+
             task = str(manifest.get("task", "")).strip()
             intent_digest = str(manifest.get("intent_digest", "")).strip()
             if not intent_digest:
@@ -44,6 +56,7 @@ def _install_graph_team_bridge() -> None:
             if not intent_digest:
                 import hashlib
                 intent_digest = hashlib.sha256(task.encode("utf-8")).hexdigest()
+
             base_prompt = prompt_file.read_text(encoding="utf-8")
             team = team_for_route(route)
             memory = SharedTaskMemory(run_dir / "graph-team-memory.jsonl", intent_digest)
