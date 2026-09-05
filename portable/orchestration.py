@@ -2,13 +2,17 @@
 
 AER models Agent -> bounded Loop -> Graph -> Orchestration and can learn changes
 to its own executable orchestration. Self-modification is candidate-based: a
-candidate is compiled and evaluated in isolation, regression and safety gates
-must both pass, and only then is the executable overlay atomically promoted.
+candidate is statically validated, evaluated in isolation, regression and
+safety gates must both pass, and only then is the executable overlay promoted.
+
+The implementation deliberately treats the harness as part of the system under
+evaluation: trajectories, environment fingerprints, evidence, regressions and
+repair outcomes are durable learning signals rather than hidden model state.
 """
 from __future__ import annotations
 
+import ast
 import hashlib
-import importlib.util
 import json
 import os
 import py_compile
@@ -76,6 +80,9 @@ class Node:
     evaluator: Callable[[Any], bool] | None = None
     repair: Callable[[Any, Mapping[str, Any]], Any] | None = None
     critical: bool = True
+    risk: str = "medium"
+    inputs: tuple[str, ...] = ()
+    outputs: tuple[str, ...] = ()
 
 
 @dataclass
@@ -97,6 +104,8 @@ class OrchestrationRun:
     results: dict[str, NodeResult] = field(default_factory=dict)
     evidence: list[Evidence] = field(default_factory=list)
     learned_candidates: list[dict[str, Any]] = field(default_factory=list)
+    trajectory: list[dict[str, Any]] = field(default_factory=list)
+    environment_fingerprint: str = ""
     stop_reason: str | None = None
     started_at: float = field(default_factory=time.time)
 
@@ -105,13 +114,27 @@ class OrchestrationRun:
 
 
 @dataclass(frozen=True)
+class LearningSignal:
+    """Evidence used to improve the harness without trusting a single outcome."""
+
+    task_id: str
+    intent_digest: str
+    repair_count: int
+    failure_count: int
+    attempt_count: int
+    evidence_count: int
+    trajectory_digest: str
+    environment_fingerprint: str
+    transfer_key: str
+
+
+@dataclass(frozen=True)
 class OrchestrationCandidate:
     """Executable orchestration proposed by the learning engine.
 
-    ``source`` is treated as untrusted candidate code. It is never imported by
-    the active runtime until both gates pass. The candidate module must expose
-    ``build_graph()`` returning a :class:`Graph`; this keeps the activation
-    contract narrow and makes graph validation part of promotion.
+    ``source`` is untrusted candidate code. It is never imported during static
+    validation. The candidate module must expose ``build_graph()`` returning a
+    :class:`Graph`; isolated regression/safety infrastructure owns execution.
     """
 
     candidate_id: str
@@ -132,13 +155,19 @@ class OrchestrationCandidate:
 
 
 class SelfModificationEngine:
-    """Turn learning output into executable orchestration only through gates.
+    """Create and promote executable orchestration only through hard gates.
 
-    The learning engine may silently create and evaluate candidates. Activation
-    is automatic once both regression and safety gates pass. Candidates are
-    persisted separately from the immutable AER installation, and promotion is
-    atomic so a failed write cannot leave a partially active program.
+    Research-informed boundary: candidate generation is cheap and autonomous;
+    candidate execution is isolated; activation is impossible without both
+    regression and safety evidence. This avoids the unsafe pattern of importing
+    untrusted generated code merely to decide whether it is safe.
     """
+
+    _FORBIDDEN_IMPORTS = {
+        "subprocess", "socket", "requests", "urllib", "http", "ftplib",
+        "ctypes", "multiprocessing", "shutil", "pathlib", "pickle",
+    }
+    _FORBIDDEN_CALLS = {"eval", "exec", "compile", "__import__", "system", "popen"}
 
     def __init__(self, active_dir: Path | str | None = None) -> None:
         self.active_dir = Path(active_dir or (Path.home() / ".aer" / "orchestration"))
@@ -146,26 +175,31 @@ class SelfModificationEngine:
         self.previous_file = self.active_dir / "previous.py"
         self.journal_file = self.active_dir / "promotion.jsonl"
 
-    @staticmethod
-    def _validate_candidate(source: str) -> None:
+    @classmethod
+    def _validate_candidate(cls, source: str) -> None:
         if not source.strip():
             raise ValueError("self-modification candidate is empty")
+        tree = ast.parse(source, filename="aer_candidate.py")
+        functions = {node.name for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        if "build_graph" not in functions:
+            raise ValueError("candidate must expose callable build_graph()")
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    root = alias.name.split(".", 1)[0]
+                    if root in cls._FORBIDDEN_IMPORTS:
+                        raise ValueError(f"candidate imports forbidden module: {root}")
+            elif isinstance(node, ast.ImportFrom):
+                root = (node.module or "").split(".", 1)[0]
+                if root in cls._FORBIDDEN_IMPORTS:
+                    raise ValueError(f"candidate imports forbidden module: {root}")
+            elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in cls._FORBIDDEN_CALLS:
+                raise ValueError(f"candidate uses forbidden call: {node.func.id}")
         with tempfile.NamedTemporaryFile("w", suffix=".py", encoding="utf-8", delete=False) as handle:
             handle.write(source)
             path = Path(handle.name)
         try:
             py_compile.compile(str(path), doraise=True)
-            spec = importlib.util.spec_from_file_location("aer_candidate_validation", path)
-            if spec is None or spec.loader is None:
-                raise ValueError("candidate module cannot be loaded")
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            build_graph = getattr(module, "build_graph", None)
-            if not callable(build_graph):
-                raise ValueError("candidate must expose callable build_graph()")
-            graph = build_graph()
-            if not isinstance(graph, Graph):
-                raise ValueError("build_graph() must return Graph")
         finally:
             path.unlink(missing_ok=True)
 
@@ -242,17 +276,7 @@ class SelfModificationEngine:
 
     @staticmethod
     def _with_status(candidate: OrchestrationCandidate, status: PromotionStatus, *, regression: bool | None = None, safety: bool | None = None) -> OrchestrationCandidate:
-        return OrchestrationCandidate(
-            candidate.candidate_id,
-            candidate.source,
-            candidate.parent_digest,
-            candidate.source_digest,
-            candidate.created_at,
-            candidate.reason,
-            status,
-            regression,
-            safety,
-        )
+        return OrchestrationCandidate(candidate.candidate_id, candidate.source, candidate.parent_digest, candidate.source_digest, candidate.created_at, candidate.reason, status, regression, safety)
 
 
 class Graph:
@@ -269,6 +293,10 @@ class Graph:
             missing = set(node.depends_on) - self.nodes.keys()
             if missing:
                 raise ValueError(f"node {node.name} depends on missing nodes: {sorted(missing)}")
+            if node.max_attempts < 1:
+                raise ValueError(f"node {node.name} must have a positive attempt budget")
+            if node.risk not in {"low", "medium", "high", "critical"}:
+                raise ValueError(f"node {node.name} has invalid risk class: {node.risk}")
         visiting: set[str] = set()
         visited: set[str] = set()
 
@@ -300,6 +328,10 @@ class Graph:
                 remaining.remove(name)
         return ordered
 
+    def digest(self) -> str:
+        payload = [{"name": n.name, "kind": n.kind.value, "depends_on": list(n.depends_on), "max_attempts": n.max_attempts, "risk": n.risk, "inputs": list(n.inputs), "outputs": list(n.outputs)} for n in self.order()]
+        return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
 
 class Orchestrator:
     """Execute a graph whose agentic nodes contain bounded local loops."""
@@ -315,8 +347,13 @@ class Orchestrator:
     def intent_digest(intent: str) -> str:
         return hashlib.sha256(intent.strip().encode()).hexdigest()
 
+    @staticmethod
+    def environment_fingerprint(context: Mapping[str, Any] | None) -> str:
+        values = {"python": f"{os.sys.version_info.major}.{os.sys.version_info.minor}", "platform": os.name, "context_keys": sorted((context or {}).keys())}
+        return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
+
     def run(self, task_id: str, intent: str, context: Mapping[str, Any] | None = None) -> OrchestrationRun:
-        run = OrchestrationRun(task_id=task_id, intent_digest=self.intent_digest(intent))
+        run = OrchestrationRun(task_id=task_id, intent_digest=self.intent_digest(intent), environment_fingerprint=self.environment_fingerprint(context))
         state: dict[str, Any] = dict(context or {})
         state["intent_digest"] = run.intent_digest
         total_attempts = 0
@@ -326,15 +363,18 @@ class Orchestrator:
             if any(result.status in {NodeStatus.FAILED, NodeStatus.BLOCKED} for result in dependency_results):
                 result = NodeResult(node.name, NodeStatus.SKIPPED, error="dependency failed")
                 run.results[node.name] = result
+                run.trajectory.append({"node": node.name, "status": result.status.value, "reason": "dependency failed"})
                 if node.critical:
                     run.status = RunStatus.BLOCKED
                     run.stop_reason = f"critical dependency failure before {node.name}"
                     return run
                 continue
 
+            run.trajectory.append({"node": node.name, "status": NodeStatus.RUNNING.value, "risk": node.risk})
             result = self._execute_node(node, state, run, total_attempts)
             run.results[node.name] = result
             total_attempts += result.attempts
+            run.trajectory.append({"node": node.name, "status": result.status.value, "attempts": result.attempts, "repairs": result.repair_count})
             if result.evidence:
                 run.evidence.extend(result.evidence)
             if result.status in {NodeStatus.FAILED, NodeStatus.BLOCKED} and node.critical:
@@ -391,19 +431,30 @@ class Orchestrator:
         return NodeResult(node.name, NodeStatus.FAILED, attempts, last_output, evidence, last_error, repairs)
 
     @staticmethod
-    def _propose_learning(run: OrchestrationRun) -> list[dict[str, Any]]:
+    def learning_signal(run: OrchestrationRun) -> LearningSignal:
         repairs = sum(result.repair_count for result in run.results.values())
         failures = sum(1 for result in run.results.values() if result.status == NodeStatus.FAILED)
+        attempts = sum(result.attempts for result in run.results.values())
+        trajectory_digest = hashlib.sha256(json.dumps(run.trajectory, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        transfer_key = hashlib.sha256(f"{run.intent_digest}:{run.environment_fingerprint}".encode()).hexdigest()[:16]
+        return LearningSignal(run.task_id, run.intent_digest, repairs, failures, attempts, len(run.evidence), trajectory_digest, run.environment_fingerprint, transfer_key)
+
+    @staticmethod
+    def _propose_learning(run: OrchestrationRun) -> list[dict[str, Any]]:
+        signal = Orchestrator.learning_signal(run)
+        repairs = signal.repair_count
+        failures = signal.failure_count
         if repairs == 0 and failures == 0:
             return []
         return [{
             "type": "strategy-candidate",
             "task_id": run.task_id,
             "intent_digest": run.intent_digest,
-            "observations": {"repair_count": repairs, "failure_count": failures, "evidence_count": len(run.evidence)},
-            "promotion": "candidate -> regression -> safety -> active",
+            "observations": signal.__dict__,
+            "promotion": "candidate -> static-check -> regression -> safety -> shadow -> canary -> active",
             "requires_regression_evaluation": True,
             "requires_safety_evaluation": True,
+            "requires_trajectory_evidence": True,
         }]
 
     def replay(self, run: OrchestrationRun) -> dict[str, Any]:
@@ -412,8 +463,12 @@ class Orchestrator:
             "intent_digest": run.intent_digest,
             "status": run.status.value,
             "stop_reason": run.stop_reason,
+            "environment_fingerprint": run.environment_fingerprint,
+            "graph_digest": self.graph.digest(),
+            "trajectory": run.trajectory,
             "nodes": {name: {"status": result.status.value, "attempts": result.attempts, "repair_count": result.repair_count, "evidence": [item.digest for item in result.evidence]} for name, result in run.results.items()},
             "evidence": [item.digest for item in run.evidence],
+            "learning_signal": self.learning_signal(run).__dict__,
             "learned_candidates": run.learned_candidates,
         }
 
