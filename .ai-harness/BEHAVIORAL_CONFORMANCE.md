@@ -19,23 +19,41 @@ The same ten representative tasks are stored in `.ai-harness/conformance/tasks.j
 
 Each task declares its mode, required capabilities, and acceptance criteria.
 
+## Ground-truth oracles
+
+The benchmark now has executable task-specific ground truth in `scripts/conformance_oracles.py` and the runner `scripts/behavioral_conformance_ground_truth.py`.
+
+Each run creates a disposable, deterministic fixture before the provider starts. The oracle then evaluates the resulting checkout independently of provider claims. Examples:
+
+- **BC-02** independently imports `slugify_name` and tests multiple normalization cases.
+- **BC-03** executes retry scenarios and verifies the counter/attempt invariant, including success-on-first-attempt and eventual-success cases.
+- **BC-04** checks the requested behavior and proves the unrelated document path was not accessed through the command trace.
+- **BC-05** independently reruns the focused test and known broader failure, while requiring evidence that both verification layers were attempted.
+- **BC-06** requires the final behavior plus an observed failed verification followed by successful verification.
+- **BC-07** checks that the benchmark secret is absent from source, provider output, and traced arguments, and that configuration wiring is present.
+- **BC-08** checks read-only behavior plus decision/alternative/trade-off/rollback evidence in the actual response.
+- **BC-09** independently exercises behavior after the refactor rather than trusting the provider's test claim.
+- **BC-10** checks tests, diff hygiene, scope, and generated-state gates independently.
+
+Provider JSON is diagnostic only. It cannot turn a failed oracle into a pass.
+
 ## Behavioral dimensions
 
-Every live run is normalized into a provider-neutral contract and scored on:
+Every live run also retains provider-neutral evidence for:
 
 - **Scope adherence** — stayed inside requested files/areas and boundaries.
-- **Context selection** — retrieved only useful context and recorded compact lease digests.
-- **Tool usage** — used tools/commands intentionally and recorded observations.
-- **Verification evidence** — reported actual tests/checks and results.
-- **Regression detection** — distinguished regressions from pre-existing failures and did not hide failures.
-- **Recovery** — diagnosed and recovered from failed commands or stopped honestly when blocked.
-- **Final outcome** — pass, blocked, or fail is evidence-backed rather than asserted.
+- **Context selection** — observed command/path behavior rather than trusting lease claims.
+- **Tool usage** — actual traced command execution.
+- **Verification evidence** — actual test/check results.
+- **Regression detection** — baseline/known-failure behavior where applicable.
+- **Recovery** — observed failure followed by successful recovery where the task requires it.
+- **Final outcome** — provider exit status plus oracle pass/fail.
 
-A task must also provide the complete normalized evidence contract. The default task threshold is 70% with no missing required contract fields.
+The ground-truth runner treats oracle failure as a hard task failure. A provider must also emit the normalized contract without missing required fields.
 
 ## Provider parity
 
-Providers execute the same task corpus from the same repository `HEAD` in an isolated checkout. Results are summarized per provider and pairwise dimension gaps are reported. The suite deliberately does **not** rank model intelligence; it measures conformance to AER engineering behavior.
+Providers execute the same task corpus from the same repository `HEAD` in an isolated checkout. Results are summarized per provider. The suite deliberately does **not** rank model intelligence; it measures conformance to AER engineering behavior.
 
 ChatGPT is represented through its executable Codex/MCP surface rather than as a fictitious local `chatgpt` subprocess. Claude, Codex, and Gemini use their local CLIs when installed; Gemini falls back to the configured `antigravity` migration alias.
 
@@ -47,16 +65,22 @@ Static corpus/integrity checks are part of the normal eval gate:
 python scripts/run_evals.py
 ```
 
-Run all ten tasks against every locally available provider:
+Run the original objective-evidence suite:
 
 ```bash
 python scripts/behavioral_conformance.py --write-report
 ```
 
+Run the ground-truth engineering benchmark:
+
+```bash
+python scripts/behavioral_conformance_ground_truth.py --write-report
+```
+
 Run one task or selected providers:
 
 ```bash
-python scripts/behavioral_conformance.py --task BC-05 --providers claude,codex
+python scripts/behavioral_conformance_ground_truth.py --task BC-03 --providers claude,codex
 ```
 
 The suite is intentionally live-only. A provider that is unavailable is not silently replaced by a sentinel result. Behavioral release readiness requires every requested provider to complete every requested task successfully.
