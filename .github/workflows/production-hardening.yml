@@ -50,19 +50,26 @@ jobs:
             .ai-harness/run.py \
             .ai-harness/provider.py \
             .ai-harness/p1_lifecycle.py \
-            .ai-harness/runtime/artifact_chain.py
+            .ai-harness/runtime/artifact_chain.py \
+            .ai-harness/runtime/work_report.py
 
       - name: Run focused hardening tests
         run: |
-          set -o pipefail
-          python -m unittest \
-            tests.test_security_gate \
-            tests.test_state_validator \
-            tests.test_provider \
-            tests.test_execution_controls \
-            tests.test_verification_gate \
-            tests.test_artifact_chain \
-            tests.test_orchestration -v 2>&1 | tee ci-artifacts/hardening-tests.log
+          set -euo pipefail
+          tests=(
+            tests.test_security_gate
+            tests.test_state_validator
+            tests.test_provider
+            tests.test_execution_controls
+            tests.test_verification_gate
+            tests.test_artifact_chain
+            tests.test_orchestration
+            tests.test_work_report
+          )
+          for test_module in "${tests[@]}"; do
+            echo "===== RUNNING ${test_module} ====="
+            python -m unittest "${test_module}" -v 2>&1 | tee "ci-artifacts/${test_module##*.}.log"
+          done
 
       - name: Validate configuration
         run: |
