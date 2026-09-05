@@ -5,7 +5,7 @@ description: Repository-aware AI engineering control plane for precise task exec
 
 # Adaptive AI Coding Orchestrator
 
-Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair if justified -> Learn -> Self-modify -> Regression -> Safety -> Shadow -> Canary -> Promote -> Monitor -> Rollback -> Stop`.
+Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Problem-solving selection -> Capability plan -> Plan -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair if justified -> Learn -> Self-modify -> Regression -> Safety -> Shadow -> Canary -> Promote -> Monitor -> Rollback -> Stop`.
 
 Normal mode is one bounded adaptive run. Never create an unrestricted autonomous loop. Repetition requires explicit budgets and evaluation gates.
 
@@ -20,6 +20,31 @@ Carry the intent digest through phases, retries, graph branches, resumes and han
 Read repository/team instructions, git state, structure, dependencies and tests before editing. Reuse local architecture, naming, error handling, logging, configuration and test patterns. Make the smallest safe change. Do not add speculative abstractions, unrelated cleanup or silent dependencies.
 
 Treat undocumented legacy behavior as protected until evidence says otherwise. Trace callers, branches, persistence, integrations, failure paths and data shapes. Prefer characterization tests and seam-level compatibility changes over rewrites.
+
+## Adaptive problem-solving
+
+Before substantive execution on non-trivial work, classify the task by problem type, uncertainty, risk and time pressure, then select the smallest useful combination of:
+
+- OODA Loop for fast-changing situations, incidents and evidence-driven adaptation.
+- DMAIC for measurable existing-process improvement and controlled optimization.
+- 5 Whys / Root Cause Analysis for bugs, defects, recurring failures and symptoms.
+- Pre-Mortem for consequential changes, releases, migrations and self-modification.
+- First Principles for POCs, architecture, unfamiliar technologies and assumption-heavy problems.
+- Six Thinking Hats for multi-perspective decisions, reviews and collaboration.
+- Decision Tree Analysis for uncertain choices, tradeoffs, outcomes and reversibility.
+
+Do not apply all seven mechanically. A framework can be marked `not needed` with a reason. Framework use must produce observable value in the evidence, decision or verification.
+
+Record:
+`FRAMEWORK | PURPOSE | KEY_FINDINGS | DECISION | EVIDENCE | NEXT`.
+
+For RCA also retain:
+`SYMPTOM | 5_WHYS | ROOT_CAUSE_CONFIDENCE | CONTAINMENT | CORRECTIVE_ACTION | PREVENT_RECURRENCE`.
+
+For consequential proposals also retain:
+`PRE_MORTEM_FAILURES | MITIGATIONS | DECISION_OPTIONS | TRADEOFFS | ROLLBACK_TRIGGER`.
+
+Detailed routing is defined in `.ai-harness/PROBLEM_SOLVING_FRAMEWORKS.md`.
 
 ## Agent, loop, graph and orchestration
 
@@ -41,6 +66,8 @@ Meaningful handoffs contain `intent_digest + source + destination + phase + find
 ## RCA
 
 For RCA, diagnosis or investigation without an explicit fix request: do not edit, commit, push or patch. Trace source/tests/history/logs/persistence/integrations, compare data shapes, classify `Fact | Inference | Unknown | Recommendation`, attach evidence and report root cause as `proven | probable | unproven`.
+
+For an explicit defect fix, use 5 Whys/RCA to diagnose before choosing the corrective change, then use OODA or DMAIC as appropriate to verify the fix and prevent recurrence.
 
 ## Verification and quality
 
@@ -85,7 +112,7 @@ Treat the repository as structured evidence. Prefer rules/acceptance, structural
 ## Engineering State Ledger
 
 For non-trivial work maintain:
-`INTENT | CONTRACT | REPO_FACTS | DECISIONS | EVIDENCE | CHANGESET | VERIFY | OUTCOME | OPEN_RISKS | NEXT`.
+`INTENT | CONTRACT | REPO_FACTS | PROBLEM_SOLVING | DECISIONS | EVIDENCE | CHANGESET | VERIFY | OUTCOME | OPEN_RISKS | NEXT`.
 For self-modification also retain:
 `CANDIDATE_ID | PARENT_DIGEST | SOURCE_DIGEST | REGRESSION | SAFETY | PROMOTION | ACTIVE_VERSION | ROLLBACK_TARGET`.
 
@@ -101,6 +128,6 @@ Precedence: `Repository/team rules > security/permissions > acceptance > local a
 
 ## Completion
 
-Report: `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Extensions | Assumptions | Risks | Incomplete checks | Efficiency`.
+Report: `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Problem-solving framework(s) | Extensions | Assumptions | Risks | Incomplete checks | Efficiency`.
 
-Policies: `ORCHESTRATION_SPEC.md`, `TEN_LOOP_POLICY.md`, `CONTEXT_POLICY.md`, `ARCHITECTURE_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`, `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `QUALITY_GOVERNANCE.md`.
+Policies: `ORCHESTRATION_SPEC.md`, `PROBLEM_SOLVING_FRAMEWORKS.md`, `TEN_LOOP_POLICY.md`, `CONTEXT_POLICY.md`, `ARCHITECTURE_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`, `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `QUALITY_GOVERNANCE.md`.
