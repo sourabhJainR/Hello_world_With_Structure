@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 HARNESS = ROOT / ".ai-harness"
 CASES = HARNESS / "evals" / "cases.jsonl"
+ARTIFACT_CONTRACT = HARNESS / "ARTIFACT_UPGRADE_CONTRACT.json"
 SKILLS = [
     ROOT / "skills/ai-coding-orchestrator/SKILL.md",
     ROOT / ".agents/skills/ai-coding-orchestrator/SKILL.md",
@@ -59,6 +60,33 @@ def policy_checks() -> list[str]:
         for marker in shared:
             if marker.lower() not in text.lower():
                 failures.append(f"shared contract marker missing: {path}: {marker}")
+
+    if not ARTIFACT_CONTRACT.is_file():
+        failures.append(f"missing artifact upgrade contract: {ARTIFACT_CONTRACT}")
+    else:
+        try:
+            contract = json.loads(ARTIFACT_CONTRACT.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            failures.append(f"invalid artifact upgrade contract: {exc}")
+        else:
+            expected = {
+                "contract_version": 1,
+                "artifact_type": "aer-portable",
+                "upgrade_mode": "side-by-side",
+                "state_policy": "preserve",
+                "activation": "atomic",
+                "rollback": "required",
+                "downgrade": "forbidden",
+                "same_version_different_hash": "new_build",
+                "compatible_previous_artifacts": "supported",
+                "migration": "versioned",
+                "verification": "required",
+                "behavior_activation": "validated_then_active",
+            }
+            for key, value in expected.items():
+                if contract.get(key) != value:
+                    failures.append(f"artifact contract mismatch: {key}={contract.get(key)!r}")
+
     plugin = ROOT / ".claude-plugin/plugin.json"
     marketplace = ROOT / ".claude-plugin/marketplace.json"
     if not plugin.exists() or not marketplace.exists():
