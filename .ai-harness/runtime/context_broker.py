@@ -55,6 +55,8 @@ class ContextLease:
 class ContextBroker:
     """Demand-driven context lifecycle: discover -> score -> load -> release."""
 
+    OPTIONAL_SCORE_FLOOR = 0.60
+
     def __init__(self, *, budget_chars: int = 12000, max_items: int = 18) -> None:
         self.budget_chars = max(256, int(budget_chars))
         self.max_items = max(1, int(max_items))
@@ -75,13 +77,18 @@ class ContextBroker:
         """Select and materialize only the highest-value candidates for this decision."""
         budget = self.budget_chars if budget_chars is None else max(0, int(budget_chars))
         limit = self.max_items if max_items is None else max(1, int(max_items))
-        ranked = sorted(self._candidates.values(), key=lambda c: (c.required, c.score(query, phase), c.context_id), reverse=True)
+        scored = [(candidate, candidate.score(query, phase)) for candidate in self._candidates.values()]
+        ranked = sorted(scored, key=lambda item: (item[0].required, item[1], item[0].context_id), reverse=True)
         leases: list[ContextLease] = []
         used = 0
-        for candidate in ranked:
+        for candidate, score in ranked:
             if len(leases) >= limit:
                 break
             if not candidate.required and candidate.phase not in {"*", phase}:
+                continue
+            # Optional context must earn its way into the active working set;
+            # merely being registered must never cause prompt/context loading.
+            if not candidate.required and score < self.OPTIONAL_SCORE_FLOOR:
                 continue
             text = str(candidate.loader() or "")
             size = len(text)
@@ -92,7 +99,7 @@ class ContextBroker:
             if candidate.required and size > budget - used:
                 raise RuntimeError(f"required context exceeds broker budget: {candidate.context_id}")
             digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
-            lease = ContextLease(candidate.context_id, candidate.kind, text, candidate.score(query, phase), candidate.reason, time.time(), digest)
+            lease = ContextLease(candidate.context_id, candidate.kind, text, score, candidate.reason, time.time(), digest)
             self._active[candidate.context_id] = lease
             leases.append(lease)
             used += size
