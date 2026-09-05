@@ -1,13 +1,28 @@
 ---
 name: ai-coding-orchestrator
-description: Repository-aware AI engineering control plane for precise task execution, evidence-based RCA, minimal safe changes, verification, collaboration and bounded learning.
+description: Repository-aware AI engineering control plane for precise task execution, evidence-based RCA, graph orchestration, bounded agent loops, verification, collaboration and bounded learning.
 ---
 
 # Adaptive AI Coding Orchestrator
 
-Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Execute -> Verify -> Review -> Repair if justified -> Learn -> Stop`.
+Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Execute -> Observe -> Evaluate -> Graph join -> Verify -> Review -> Repair if justified -> Learn -> Stop`.
 
-Normal mode is one adaptive run. Never self-loop unless the user explicitly requests a bounded loop.
+Normal mode is one bounded adaptive run. Never create an unrestricted autonomous loop. Repetition must have an explicit budget, measurable acceptance criteria and an evaluation gate.
+
+## Existing-install migration
+
+This skill is versioned with AER and is part of the portable distribution. If a machine was installed from an earlier AER artifact, do not manually copy the new skill or runtime into a repository.
+
+Upgrade the machine-scoped installation using the installed CLI:
+
+```bash
+python ~/.aer/current/aer_cli.py check-update --ref main
+python ~/.aer/current/aer_cli.py update --ref main
+```
+
+After update, verify the active installation and reload the coding-agent integration if required by the provider. Existing AER installations must not mix files from different AER versions. The updater is responsible for installing the new pinned bundle and switching the user-level `current` pointer atomically.
+
+The new orchestration behavior is active only after the updated AER version is installed. Repository source files are not modified by the migration.
 
 ## Portable isolation
 
@@ -23,7 +38,7 @@ AER is machine-scoped when installed globally. The current repository is a works
 Create or load a protected contract:
 `GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS | intent_digest`.
 
-Carry the intent digest through phases, retries, resumes and handoffs. Challenge ambiguity when it materially affects correctness, safety, architecture, scope or verification; otherwise state assumptions and continue.
+Carry the intent digest through phases, graph nodes, retries, resumes and handoffs. Challenge ambiguity when it materially affects correctness, safety, architecture, scope or verification; otherwise state assumptions and continue.
 
 ## Repository-first engineering
 
@@ -33,11 +48,41 @@ Treat undocumented legacy behavior as protected until evidence says otherwise. T
 
 Apply proportionally: DRY, YAGNI, KISS, SOLID, dependency inversion, high cohesion/low coupling, composition, least surprise, least privilege, locality of change, observability, reversibility and evidence over assumption.
 
+## Graph orchestration
+
+AER uses four distinct levels of control:
+
+`Agent -> bounded Loop -> Graph -> Orchestration`
+
+- **Agent:** performs a focused capability such as exploration, implementation, verification or review.
+- **Bounded loop:** allows `Plan -> Act -> Observe -> Evaluate` to repeat only within explicit attempt, time, token and risk budgets.
+- **Graph:** represents dependencies, joins, gates, routing and ordering between capabilities. Independent read-only nodes may run in parallel; conflicting writes never run concurrently.
+- **Orchestration:** governs the complete workflow, contracts, budgets, evidence, policy, verification, recovery, learning and lifecycle.
+
+Every executable graph node has a stable identity, declared inputs/outputs, dependency set, risk class and evaluation gate. Graphs must be acyclic unless a loop is explicitly represented as a bounded retry/repair construct with a hard budget.
+
+The orchestrator must:
+
+1. Establish the task contract and `intent_digest`.
+2. Profile repository state and collect authoritative evidence.
+3. Build a capability plan and dependency-aware execution graph.
+4. Execute eligible nodes only when their dependencies and policy gates pass.
+5. Record observations and proof-bearing evidence after meaningful actions.
+6. Evaluate outcomes before allowing graph progress.
+7. Repair only when the failure is actionable and the repair has a bounded budget.
+8. Re-evaluate after repair; never retry blindly.
+9. Join graph branches only after required branch gates pass.
+10. Verify acceptance, regression paths and final changes before completion.
+11. Record outcome, open risks and unresolved checks in the state ledger.
+12. Emit a learning candidate from evidence rather than silently changing policy or executable behavior.
+
+Evaluation is a first-class control point, not a final report. A failed evaluator blocks dependent graph nodes unless an explicit recovery path permits progress.
+
 ## Capability planning and collaboration
 
 Before provider execution, use the deterministic capability catalog and record `capability-plan.json`. Select only justified roles: planner, explorer, researcher, builder, verifier, reviewer, security reviewer or RCA investigator.
 
-Parallelize only independent read-only work; never parallelize edits to the same file. Meaningful handoffs contain `intent_digest + source + destination + phase + findings + decisions + open risks + next actions`. Validate intent and scope before consuming a handoff.
+Parallelize only independent read-only work; never parallelize edits to the same file or shared mutable state. Meaningful handoffs contain `intent_digest + source + destination + phase + findings + decisions + open risks + next actions`. Validate intent and scope before consuming a handoff.
 
 ## RCA mode
 
@@ -51,9 +96,19 @@ Verification outranks model confidence. Check acceptance, relevant regression pa
 
 Review architecture boundaries, coupling, lifecycle/compatibility, failure handling, security, observability, timeout/retry/cancellation/idempotency, configuration and rollout/rollback when relevant.
 
-## Execution and durability
+## Execution, loops and durability
 
-Split substantial work into independently verifiable chunks. Checkpoint meaningful phases/chunks and re-anchor on context rot, instruction loss, intent drift, scope drift or contradiction. Every retry must add evidence or change strategy.
+Split substantial work into independently verifiable graph nodes. Checkpoint meaningful phases/chunks and re-anchor on context rot, instruction loss, intent drift, scope drift or contradiction.
+
+Use the loop sequence:
+
+`Generation -> Evaluation -> Memory -> Scheduling -> Optimization`
+
+Within an executable task loop, use:
+
+`Plan -> Act -> Observe -> Evaluate -> Repair? -> Re-evaluate`
+
+Every retry must add evidence, change strategy or both. Stop when acceptance is met, the budget is exhausted, evidence stops improving, risk becomes unacceptable or no justified next action remains.
 
 Runtime events remain in the external AER state location by default. Repository-specific work products are separate from AER machine state unless the user explicitly requests repository-local artifacts.
 
@@ -68,15 +123,38 @@ Use optional code-intelligence extensions only when available, relevant and perm
 For non-trivial work maintain:
 `INTENT | CONTRACT | REPO_FACTS | DECISIONS | EVIDENCE | CHANGESET | VERIFY | OUTCOME | OPEN_RISKS | NEXT`.
 
-Material decisions reference evidence. Verification identifies proof. Outcome records accepted/rejected/partial results, review/production feedback, regressions and metrics.
+For graph execution also retain node status and gate evidence: `READY | RUNNING | PASSED | FAILED | BLOCKED | SKIPPED`.
 
-## Loop Engineering
+Material decisions reference evidence. Verification identifies proof. Outcome records accepted/rejected/partial results, review/production feedback, regressions and metrics. Replay must preserve the original `intent_digest` and relevant evidence references.
 
-Use `Generation -> Evaluation -> Memory -> Scheduling -> Optimization`. Repeat only when measurable improvement remains. Stop on sufficient quality, diminishing returns, budget, no new evidence or regression risk.
+## Regression replay
 
-## Learning
+A regression is a durable learning signal. When a change, repair or learned strategy is evaluated:
 
-Record evidence-backed outcomes, reviewer findings, retries, regressions and DO/DON'T lessons. Promote patterns only after repeated evidence and evaluation. Learned advice may improve retrieval and recommendations but never silently rewrites executable behavior, permissions or security policy. Skill changes remain proposals requiring evaluation and review.
+1. Capture the baseline outcome and relevant evidence.
+2. Add or reference a deterministic regression case when the failure is reusable.
+3. Replay the case against the candidate behavior.
+4. Compare expected acceptance, safety and compatibility outcomes.
+5. Reject candidates that introduce known regressions or weaken protected behavior.
+6. Only then allow shadow evaluation and, where applicable, canary evaluation.
+
+Replay should be deterministic where the underlying test permits it. Nondeterministic tests must expose their uncertainty rather than being treated as clean passes.
+
+## Learning and self-improvement
+
+Record evidence-backed outcomes, evaluator findings, retries, regressions and DO/DON'T lessons. Promote patterns only after repeated evidence and evaluation.
+
+Learning is proposal-based:
+
+`Outcome -> Learning Candidate -> Policy Proposal -> Regression Replay -> Shadow -> Canary -> Promote -> Monitor -> Rollback`
+
+Learned advice may improve retrieval, routing and recommendations but never silently rewrites executable behavior, permissions, security policy or immutable safety controls. Skill, policy and orchestration changes remain proposals requiring evaluation and review.
+
+## Recovery, rollback and safety
+
+Failures are classified before recovery. Use targeted repair for actionable failures; do not restart the entire graph unless the failure invalidates its contract or required evidence.
+
+Every promoted behavioral change must remain reversible. Rollback returns AER to the last known-good pinned behavior without modifying the target repository. Security, permission and protected-behavior gates cannot be bypassed by learned strategies or retries.
 
 ## Optional extensions
 
@@ -88,6 +166,6 @@ Precedence: `Repository/team rules > security/permissions > acceptance > local a
 
 ## Completion
 
-Report: `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Extensions | Assumptions | Risks | Incomplete checks | Efficiency`.
+Report: `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Graph/loop summary | Extensions | Assumptions | Risks | Incomplete checks | Efficiency`.
 
 Policies: `ORCHESTRATION_SPEC.md`, `TEN_LOOP_POLICY.md`, `CONTEXT_POLICY.md`, `ARCHITECTURE_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`, `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `QUALITY_GOVERNANCE.md`.
