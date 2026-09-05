@@ -1,0 +1,38 @@
+name: Graph Runtime Check
+
+on:
+  pull_request:
+    paths:
+      - '.ai-harness/runtime/**'
+      - '.ai-harness/provider.py'
+      - '.ai-harness/safe_provider.py'
+      - '.ai-harness/resilient_provider.py'
+      - 'tests/test_response_resilience.py'
+      - '.github/workflows/graph-runtime-check.yml'
+  push:
+    paths:
+      - '.ai-harness/runtime/**'
+      - '.ai-harness/provider.py'
+      - '.ai-harness/safe_provider.py'
+      - '.ai-harness/resilient_provider.py'
+      - 'tests/test_response_resilience.py'
+      - '.github/workflows/graph-runtime-check.yml'
+
+jobs:
+  graph-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile all AER runtime modules
+        run: python -m compileall -q .ai-harness
+      - name: Run graph and response resilience tests
+        run: |
+          python -m unittest tests.test_response_resilience -v
+          python -m unittest discover -s .ai-harness/tests -v
+      - name: Validate portable build
+        run: |
+          python aer_cli.py build --output /tmp/aer-portable.zip
+          python aer_cli.py verify /tmp/aer-portable.zip
