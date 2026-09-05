@@ -17,9 +17,32 @@ def _install_graph_team_bridge() -> None:
         return
     try:
         import engine
-        from runtime.graph_agent_team import SharedTaskMemory, team_for_route
+        from runtime.graph_agent_team import GraphAgentTeam, SharedTaskMemory, team_for_route
     except Exception:
         return
+
+    # Mark read-only graph prompts as analysis-only so safe_provider enforces
+    # the provider's native plan/read-only mode instead of relying on prose.
+    if not getattr(GraphAgentTeam.execute, "_aer_guarded", False):
+        original_execute = GraphAgentTeam.execute
+
+        def guarded_execute(self, *, task, intent_digest, base_prompt, memory, invoke_agent):
+            def guarded_invoke(agent, prompt):
+                if agent.read_only:
+                    prompt += "\n\n## Security execution mode\npatch_allowed: false\n"
+                return invoke_agent(agent, prompt)
+
+            return original_execute(
+                self,
+                task=task,
+                intent_digest=intent_digest,
+                base_prompt=base_prompt,
+                memory=memory,
+                invoke_agent=guarded_invoke,
+            )
+
+        guarded_execute._aer_guarded = True
+        GraphAgentTeam.execute = guarded_execute
 
     original_invoke = engine.invoke
     trigger_for_mode = {
