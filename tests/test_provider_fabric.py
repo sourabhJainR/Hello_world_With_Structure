@@ -1,6 +1,8 @@
 from pathlib import Path
 
+from portable.adaptive_runtime import AdaptiveRuntime
 from portable.lifecycle_hooks import HookBus, HookDecision, HookEvent, HookPhase
+from portable.orchestration import Graph, Node, NodeKind
 from portable.provider_fabric import CapabilityRequest, ProviderCapability, ProviderFabric
 from portable.session_state import SessionCheckpoint, SessionStore
 
@@ -50,3 +52,28 @@ def test_session_checkpoint_survives_new_store_instance(tmp_path: Path):
     assert recovered is not None
     assert recovered.stage == "test"
     assert recovered.attempt == 1
+
+
+def test_adaptive_runtime_composes_graph_hooks_and_checkpoint(tmp_path: Path):
+    events: list[str] = []
+    hooks = HookBus()
+    hooks.register(HookPhase.SESSION_START, lambda event: events.append("start"))
+    hooks.register(HookPhase.BEFORE_AGENT, lambda event: events.append("before"))
+    hooks.register(HookPhase.AFTER_AGENT, lambda event: events.append("after"))
+    hooks.register(HookPhase.SESSION_END, lambda event: events.append("end"))
+    graph = Graph([Node("build", NodeKind.DETERMINISTIC, lambda state: "ok")])
+    runtime = AdaptiveRuntime(graph, session_store=SessionStore(tmp_path), hooks=hooks)
+
+    result = runtime.run(
+        session_id="s1",
+        task_id="t1",
+        project_root=tmp_path / "project",
+        intent="build a test",
+        provider="claude",
+    )
+    assert result.status.value == "accepted"
+    assert events == ["start", "before", "after", "end"]
+    checkpoint = SessionStore(tmp_path).load("s1")
+    assert checkpoint is not None
+    assert checkpoint.stage == "complete"
+    assert checkpoint.remaining_batches == []
