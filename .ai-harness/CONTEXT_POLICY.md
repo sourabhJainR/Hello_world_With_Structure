@@ -1,18 +1,31 @@
 # Context Engineering Policy
 
-Use progressive disclosure.
+AER uses **progressive disclosure at runtime**, not context bolting.
 
-1. Start with repository instructions and task contract.
-2. Load the project convention profile.
-3. Load the smallest relevant architecture and domain map.
-4. Retrieve only task-relevant memory.
-5. Add targeted files, symbols, tests, logs, and command output.
-6. Compress prior phase output into decisions, evidence, failures, and open questions.
+## Context Broker contract
 
-Do not replay entire transcripts or repository dumps unless required for recovery.
+`DISCOVER -> SCORE -> LEASE -> USE -> COMPRESS -> RELEASE`.
 
-Stable context should remain reusable and cache-friendly where the provider supports prompt caching or compaction.
+The Context Broker is the authority for prompt-context selection. Context exists as a candidate until a current phase, question, gate, uncertainty or dependency justifies it. A candidate carries provenance, reason, relevance, confidence, freshness, risk and estimated cost.
 
-Repository knowledge should be versioned and local whenever practical. High-value knowledge includes architecture boundaries, quality rules, security rules, reliability constraints, plans, decision records, and verification commands.
+1. Start with the minimum immutable task contract and repository safety/instruction boundary.
+2. Ask the broker what evidence is required for the current decision.
+3. Score candidates for task/phase relevance, confidence, freshness, risk and context cost.
+4. Materialize only selected candidates immediately before use and enforce a hard budget.
+5. After the decision, retain only references, digests, decisions, constraints and proof-bearing evidence; release raw context.
+6. Re-discover source when later evidence makes it necessary. Never assume earlier context remains active.
 
-A context item should have a reason for inclusion. When context exceeds budget, remove low-relevance material before increasing the budget.
+Required context may block when it cannot fit the budget; optional context must yield before the budget grows. Security, acceptance and protected-behavior evidence cannot be displaced by convenience.
+
+## Context layers
+
+- **Always active:** task intent, boundaries, acceptance, security/permissions and current state.
+- **On demand:** repository structure, exact files/symbols, tests, architecture, domain knowledge, history, memory, framework, specialist capability and external research.
+- **Transient:** raw documents, logs, tool output and phase-specific source text. These are leased only for the decision that needs them.
+- **Durable:** compact ledger entries, evidence digests, decisions, outcomes, regression signals and provenance.
+
+Do not replay entire transcripts or repository dumps unless recovery explicitly requires them.
+
+Stable context should remain cache-friendly. Content-addressed pages may be reused, but cache presence does not make content active; the broker must select it again for the current decision.
+
+When context exceeds budget, reduce low-value material before increasing the budget. Optimize verified outcome per token, call, retrieval, retry and latency.
