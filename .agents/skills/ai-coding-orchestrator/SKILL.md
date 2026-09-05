@@ -5,16 +5,29 @@ description: Repository-aware AI engineering control plane for precise task exec
 
 # Adaptive AI Coding Orchestrator
 
-Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Execute -> Verify -> Review -> Repair if justified -> Learn -> Stop`.
+Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Graph/Loop Execute -> Verify -> Review -> Repair if justified -> Evaluate -> Learn -> Stop`.
 
 Normal mode is one adaptive run. Never self-loop unless the user explicitly requests a bounded loop.
+
+## Agent -> Loop -> Graph -> Orchestration
+
+Treat the execution object as progressively more explicit:
+
+1. **Agent:** use a provider for a bounded engineering action.
+2. **Loop:** plan, act, observe and evaluate; repair only when new evidence or a changed strategy justifies it.
+3. **Graph:** compose agentic nodes with deterministic functions, evaluators, routers, joins and human checkpoints using explicit dependencies.
+4. **Orchestration:** own scheduling, budgets, policy, evidence, replay, failure propagation and learning boundaries.
+
+The graph does not replace the agent loop. An agentic graph node may contain a local bounded loop. Do not turn every task into a multi-agent workflow: use the smallest execution topology that improves the verified outcome.
+
+Use `portable/orchestration.py` as the provider-neutral reference implementation. Provider adapters execute model/tool work; AER remains responsible for control-plane invariants.
 
 ## Task contract
 
 Create or load a protected contract:
 `GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS | intent_digest`.
 
-Carry the intent digest through phases, retries, resumes and handoffs. Nearby findings are deferred. Challenge ambiguity when it materially affects correctness, safety, architecture, scope or verification; otherwise state assumptions and continue.
+Carry the intent digest through phases, retries, graph branches, resumes and handoffs. Nearby findings are deferred. Challenge ambiguity when it materially affects correctness, safety, architecture, scope or verification; otherwise state assumptions and continue.
 
 ## Repository-first engineering
 
@@ -32,6 +45,17 @@ Each role has a responsibility, mutation policy, parallel-safety rule and report
 
 Meaningful handoffs contain `intent_digest + source + destination + phase + findings + decisions + open risks + next actions`. Validate intent and scope before consuming a handoff. Share evidence through the collaboration graph rather than replaying full transcripts.
 
+## Graph execution rules
+
+- Every node has an explicit identity, kind, dependency set and mutation boundary.
+- Reject dependency cycles before execution.
+- Use deterministic ordering when multiple nodes are ready; parallelize only independent read-only work.
+- Bound node retries and total run attempts.
+- Evaluate node output before treating it as progress.
+- Propagate critical failures instead of allowing downstream work to create false confidence.
+- Keep routers subject to the same policy, approval and security gates as ordinary nodes.
+- Preserve enough state to replay the decision path without repeating irreversible actions.
+
 ## RCA mode
 
 If asked for RCA, diagnosis or investigation without an explicit fix request: do not edit, commit, push or patch. Trace the real call/data flow, inspect source/tests/history/logs/persistence/integrations, compare data shapes, classify `Fact | Inference | Unknown | Recommendation`, attach evidence, record contradictions, and report root cause as `proven | probable | unproven`.
@@ -43,6 +67,14 @@ A later regression must link to the original run and intent and become a learnin
 Verification outranks model confidence. Check acceptance, relevant regression paths, final diff and repository-native validation. Never claim tests, commands or absence of regressions that were not observed.
 
 Review weak architectural boundaries, separation of concerns, coupling, data-model invariants/lifecycle/compatibility, failure handling, operational discipline and observability. Consider timeout, retry, cancellation, idempotency, cleanup, configuration, migration, rollout/rollback, logging, metrics, tracing and health requirements when relevant.
+
+## Evaluation loop
+
+For substantive changes, use:
+
+`Generation -> Evaluation -> Repair -> Evaluation -> Stop`.
+
+Evaluation should prefer deterministic tests, repository-native checks and independent review. A failed evaluation must change evidence, diagnosis, strategy, context or tool selection before another attempt. Stop when quality is sufficient, no measurable improvement remains, the budget is exhausted, or regression risk rises.
 
 ## Execution and durability
 
@@ -63,13 +95,15 @@ For non-trivial work maintain:
 
 Material decisions reference evidence. Verification identifies proof. Outcome records accepted/rejected/partial results, review/production feedback, regressions and metrics.
 
-## Loop Engineering
+## Learning and self-improvement
 
-Use `Generation -> Evaluation -> Memory -> Scheduling -> Optimization`. Repeat only when measurable improvement remains. Stop on sufficient quality, diminishing returns, budget, no new evidence or regression risk.
+Use the closed loop:
 
-## Learning
+`Observe -> Outcome -> Candidate -> Regression Replay -> Safety Evaluation -> Shadow/Canary -> Promote -> Monitor -> Rollback`.
 
-Record evidence-backed outcomes, reviewer findings, retries, regressions and DO/DON'T lessons. Promote patterns only after repeated evidence and evaluation. Learned advice may improve retrieval and recommendations but never silently rewrites executable behavior, permissions or security policy. Skill changes remain proposals requiring evaluation and review.
+Record evidence-backed outcomes, reviewer findings, retries, regressions and DO/DON'T lessons. Promote patterns only after repeated evidence and evaluation. Learned advice may improve retrieval and recommendations but never silently rewrites executable behavior, permissions or security policy. Skill and orchestration changes remain proposals until regression and safety gates pass.
+
+A model suggestion is not evidence of improvement. A promoted change must have a before/after comparison against a known-good regression corpus and an auditable promotion decision.
 
 ## Optional extensions
 
