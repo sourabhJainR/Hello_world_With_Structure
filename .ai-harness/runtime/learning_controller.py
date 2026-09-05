@@ -78,13 +78,13 @@ class LearningController:
             safety_passed=bool(snapshot.get("safety_passed", True)),
             evidence_score=float(snapshot.get("evidence_score", 1.0) or 0),
             environment_fingerprint=str(snapshot.get("environment_fingerprint", "")),
-            policy_id=str(snapshot.get("policy_id", "")),
-            failure_class=str(snapshot.get("failure_class", "")),
+            policy_id=str(snapshot.get("policy_id", "")), failure_class=str(snapshot.get("failure_class", "")),
         )
 
     def experiences(self, task_class: str | None = None, limit: int = 1000) -> list[Observation]:
         rows = self.experience_store.recent(limit) if task_class is None else self.experience_store.by_task_class(task_class, limit)
-        return [Observation(**{k: getattr(row, k) for k in Observation.__dataclass_fields__}) for row in rows]
+        fields = Observation.__dataclass_fields__
+        return [Observation(**{name: getattr(row, name) for name in fields}) for row in rows]
 
     def candidate_scores(self, task_class: str, *, min_samples: int = 3, min_lower_bound: float = 0.0,
                          min_improvement: float = 0.03) -> list[Any]:
@@ -96,7 +96,6 @@ class LearningController:
 
     def learn_candidates(self, observations: Iterable[Observation] | None = None, *, min_samples: int = 3,
                          min_lower_bound: float = 0.0, min_improvement: float = 0.03) -> list[PolicyCandidate]:
-        # The store is the source of truth; supplied rows are additive evidence.
         rows = list(observations or [])
         for row in rows:
             self.experience_store.record(Experience(**asdict(row), metadata={"source": "controller-input"}))
@@ -113,10 +112,11 @@ class LearningController:
         return sorted(candidates, key=lambda c: (c.score, c.confidence, c.policy_id), reverse=True)
 
     def select_regression_cases(self, candidate: PolicyCandidate, cases: Iterable[ReplayCase], *, limit: int = 25) -> SelectedRegressionSet:
+        case_list = list(cases)
         rows = self.experiences(candidate.task_class, 1000)
         historical = [r.task_id for r in rows if r.regressions > 0 or r.failure_class]
         recent = [r.task_id for r in rows[:50] if not r.success or r.regressions > 0]
-        selection = select_regressions(cases, task_class=candidate.task_class, limit=limit,
+        selection = select_regressions(case_list, task_class=candidate.task_class, limit=limit,
                                        historical_failures=historical, recent_failures=recent, seed=candidate.evidence_hash)
         self._append("regression-selection", {"policy_id": candidate.policy_id, "selection": asdict(selection), "fingerprint": selection_fingerprint(selection)})
         return selection
@@ -134,7 +134,7 @@ class LearningController:
     def canary_candidate(self, candidate: PolicyCandidate, cases: Iterable[ReplayCase], runner: Callable[[ReplayCase, PolicyCandidate], Any], *,
                          exposures: tuple[float, ...] = (0.05, 0.10, 0.25, 0.50, 1.0), min_cases_per_stage: int = 3,
                          min_pass_rate: float = 1.0, min_verification_rate: float = 1.0) -> CanaryPlan:
-        plan = evaluate_staged_canary(candidate, cases, runner, exposures=exposures,
+        plan = evaluate_staged_canary(candidate, list(cases), runner, exposures=exposures,
                                       min_cases_per_stage=min_cases_per_stage,
                                       min_pass_rate=min_pass_rate, min_verification_rate=min_verification_rate)
         self._append("canary-plan", asdict(plan))
@@ -145,9 +145,13 @@ class LearningController:
                              exposures: tuple[float, ...] = (0.05, 0.10, 0.25, 0.50, 1.0),
                              min_cases_per_stage: int = 3, now: int | None = None) -> Policy | None:
         """Run the complete automatic gate: family selection -> replay -> shadow -> canary -> promote."""
-        selected = self.select_regression_cases(candidate, cases)
-        case_map = {c.case_id: c for c in cases}
+        case_list = list(cases)
+        selected = self.select_regression_cases(candidate, case_list)
+        case_map = {c.case_id: c for c in case_list}
         selected_cases = [case_map[x] for x in selected.case_ids if x in case_map]
+        if not selected_cases:
+            self._append("promotion.blocked", {"policy_id": candidate.policy_id, "reason": "empty-regression-selection"})
+            return None
         replay_result = self.replay_candidate(candidate, selected_cases, lambda c, p: _pair(runner, c, p))
         if not replay_result.passed:
             self._append("promotion.blocked", {"policy_id": candidate.policy_id, "reason": "regression-replay"})
@@ -162,15 +166,16 @@ class LearningController:
         if not canary.promoted:
             self._append("promotion.blocked", {"policy_id": candidate.policy_id, "reason": canary.reason})
             return None
-        return self.promote(candidate, replay_result, canary_report=None, shadow_report=shadow, canary_plan=canary, now=now)
+        return self.promote(candidate, replay_result, shadow_report=shadow, canary_plan=canary, now=now)
 
     def promote(self, candidate: PolicyCandidate, replay_result: ReplayResult, *, canary_report: EvaluationReport | None = None,
                 shadow_report: EvaluationReport | None = None, canary_plan: CanaryPlan | None = None,
                 version: int | None = None, now: int | None = None) -> Policy | None:
-        canary_passed = (canary_report is None or canary_report.gate_passed) and (canary_plan is None or canary_plan.promoted)
-        shadow_passed = shadow_report is None or shadow_report.gate_passed
+        # Promotion is fail-closed: replay, independent shadow and staged canary are all required.
+        canary_passed = (canary_report is not None and canary_report.gate_passed) or (canary_plan is not None and canary_plan.promoted)
+        shadow_passed = shadow_report is not None and shadow_report.gate_passed
         if not replay_result.passed or not shadow_passed or not canary_passed or candidate.risk not in {"low", "medium"} or candidate.confidence < 0.80:
-            self._append("promotion.blocked", {"policy_id": candidate.policy_id, "reason": "safety-gate", "replay_passed": replay_result.passed,
+            self._append("promotion.blocked", {"policy_id": candidate.policy_id, "reason": "promotion-gate", "replay_passed": replay_result.passed,
                                                 "shadow_passed": shadow_passed, "canary_passed": canary_passed,
                                                 "confidence": candidate.confidence, "risk": candidate.risk})
             return None
