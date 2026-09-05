@@ -18,7 +18,7 @@ Task contract:
 Do not preload full methodology, every policy, framework, history, capability, repository dump or transcript. Runtime:
 `DISCOVER -> SCORE -> LEASE -> USE -> COMPRESS -> RELEASE`.
 
-Use the Context Broker to load only evidence justified by the current phase. Prefer targeted files/symbols/tests and structural evidence. Release raw context after use and retain compact proof-bearing state.
+Use the Context Broker to load only evidence justified by the current phase. Prefer targeted files/symbols/tests and structural evidence. Release raw context after use and retain compact proof-bearing state. Optional context packs and extensions are loaded only when justified.
 
 Detailed methodology is split into `.agents/skills/ai-coding-orchestrator/context/`. Start with `context/INDEX.md`; load only the required pack.
 
@@ -51,6 +51,9 @@ Executable behavior changes remain proposals until gates pass; learned behavior 
 
 Precedence:
 `Repository/team rules > security/permissions > acceptance > local architecture > verification > orchestrator > extension > model preference`.
+
+## Control-plane policies
+Policy files are optional/on-demand context, not startup context. The complete control-plane contract is defined by: `ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md`.
 
 ## Completion
 Report:
