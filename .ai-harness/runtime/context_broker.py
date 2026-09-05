@@ -24,7 +24,8 @@ class ContextBroker:
     """Demand-driven context lifecycle: discover -> score -> load -> release."""
     OPTIONAL_SCORE_FLOOR=0.60
     def __init__(self, *, budget_chars:int=12000, max_items:int=18)->None:
-        self.budget_chars=max(256,int(budget_chars)); self.max_items=max(1,int(max_items)); self._candidates={}; self._active={}; self._events=[]
+        if int(budget_chars) < 0: raise ValueError("context broker budget cannot be negative")
+        self.budget_chars=int(budget_chars); self.max_items=max(1,int(max_items)); self._candidates={}; self._active={}; self._events=[]
     def _emit(self,event:dict[str,Any])->None:
         self._events.append(event)
         target=os.environ.get("AER_CONTEXT_BROKER_TELEMETRY")
@@ -48,8 +49,8 @@ class ContextBroker:
             if not c.required and score<self.OPTIONAL_SCORE_FLOOR: continue
             text=str(c.loader() or ""); size=len(text)
             if not size: continue
-            if not c.required and used+size>budget: continue
             if c.required and size>budget-used: raise RuntimeError(f"required context exceeds broker budget: {c.context_id}")
+            if not c.required and used+size>budget: continue
             digest=hashlib.sha256(text.encode()).hexdigest()[:16]; lease=ContextLease(c.context_id,c.kind,text,score,c.reason,time.time(),digest)
             self._active[c.context_id]=lease; leases.append(lease); used+=size
             self._emit({"event":"lease","context_id":c.context_id,"kind":c.kind,"phase":phase,"score":round(score,6),"chars":size,"digest":digest,"reason":c.reason})
