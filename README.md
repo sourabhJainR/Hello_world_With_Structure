@@ -4,51 +4,73 @@ A provider-neutral AI software-engineering control plane for Claude Code and com
 
 ## AER CLI naming
 
-The **downloadable portable bundle is self-contained**. It includes the application launcher **`app_cli.py`**, the portable runtime, AER skills, and Claude Code plugin metadata.
+The **GitHub Actions `aer-portable` artifact is self-contained**. The downloaded artifact contains both the user-facing launcher **`aer_cli.py`** and the distribution bundle **`aer-portable.zip`** at the artifact root. This supports the documented bootstrap command:
 
-The source repository also contains the developer/build launcher `aer_cli.py`. You normally do **not** need the source checkout to install AER on a target machine.
+```bash
+python aer_cli.py aer-portable.zip
+```
 
-## Quick start — install from the portable ZIP
+The portable ZIP itself also contains `aer_cli.py` for self-contained redistribution. The source repository contains the same developer/build launcher.
 
-1. Download the `aer-portable.zip` artifact from a successful GitHub Actions run.
-2. Extract the ZIP to a local directory.
-3. Open a terminal in the extracted AER directory.
-4. Run the bundled application CLI.
+## Quick start — install from the GitHub Actions artifact
+
+1. Download the `aer-portable` artifact from a successful GitHub Actions run.
+2. Extract the GitHub artifact ZIP.
+3. Open a terminal in that extracted directory.
+4. Run:
+
+```bash
+python aer_cli.py aer-portable.zip
+```
+
+The launcher treats a ZIP argument as an install request and loads the runtime from that bundle. On success, AER is installed under the user-level `~/.aer` location.
+
+The published artifact layout is:
+
+```text
+aer-portable/
+├── aer_cli.py
+├── aer-portable.zip
+├── portable-tests.log
+└── run-metadata.txt
+```
+
+### Alternative: run the launcher from inside the portable ZIP
+
+If you extract `aer-portable.zip` itself, the bundled launcher can also be run directly:
+
+```bash
+python aer_cli.py install
+```
 
 ### Windows PowerShell
 
 ```powershell
-Expand-Archive .\aer-portable.zip -DestinationPath .\aer
-cd .\aer
-python .\app_cli.py install
+python .\aer_cli.py .\aer-portable.zip
 ```
 
 ### macOS / Linux
 
 ```bash
-unzip aer-portable.zip -d aer
-cd aer
-python3 ./app_cli.py install
+python3 ./aer_cli.py ./aer-portable.zip
 ```
-
-The bundle is intended to be portable: `app_cli.py` discovers the bundled runtime and installs AER into the user-level `~/.aer` location. The target repository is not used as an installation location.
 
 If Claude Code is installed and available on `PATH`, the installer also registers the bundled local Claude marketplace and installs the `adaptive-ai-coding-orchestrator` plugin at user scope.
 
 You can explicitly select the Claude integration:
 
 ```bash
-python app_cli.py install --skill claude
+python aer_cli.py install aer-portable.zip --skill claude
 ```
 
 For a machine without Claude Code, install the AER runtime first and add Claude later; the AER installation remains provider-neutral.
 
 ## Verify the installation
 
-From the extracted bundle directory:
+From the published artifact directory:
 
 ```bash
-python app_cli.py verify
+python aer_cli.py aer-portable.zip
 ```
 
 Then check the installed AER state:
@@ -196,7 +218,7 @@ python aer_cli.py build --output aer-portable.zip
 python aer_cli.py verify aer-portable.zip
 ```
 
-A successful CI run also publishes the portable ZIP as the `aer-portable` workflow artifact. CI verifies that the bundle contains the Claude plugin manifest, marketplace metadata, AER skill, and `UserPromptSubmit` hook.
+A successful CI run publishes an `aer-portable` artifact containing the outer `aer_cli.py` bootstrap launcher plus `aer-portable.zip`, logs, and metadata. CI also verifies that the inner bundle contains the Claude plugin manifest, marketplace metadata, AER skill, and `UserPromptSubmit` hook.
 
 ## What is inside the portable ZIP
 
@@ -205,7 +227,7 @@ The portable ZIP is the distribution unit. The important files are:
 ```text
 aer-portable.zip
 |
-+-- app_cli.py                         # user-facing bundle launcher
++-- aer_cli.py                        # self-contained bootstrap launcher
 +-- payload/
     +-- portable/aer_runtime.py       # AER runtime
     +-- .claude-plugin/
@@ -217,7 +239,7 @@ aer-portable.zip
             +-- hooks/aer_prompt.py   # UserPromptSubmit hook
 ```
 
-The extracted bundle is the thing you install and run. Do not manually copy `payload` files into your project.
+The extracted GitHub Actions artifact additionally places `aer_cli.py` beside `aer-portable.zip` so the bootstrap command works without opening the nested ZIP first. Do not manually copy `payload` files into your project.
 
 ## Installed state
 
@@ -347,7 +369,7 @@ User task / Jira / bug / review / research
         | Capability routing    |
         | Graph orchestration   |
         | Bounded agent loops   |
-        | Evaluation gates     |
+        | Evaluation gates      |
         | Verification + review |
         | Learning + policies   |
         | Regression replay     |

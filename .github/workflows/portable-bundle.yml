@@ -64,6 +64,25 @@ jobs:
         if: always()
         run: |
           if [ -f aer-portable.zip ]; then cp aer-portable.zip ci-artifacts/aer-portable.zip; fi
+          if [ -f aer_cli.py ]; then cp aer_cli.py ci-artifacts/aer_cli.py; fi
+      - name: Verify published artifact layout
+        if: always()
+        run: |
+          test -f ci-artifacts/aer-portable.zip
+          test -f ci-artifacts/aer_cli.py
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile
+          artifact = Path('ci-artifacts/aer-portable.zip')
+          launcher = Path('ci-artifacts/aer_cli.py')
+          if not launcher.is_file() or launcher.stat().st_size == 0:
+              raise SystemExit('published artifact is missing a usable aer_cli.py launcher')
+          with zipfile.ZipFile(artifact) as outer:
+              names = {name.rstrip('/') for name in outer.namelist()}
+          if 'aer_cli.py' not in names:
+              raise SystemExit('portable bundle is missing aer_cli.py')
+          print('Published artifact layout verified: aer_cli.py + aer-portable.zip')
+          PY
       - name: Collect CI metadata
         if: always()
         run: |

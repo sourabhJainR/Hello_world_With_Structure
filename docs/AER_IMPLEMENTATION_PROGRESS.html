@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AER Implementation Progress</title>
 <style>
-body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:1050px;margin:40px auto;padding:0 20px;line-height:1.5}table{border-collapse:collapse;width:100%;margin:16px 0}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f5f5f5}.done{font-weight:600}.warn{font-weight:600}.bar{background:#eee;border-radius:8px;overflow:hidden}.fill{height:14px;width:82%;background:#333}</style>
+body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:1050px;margin:40px auto;padding:0 20px;line-height:1.5}table{border-collapse:collapse;width:100%;margin:16px 0}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f5f5f5}.done{font-weight:600}.warn{font-weight:600}.bar{background:#eee;border-radius:8px;overflow:hidden}.fill{height:14px;width:90%;background:#333}</style>
 </head>
 <body>
 <h1>AER implementation progress</h1>
-<p><strong>Scope:</strong> reusable provider-native orchestration, lifecycle hooks, durable cross-session state, recovery, and safe self-improvement boundaries for <code>Hello_world_With_Structure</code>.</p>
+<p><strong>Scope:</strong> reusable provider-native orchestration, lifecycle hooks, durable cross-session state, recovery, safe self-improvement boundaries, and a reliable portable installation path for <code>Hello_world_With_Structure</code>.</p>
 <div class="bar"><div class="fill"></div></div>
-<p><strong>Current batch:</strong> 2 — integrated reusable runtime foundation</p>
+<p><strong>Current batch:</strong> 3 — portable artifact bootstrap fix</p>
 <table>
 <thead><tr><th>Area</th><th>Status</th><th>Evidence / change</th></tr></thead>
 <tbody>
@@ -23,11 +23,27 @@ body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:1050px;ma
 <tr><td>Integrated runtime facade</td><td class="done">Complete</td><td><code>portable/adaptive_runtime.py</code> composes graph execution, provider identity, lifecycle hooks and durable checkpoints without replacing the existing graph engine.</td></tr>
 <tr><td>Agent/skill behavior</td><td class="done">Complete</td><td>Canonical, .agents and .claude skill guidance now explicitly uses native capability discovery, hooks and durable recovery.</td></tr>
 <tr><td>Regression coverage</td><td class="done">Complete</td><td><code>tests/test_provider_fabric.py</code> covers routing, hook failure behavior, checkpoint recovery and adaptive runtime composition.</td></tr>
-<tr><td>Portable bundle inclusion</td><td class="done">Covered by build contract</td><td>The portable builder already inventories the entire <code>portable/</code> tree; new runtime modules are therefore part of the bundle manifest.</td></tr>
-<tr><td>CI validation</td><td class="warn">Pending observed run</td><td>Existing harness CI is configured for <code>portable/**</code>, <code>tests/**</code>, <code>skills/**</code> and <code>docs/**</code>. The connector has not exposed a workflow run yet, so no unobserved pass is claimed.</td></tr>
-<tr><td>PR / merge</td><td class="done">Complete</td><td>PR #25 merged successfully after review state became mergeable.</td></tr>
+<tr><td>Portable runtime inclusion</td><td class="done">Complete</td><td>The portable ZIP contains <code>aer_cli.py</code> and the runtime payload.</td></tr>
+<tr><td>Published artifact launcher</td><td class="done">Fixed in CI configuration</td><td>The outer GitHub Actions artifact now stages <code>aer_cli.py</code> beside <code>aer-portable.zip</code>, matching the documented bootstrap command <code>python aer_cli.py aer-portable.zip</code>.</td></tr>
+<tr><td>Artifact layout verification</td><td class="done">Added</td><td>CI now fails if either outer <code>aer_cli.py</code> or <code>aer-portable.zip</code> is missing, and verifies the nested bundle also contains <code>aer_cli.py</code>.</td></tr>
+<tr><td>Documentation</td><td class="done">Updated</td><td>Root README now documents the published artifact layout and exact bootstrap command.</td></tr>
+<tr><td>CI validation</td><td class="warn">Pending observed run</td><td>The workflow change is committed on <code>fix/portable-artifact-launcher</code>. A fresh GitHub Actions run must be observed before claiming the published artifact is corrected.</td></tr>
+<tr><td>PR / merge</td><td class="warn">Pending</td><td>Merge only after the fresh CI artifact is inspected and the outer layout is confirmed.</td></tr>
 </tbody>
 </table>
+<h2>Published artifact contract</h2>
+<pre>aer-portable/                  # GitHub Actions artifact
+├── aer_cli.py                  # bootstrap launcher
+├── aer-portable.zip            # distribution bundle
+├── portable-tests.log
+└── run-metadata.txt
+
+Inside aer-portable.zip:
+├── aer_cli.py
+├── aer-bundle.json
+└── payload/...</pre>
+<h2>Bootstrap contract</h2>
+<p>The supported first-run flow is <code>python aer_cli.py aer-portable.zip</code>. The launcher detects the ZIP argument, loads the embedded AER runtime, performs installation, and leaves the target repository untouched. After installation, the machine-scoped CLI under <code>~/.aer/current/aer_cli.py</code> is authoritative.</p>
 <h2>Implemented architecture</h2>
 <pre>Project / Session
       |
@@ -43,6 +59,6 @@ AdaptiveRuntime
 <h2>Recovery contract</h2>
 <p>Long-running work persists stage, completed batches, remaining batches, provider, attempt number, errors and a state digest. A new session can resume from durable state instead of reconstructing progress from chat history.</p>
 <h2>Remaining</h2>
-<ol><li>Observe the next GitHub Actions run and repair any deterministic failures.</li><li>If provider-specific native hooks become available in a future provider, add an adapter manifest rather than changing AER semantics.</li><li>Optionally add deeper provider-specific subprocess adapters only where their official CLI contracts are stable and verified.</li></ol>
+<ol><li>Observe the fresh portable-bundle CI run and inspect the actual downloaded artifact.</li><li>If the artifact layout passes, merge the fix and update this page to the final state.</li><li>If provider-specific native hooks become available in a future provider, add an adapter manifest rather than changing AER semantics.</li></ol>
 </body>
 </html>
