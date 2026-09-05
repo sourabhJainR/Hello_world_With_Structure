@@ -14,6 +14,12 @@ Always active only:
 Task contract:
 `GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS | intent_digest`.
 
+## Provider-native capability routing
+Discover actual provider capabilities before choosing execution surfaces. Prefer native `subagent`, `hooks`, `session_resume`, `structured_output`, `tool_interception`, `mcp` or `background_execution` only when evidence shows they are available. Otherwise use the AER fallback. Native capability selection can optimize execution but cannot override AER security, acceptance, verification or promotion rules.
+
+## Lifecycle hooks
+Map provider events to AER phases when possible: `session_start | plan_start | before_agent | after_agent | before_tool | after_tool | before_verify | after_verify | before_promotion | after_promotion | session_end | recovery`. Hooks can annotate or veto work and fail closed on handler errors.
+
 ## Progressive context
 Do **not** preload methodology, policies, frameworks, history, capability catalogs, repository dumps or transcripts. Runtime:
 `DISCOVER -> SCORE -> LEASE -> USE -> COMPRESS -> RELEASE`.
@@ -25,11 +31,14 @@ Before editing, discover repository/team instructions, git state, structure, dep
 
 ## Bounded execution
 Lifecycle:
-`Understand -> Profile -> Specify -> Retrieve -> Route -> Plan -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair -> Learn -> Stop`.
+`Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair -> Learn -> Stop`.
 
-For non-trivial work, use the graph agent team whenever supported: `Planner -> Explorer/Researcher/RCA -> Builder -> Verifier -> Parallel Reviewers -> Synthesizer`. Every agent receives task-scoped shared memory keyed by the current `intent_digest` and publishes useful evidence, findings, decisions and risks back to it. Independent read-only roles may run in parallel; mutating roles are serialized. Single-agent execution is the fallback for trivial work or unavailable/disabled graph execution.
+For non-trivial work, use the graph agent team whenever supported: `Planner -> Explorer/Researcher/RCA -> Builder -> Verifier -> Parallel Reviewers -> Synthesizer`. Prefer native subagents/background execution for independent read-only work when available. Every agent receives task-scoped shared memory keyed by the current `intent_digest` and publishes useful evidence, findings, decisions and risks back to it. Independent read-only roles may run in parallel; mutating roles are serialized. Single-agent execution is the fallback for trivial work or unavailable/disabled graph execution.
 
 Every retry has explicit attempt/time/token/risk limits. Graphs have explicit dependencies, inputs/outputs and mutation boundaries. Never run an unrestricted autonomous loop.
+
+## Durable recovery
+For multi-batch or multi-session work, persist checkpoints using `portable.session_state.SessionStore`: `session_id | task_id | project_key | stage | completed_batches | remaining_batches | active_provider | attempt | last_error | state_digest`. Validate the checkpoint before resuming and continue from the first incomplete batch. Retry transient failures within the bounded policy rather than reconstructing progress from chat history.
 
 ## Verification
 Verification outranks model confidence. Use the smallest sufficient ladder:
