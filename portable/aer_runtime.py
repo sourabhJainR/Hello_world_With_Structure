@@ -2,9 +2,9 @@
 """Build, verify, install and update isolated AER distributions.
 
 AER is machine-scoped. Project repositories are workspaces only and are never
-used as an installation location. Installed versions are pinned by semantic
-version, exact source commit and bundle hash, so updates are auditable and
-rollbacks are deterministic.
+used as an installation location. Installed builds are immutable and pinned by
+semantic version, exact source commit and bundle hash, so updates are auditable
+and rollbacks are deterministic.
 """
 from __future__ import annotations
 
@@ -314,23 +314,33 @@ def _install_skill(source: Path, destination: Path) -> None:
         shutil.rmtree(destination)
     shutil.copytree(source, destination)
 
+def _version_install_root(root: Path, version: str, bundle_hash: str) -> Path:
+    """Return an immutable build-specific installation directory.
+
+    Semantic version alone is not a unique build identity. CI can legitimately
+    produce multiple builds with version 20.1.1 while the source commit or
+    bundle contents differ. Keying the directory by the verified bundle hash
+    keeps every build immutable and lets ``current`` switch between builds.
+    """
+    return root / "versions" / f"v{version}-{bundle_hash[:12]}"
+
 def install(bundle: Path, install_skill: str = "agents", aer_home: Path | None = None) -> Path:
     native_bundle, temp_root = _native_bundle(bundle)
     try:
         manifest = _verify_native_bundle(native_bundle)
         root = home_aer(aer_home)
         version = str(manifest["version"])
-        version_root = root / "versions" / f"v{version}"
+        bundle_hash = sha256_file(native_bundle)
+        version_root = _version_install_root(root, version, bundle_hash)
         temp = Path(tempfile.mkdtemp(prefix="aer-install-"))
         try:
             with zipfile.ZipFile(native_bundle) as archive:
                 safe_extract(archive, temp)
             existing = version_root / "install.json"
-            bundle_hash = sha256_file(native_bundle)
             if existing.is_file():
                 prior = json.loads(existing.read_text(encoding="utf-8"))
                 if prior.get("source_commit") != manifest["source_commit"] or prior.get("bundle_sha256") != bundle_hash:
-                    raise SystemExit(f"version {version} is already pinned to a different build; refusing overwrite")
+                    raise SystemExit(f"build directory {version_root.name} is already pinned to different content; refusing overwrite")
             elif version_root.exists():
                 raise SystemExit(f"version directory exists without a pin: {version_root}")
             _copy_payload(temp / PAYLOAD_ROOT, version_root)
@@ -342,6 +352,7 @@ def install(bundle: Path, install_skill: str = "agents", aer_home: Path | None =
                 "source_ref": manifest.get("source_ref"),
                 "source_commit": manifest.get("source_commit"),
                 "bundle_sha256": bundle_hash,
+                "install_root": version_root.name,
                 "installed_at": datetime.now(timezone.utc).isoformat(),
                 "repository_isolated": True,
             }
@@ -352,6 +363,7 @@ def install(bundle: Path, install_skill: str = "agents", aer_home: Path | None =
                 handle.write(json.dumps({"event": "activate", **record}) + "\n")
             _sync_skills(temp / PAYLOAD_ROOT / "skills" / "ai-coding-orchestrator", install_skill)
             print(f"Installed and pinned AER {version} ({manifest['source_commit'][:12]})")
+            print(f"Build: {version_root.name}")
             print(f"Active installation: {root / 'current'}")
             print("Repository isolation: ON")
             return root / "current"
@@ -448,7 +460,10 @@ def rollback(aer_home: Path | None = None) -> Path:
             break
     if target is None:
         raise SystemExit("no previous immutable AER version is available")
-    version_root = root / "versions" / f"v{target.get('version')}"
+    install_root = str(target.get("install_root") or f"v{target.get('version')}")
+    if Path(install_root).name != install_root or install_root in {".", ".."}:
+        raise SystemExit("rollback target contains an unsafe installation path")
+    version_root = root / "versions" / install_root
     if not (version_root / "install.json").is_file() or not (version_root / LAUNCHER_PATH).is_file():
         raise SystemExit(f"rollback target is incomplete: {version_root}")
     _set_current(root, version_root)

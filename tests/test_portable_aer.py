@@ -53,7 +53,6 @@ class PortableAerTests(unittest.TestCase):
             artifact = Path(tmp) / "artifact-download.zip"
             build(root, bundle, source_commit="artifact-commit")
 
-            # GitHub Actions upload-artifact wraps uploaded files in another ZIP.
             with zipfile.ZipFile(artifact, "w", zipfile.ZIP_DEFLATED) as wrapper:
                 wrapper.write(bundle, "aer-portable.zip")
 
@@ -147,18 +146,34 @@ class PortableAerTests(unittest.TestCase):
             self.assertTrue(record["repository_isolated"])
             self.assertTrue((aer_home / "current" / "aer_cli.py").is_file())
 
-    def test_install_rejects_same_version_with_different_commit(self) -> None:
+    def test_install_allows_same_version_different_builds_and_keeps_both_immutable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "source"
             aer_home = Path(tmp) / "aer-home"
-            self.make_source(root)
+            self.make_source(root, "20.1.1")
             first = Path(tmp) / "first.zip"
             second = Path(tmp) / "second.zip"
             build(root, first, source_commit="commit-a")
             install(first, "none", aer_home)
+            first_record = json.loads((aer_home / "current" / "install.json").read_text(encoding="utf-8"))
+            first_root = first_record["install_root"]
+
+            # Same semantic version, different build identity.
+            (root / ".ai-harness" / "runtime" / "engine.py").write_text("print('changed')\n", encoding="utf-8")
             build(root, second, source_commit="commit-b")
-            with self.assertRaises(SystemExit):
-                install(second, "none", aer_home)
+            install(second, "none", aer_home)
+            second_record = json.loads((aer_home / "current" / "install.json").read_text(encoding="utf-8"))
+            second_root = second_record["install_root"]
+
+            self.assertEqual(second_record["version"], "20.1.1")
+            self.assertEqual(second_record["source_commit"], "commit-b")
+            self.assertNotEqual(first_root, second_root)
+            self.assertTrue((aer_home / "versions" / first_root / "install.json").is_file())
+            self.assertTrue((aer_home / "versions" / second_root / "install.json").is_file())
+            self.assertEqual(
+                json.loads((aer_home / "versions" / first_root / "install.json").read_text(encoding="utf-8"))["source_commit"],
+                "commit-a",
+            )
 
     def test_rollback_selects_previous_immutable_version(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
