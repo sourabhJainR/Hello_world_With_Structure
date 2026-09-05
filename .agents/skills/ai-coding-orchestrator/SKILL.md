@@ -20,8 +20,6 @@ Do **not** preload methodology, policies, frameworks, history, capability catalo
 
 The Context Broker selects just-in-time evidence under a hard budget. Prefer exact files/symbols/tests and structural evidence. Release raw context after use; retain digests, decisions, constraints and proof-bearing evidence. Optional context packs and extensions are loaded only when justified.
 
-Additional methodology is split into `.agents/skills/ai-coding-orchestrator/context/`. Start with `context/INDEX.md`; load only the pack required by the current phase. Never load all packs at startup.
-
 ## Repository-first
 Before editing, discover repository/team instructions, git state, structure, dependencies and tests. Reuse local architecture, naming, configuration, telemetry and test patterns. Make the minimal safe change. Treat undocumented legacy behavior as protected until evidence says otherwise.
 
@@ -29,7 +27,9 @@ Before editing, discover repository/team instructions, git state, structure, dep
 Lifecycle:
 `Understand -> Profile -> Specify -> Retrieve -> Route -> Plan -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair -> Learn -> Stop`.
 
-Use `Agent -> bounded Loop -> Graph -> Orchestration` only as complexity requires. Every retry has explicit attempt/time/token/risk limits. Graphs have explicit dependencies, inputs/outputs and mutation boundaries. Parallelize only independent read-only work.
+For non-trivial work, use the graph agent team whenever supported: `Planner -> Explorer/Researcher/RCA -> Builder -> Verifier -> Parallel Reviewers -> Synthesizer`. Every agent receives task-scoped shared memory keyed by the current `intent_digest` and publishes useful evidence, findings, decisions and risks back to it. Independent read-only roles may run in parallel; mutating roles are serialized. Single-agent execution is the fallback for trivial work or unavailable/disabled graph execution.
+
+Every retry has explicit attempt/time/token/risk limits. Graphs have explicit dependencies, inputs/outputs and mutation boundaries. Never run an unrestricted autonomous loop.
 
 ## Verification
 Verification outranks model confidence. Use the smallest sufficient ladder:
@@ -70,6 +70,4 @@ Precedence:
 
 ## Completion
 Report:
-`Outcome | Changed files | Evidence | Verification | Regression | Review | Capabilities | Framework | Assumptions | Risks | Incomplete checks | Efficiency`.
-
-For benchmark work, load `context/benchmarking.md`. It defines independent task oracles, fingerprints, mutation testing, hidden acceptance, AST/static invariants, deterministic failure injection, exact recovery ordering, Context Broker telemetry and separate observability scoring.
+`Outcome | Changed files | Evidence | Verification | Regression | Review | Capabilities | Graph/team execution | Framework | Assumptions | Risks | Incomplete checks | Efficiency`.
