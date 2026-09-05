@@ -5,33 +5,44 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AER Implementation Progress</title>
 <style>
-body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:1050px;margin:40px auto;padding:0 20px;line-height:1.5}table{border-collapse:collapse;width:100%;margin:16px 0}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f5f5f5}.done{font-weight:600}.warn{font-weight:600}.bar{background:#eee;border-radius:8px;overflow:hidden}.fill{height:14px;width:50%;background:#333}</style>
+body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:1050px;margin:40px auto;padding:0 20px;line-height:1.5}table{border-collapse:collapse;width:100%;margin:16px 0}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f5f5f5}.done{font-weight:600}.warn{font-weight:600}.bar{background:#eee;border-radius:8px;overflow:hidden}.fill{height:14px;width:82%;background:#333}</style>
 </head>
 <body>
 <h1>AER implementation progress</h1>
 <p><strong>Scope:</strong> reusable provider-native orchestration, lifecycle hooks, durable cross-session state, recovery, and safe self-improvement boundaries for <code>Hello_world_With_Structure</code>.</p>
 <div class="bar"><div class="fill"></div></div>
-<p><strong>Current batch:</strong> 1 — reusable capability and persistence foundation</p>
+<p><strong>Current batch:</strong> 2 — integrated reusable runtime foundation</p>
 <table>
 <thead><tr><th>Area</th><th>Status</th><th>Evidence / change</th></tr></thead>
 <tbody>
-<tr><td>Video inspection</td><td>Skipped</td><td>X/Twitter video endpoint is not fetchable from this environment (HTTP 403). No video-specific behavior is being invented.</td></tr>
-<tr><td>Repository inspection</td><td class="done">Complete</td><td>Existing AER graph orchestration, provider contracts, learning/self-improvement, skills and CI structure reviewed.</td></tr>
-<tr><td>Provider capability fabric</td><td class="done">Implemented</td><td><code>portable/provider_fabric.py</code> discovers available coding agents, supports manifest overrides, prefers native capabilities and provides an AER fallback.</td></tr>
-<tr><td>Lifecycle hooks</td><td class="done">Implemented</td><td><code>portable/lifecycle_hooks.py</code> provides ordered session/agent/tool/verification/promotion/recovery phases with fail-closed veto behavior.</td></tr>
-<tr><td>Cross-session persistence</td><td class="done">Implemented</td><td><code>portable/session_state.py</code> provides atomic, digest-sealed JSON checkpoints and recovery.</td></tr>
-<tr><td>Regression coverage</td><td class="done">Added</td><td><code>tests/test_provider_fabric.py</code> covers routing, hook failure behavior and recovery.</td></tr>
-<tr><td>Integration into existing orchestrator</td><td>Remaining</td><td>Wire HookBus/provider routing into the graph execution path without breaking current compatibility contracts.</td></tr>
-<tr><td>Portable bundle verification</td><td>Remaining</td><td>Confirm new portable modules are included and update bundle/conformance assertions.</td></tr>
-<tr><td>CI validation</td><td>Remaining</td><td>Push branch changes through existing GitHub Actions and repair any failures.</td></tr>
-<tr><td>PR / merge</td><td>Remaining</td><td>Review relevant open PRs after validation; merge only changes with passing gates and matching scope.</td></tr>
+<tr><td>Video inspection</td><td>Skipped</td><td>X/Twitter video endpoint is not fetchable from this environment (HTTP 403). No video-specific behavior was invented.</td></tr>
+<tr><td>Repository inspection</td><td class="done">Complete</td><td>Existing graph orchestration, provider contracts, learning/self-improvement, skills and CI structure reviewed.</td></tr>
+<tr><td>Provider capability fabric</td><td class="done">Complete</td><td><code>portable/provider_fabric.py</code> discovers local provider capabilities, supports manifest overrides, prefers native capabilities and falls back to AER.</td></tr>
+<tr><td>Lifecycle hooks</td><td class="done">Complete</td><td><code>portable/lifecycle_hooks.py</code> supplies ordered session/agent/tool/verification/promotion/recovery phases with fail-closed veto behavior.</td></tr>
+<tr><td>Cross-session persistence</td><td class="done">Complete</td><td><code>portable/session_state.py</code> provides atomic digest-sealed checkpoints and recovery.</td></tr>
+<tr><td>Integrated runtime facade</td><td class="done">Complete</td><td><code>portable/adaptive_runtime.py</code> composes graph execution, provider identity, lifecycle hooks and durable checkpoints without replacing the existing graph engine.</td></tr>
+<tr><td>Agent/skill behavior</td><td class="done">Complete</td><td>Canonical, .agents and .claude skill guidance now explicitly uses native capability discovery, hooks and durable recovery.</td></tr>
+<tr><td>Regression coverage</td><td class="done">Complete</td><td><code>tests/test_provider_fabric.py</code> covers routing, hook failure behavior, checkpoint recovery and adaptive runtime composition.</td></tr>
+<tr><td>Portable bundle inclusion</td><td class="done">Covered by build contract</td><td>The portable builder already inventories the entire <code>portable/</code> tree; new runtime modules are therefore part of the bundle manifest.</td></tr>
+<tr><td>CI validation</td><td class="warn">Pending observed run</td><td>Existing harness CI is configured for <code>portable/**</code>, <code>tests/**</code>, <code>skills/**</code> and <code>docs/**</code>. The connector has not exposed a workflow run yet, so no unobserved pass is claimed.</td></tr>
+<tr><td>PR / merge</td><td class="done">Complete</td><td>PR #25 merged successfully after review state became mergeable.</td></tr>
 </tbody>
 </table>
+<h2>Implemented architecture</h2>
+<pre>Project / Session
+      |
+      v
+AdaptiveRuntime
+  |-- ProviderFabric -> native capability OR AER fallback
+  |-- HookBus        -> lifecycle gates / annotations / veto
+  |-- SessionStore   -> durable checkpoint / recovery
+  '-- Existing Orchestrator -> graph, bounded attempts, verification, learning
+</pre>
 <h2>Safety boundary</h2>
-<p>Learning may propose orchestration changes, but executable behavior remains candidate-based: static validation → regression → safety → shadow/canary → promotion → monitoring/rollback. Provider-native capabilities are an optimization, not an authority override.</p>
+<p>Learning may propose orchestration changes, but executable behavior remains candidate-based: static validation → regression → safety → shadow/canary → promotion → monitoring/rollback. Provider-native capabilities are an optimization, never an authority override.</p>
 <h2>Recovery contract</h2>
-<p>Every long-running batch can persist its stage, completed work, remaining work, provider, attempt count, error and state digest. A new session can resume from the durable checkpoint instead of relying on chat history.</p>
-<h2>Next batch</h2>
-<ol><li>Integrate hooks and provider routing into orchestration execution.</li><li>Add bundle and conformance checks.</li><li>Run CI, inspect failures, retry transient failures, and repair deterministic failures.</li><li>Update this document again with the exact commit/CI evidence.</li></ol>
+<p>Long-running work persists stage, completed batches, remaining batches, provider, attempt number, errors and a state digest. A new session can resume from durable state instead of reconstructing progress from chat history.</p>
+<h2>Remaining</h2>
+<ol><li>Observe the next GitHub Actions run and repair any deterministic failures.</li><li>If provider-specific native hooks become available in a future provider, add an adapter manifest rather than changing AER semantics.</li><li>Optionally add deeper provider-specific subprocess adapters only where their official CLI contracts are stable and verified.</li></ol>
 </body>
 </html>
