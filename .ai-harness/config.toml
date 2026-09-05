@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-orchestrator"
-version = 20
+version = 21
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -203,10 +203,13 @@ never_parallel_edit_same_file = true
 use_worktrees_for_mutating_agents = true
 
 [learning]
-min_observations_for_promotion = 3
-min_success_rate_for_promotion = 0.75
+min_observations_for_promotion = 5
+min_success_rate_for_promotion = 0.80
+min_lower_bound_for_candidate = 0.70
+min_improvement_over_incumbent = 0.03
 stale_after_days = 120
 max_memory_items = 250
+experience_store = ".ai-harness/learning/experience.db"
 record_route_metrics = true
 record_verification_metrics = true
 record_token_metrics_when_available = true
@@ -218,86 +221,11 @@ record_failed_commands = true
 record_failed_approaches = true
 record_unresolved_bugs = true
 record_feature_misses = true
-feed_history_into_context = true
-require_repeated_evidence_before_trust = true
-policy_file = ".ai-harness/LEARNING_POLICY.md"
-
-default_principles = ["DRY", "YAGNI", "KISS", "DI", "SOLID", "separation-of-concerns", "high-cohesion-low-coupling", "composition-over-inheritance", "least-knowledge", "fail-fast", "single-source-of-truth", "least-surprise", "illegal-states-hard-to-represent", "compatibility-by-default", "behavior-focused-testing", "security-by-default", "failure-awareness", "observability", "reversibility", "least-privilege", "locality-of-change", "evidence-over-assumption", "token-economy"]
-
-[architecture]
-policy_file = ".ai-harness/ARCHITECTURE_POLICY.md"
-placement_required_for_new_files = true
-
-[provider_contract]
-policy_file = ".ai-harness/PROVIDER_CONTRACT.md"
-
-[quality]
-policy_file = ".ai-harness/QUALITY_GOVERNANCE.md"
-
-[workflow]
-default = "adaptive"
-
-[workflows.adaptive]
-phases = ["route", "context", "execute", "validate", "review", "learn"]
-
-[workflows.research]
-phases = ["route", "context", "research", "learn"]
-
-[workflows.poc]
-phases = ["route", "context", "research", "poc", "validate", "learn"]
-
-[workflows.grill]
-phases = ["route", "context", "grill", "learn"]
-
-[workflows.review]
-phases = ["route", "context", "review", "learn"]
-
-[workflows.debug]
-phases = ["route", "context", "debug", "execute", "validate", "review", "learn"]
-
-[workflows.rca]
-phases = ["route", "context", "rca", "review", "learn"]
-
-[providers.claude]
-command = ["{python}", ".ai-harness/safe_provider.py", "--prompt-file", "{prompt_file}", "--", "claude", "-p"]
-working_directory = "{workspace}"
-
-[providers.codex]
-command = ["{python}", ".ai-harness/safe_provider.py", "--prompt-file", "{prompt_file}", "--", "codex", "exec"]
-working_directory = "{workspace}"
-
-[providers.gemini]
-command = ["{python}", ".ai-harness/safe_provider.py", "--prompt-file", "{prompt_file}", "--", "gemini", "-p"]
-working_directory = "{workspace}"
-
-[validation]
-commands = []
-auto_discover = true
-
-[evals]
-enabled = true
-cases_file = ".ai-harness/evals/cases.jsonl"
-require_promotion_evidence = true
-
-[development_hardening]
-review_cycles = 500
-execution_enabled = false
-purpose = "maintainer-only repository improvement"
-policy_file = ".ai-harness/DEVELOPMENT_HARDENING.md"
-
-[collaborative_development]
-enabled = true
-policy_file = ".ai-harness/COLLABORATIVE_SELF_SUSTAINED_DEVELOPMENT.md"
-minimal_interruption = true
-parallel_read_only_specialists = true
-mutating_agents_isolated = true
-bounded_autonomous_repair = true
-human_escalation_only_for = ["ambiguous-product-intent", "destructive", "production-external-side-effect", "security-policy-change", "permission-change", "incompatible-toolchain-upgrade", "missing-access", "insufficient-evidence"]
-
-[compatibility]
-enabled = true
-module = ".ai-harness/runtime/legacy_compatibility.py"
-preserve_declared_versions = true
-upgrade_requires_explicit_task = true
-unknown_version_marker = "UNRESOLVED VERSION"
-apply_to_legacy_projects = true
+auto_shadow = true
+auto_canary = true
+canary_exposures = [0.05, 0.10, 0.25, 0.50, 1.0]
+canary_min_cases_per_stage = 3
+canary_min_pass_rate = 1.0
+canary_min_verification_rate = 1.0
+rollback_acceptance_drop = 0.10
+rollback_regression_increase = 0.05
