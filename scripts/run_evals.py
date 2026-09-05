@@ -14,6 +14,8 @@ HARNESS = ROOT / ".ai-harness"
 CASES = HARNESS / "evals" / "cases.jsonl"
 ARTIFACT_CONTRACT = HARNESS / "ARTIFACT_UPGRADE_CONTRACT.json"
 PROVIDER_HARNESS = ROOT / "scripts" / "provider_conformance.py"
+BEHAVIORAL_HARNESS = ROOT / "scripts" / "behavioral_conformance.py"
+BEHAVIORAL_TASKS = HARNESS / "conformance" / "tasks.jsonl"
 SKILLS = [
     ROOT / "skills/ai-coding-orchestrator/SKILL.md",
     ROOT / ".agents/skills/ai-coding-orchestrator/SKILL.md",
@@ -92,6 +94,26 @@ def policy_checks() -> list[str]:
                     failures.append("provider conformance harness is not release-ready")
             except json.JSONDecodeError:
                 failures.append("provider conformance harness did not emit valid JSON")
+
+    if not BEHAVIORAL_HARNESS.exists():
+        failures.append(f"missing behavioral conformance harness: {BEHAVIORAL_HARNESS}")
+    if not BEHAVIORAL_TASKS.exists():
+        failures.append(f"missing behavioral task corpus: {BEHAVIORAL_TASKS}")
+    else:
+        try:
+            tasks = [json.loads(line) for line in BEHAVIORAL_TASKS.read_text(encoding="utf-8").splitlines() if line.strip()]
+            if len(tasks) != 10:
+                failures.append(f"behavioral conformance corpus must contain exactly 10 tasks; found {len(tasks)}")
+            ids = [task.get("id") for task in tasks]
+            if len(ids) != len(set(ids)):
+                failures.append("behavioral conformance corpus contains duplicate task ids")
+            required_fields = {"id", "name", "task", "mode", "required_capabilities", "acceptance"}
+            for task in tasks:
+                missing = sorted(required_fields - set(task))
+                if missing:
+                    failures.append(f"behavioral task {task.get('id', '<unknown>')} missing fields: {missing}")
+        except json.JSONDecodeError as exc:
+            failures.append(f"invalid behavioral task corpus: {exc}")
     return failures
 
 
