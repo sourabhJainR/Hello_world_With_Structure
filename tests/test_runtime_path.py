@@ -63,7 +63,7 @@ class RuntimePathTests(unittest.TestCase):
             self.assertEqual(shadow.pass_rate, 1.0)
             canary = evaluate_canary(candidate, cases, runner)
             self.assertTrue(canary.gate_passed)
-            promoted = controller.promote(candidate, replay_result, canary_report=canary, version=2, now=2)
+            promoted = controller.promote(candidate, replay_result, shadow_report=shadow, canary_report=canary, version=2, now=2)
             self.assertIsNotNone(promoted)
             self.assertEqual(controller.active_strategy("bug"), "targeted_context")
             self.assertTrue(controller.monitor(PolicyHealth(candidate.policy_id, .95, .80, .02, .09), now=3))
