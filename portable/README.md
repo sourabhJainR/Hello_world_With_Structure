@@ -4,7 +4,7 @@ AER is a **machine-scoped, repository-isolated, version-pinned engineering contr
 
 ## Distribution unit
 
-The bundle contains the current provider-neutral AER runtime and canonical Agent Skill, including routing, bounded context, context cache, learning, policy registry, rollback controls, regression corpus, shadow/canary evaluation, verification, capability planning, and optional-extension contracts.
+The bundle contains the current provider-neutral AER runtime and canonical Agent Skill, including routing, bounded context, context cache, learning, policy registry, rollback controls, regression corpus, shadow/canary evaluation, verification, capability planning, provider-native capability discovery, lifecycle hooks, and optional-extension contracts.
 
 Mutable machine/session state is excluded from the bundle: execution journals, telemetry, learned task logs, worktrees, caches, and Python caches.
 
@@ -17,6 +17,40 @@ python aer_cli.py install aer-portable.zip
 AER is installed under `~/.aer/versions/v<version>/` and selected through `~/.aer/current`. The exact semantic version, source Git commit, bundle SHA-256 and installation time are recorded in `install.json` and `active.json`.
 
 The Agent Skill is installed only in user-level locations. The installer accepts no target-repository path.
+
+## Provider-native capabilities
+
+AER now discovers capabilities exposed by local coding-agent providers and prefers a native capability when evidence is available. If no provider exposes the requested capability, AER uses its own provider-neutral fallback.
+
+```python
+from portable.provider_fabric import CapabilityRequest, ProviderFabric
+
+fabric = ProviderFabric()
+decision = fabric.route(CapabilityRequest("subagent", ("claude", "codex", "gemini")))
+print(decision)
+```
+
+Provider manifests may be stored under `~/.aer/providers/<provider>.json` to advertise capabilities that cannot be inferred from a CLI binary. Discovery is advisory; security, verification and promotion policy remain authoritative.
+
+Supported capability names include `agent`, `subagent`, `hooks`, `session_resume`, `structured_output`, `tool_interception`, `mcp`, and `background_execution`.
+
+## Lifecycle hooks
+
+Provider-native hooks can map into the same AER lifecycle contract, while AER can execute the contract itself when a provider has no hook system.
+
+```text
+session_start -> plan_start -> before_agent -> before_tool -> after_tool
+             -> after_agent -> before_verify -> after_verify
+             -> before_promotion -> after_promotion -> session_end
+```
+
+Hooks can annotate or veto work. Hook failures are fail-closed. Hooks cannot weaken immutable security or promotion gates.
+
+## Cross-session recovery
+
+Long-running work can persist a digest-sealed checkpoint under `~/.aer/sessions/`. A checkpoint contains the project key, task, current stage, completed and remaining batches, active provider, attempt number and last error.
+
+A new session can therefore resume from durable state instead of relying on conversation history. Recovery increments the attempt counter and records the new stage atomically.
 
 ## Self-update
 
@@ -98,9 +132,11 @@ install new version pin
       |
 switch user-level current pointer
       |
+discover native capabilities + hooks
+      |
 observe -> learn -> regression -> shadow -> canary -> promote -> monitor
       |
-    rollback
+    rollback / recover from checkpoint
 ```
 
 Learned behavior remains advisory and safety/security controls remain authoritative.
