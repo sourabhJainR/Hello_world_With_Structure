@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -12,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 HARNESS = ROOT / ".ai-harness"
 CASES = HARNESS / "evals" / "cases.jsonl"
 ARTIFACT_CONTRACT = HARNESS / "ARTIFACT_UPGRADE_CONTRACT.json"
+PROVIDER_HARNESS = ROOT / "scripts" / "provider_conformance.py"
 SKILLS = [
     ROOT / "skills/ai-coding-orchestrator/SKILL.md",
     ROOT / ".agents/skills/ai-coding-orchestrator/SKILL.md",
@@ -20,11 +22,7 @@ SKILLS = [
 
 
 def load_cases() -> list[dict]:
-    cases = []
-    for line in CASES.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            cases.append(json.loads(line))
-    return cases
+    return [json.loads(line) for line in CASES.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def load_heuristic_route(task: str) -> dict:
@@ -35,14 +33,7 @@ def load_heuristic_route(task: str) -> dict:
 
 def policy_checks() -> list[str]:
     failures: list[str] = []
-    shared = (
-        "Engineering State Ledger",
-        "repository-aware",
-        "minimal safe change",
-        "regression",
-        "evidence",
-        "optional",
-    )
+    shared = ("Engineering State Ledger", "repository-aware", "minimal safe change", "regression", "evidence", "optional")
     for path in SKILLS:
         if not path.exists():
             failures.append(f"missing skill: {path}")
@@ -70,18 +61,11 @@ def policy_checks() -> list[str]:
             failures.append(f"invalid artifact upgrade contract: {exc}")
         else:
             expected = {
-                "contract_version": 1,
-                "artifact_type": "aer-portable",
-                "upgrade_mode": "side-by-side",
-                "state_policy": "preserve",
-                "activation": "atomic",
-                "rollback": "required",
-                "downgrade": "forbidden",
-                "same_version_different_hash": "new_build",
-                "compatible_previous_artifacts": "supported",
-                "migration": "versioned",
-                "verification": "required",
-                "behavior_activation": "validated_then_active",
+                "contract_version": 1, "artifact_type": "aer-portable", "upgrade_mode": "side-by-side",
+                "state_policy": "preserve", "activation": "atomic", "rollback": "required",
+                "downgrade": "forbidden", "same_version_different_hash": "new_build",
+                "compatible_previous_artifacts": "supported", "migration": "versioned",
+                "verification": "required", "behavior_activation": "validated_then_active",
             }
             for key, value in expected.items():
                 if contract.get(key) != value:
@@ -91,6 +75,23 @@ def policy_checks() -> list[str]:
     marketplace = ROOT / ".claude-plugin/marketplace.json"
     if not plugin.exists() or not marketplace.exists():
         failures.append("plugin or marketplace manifest missing")
+
+    if not PROVIDER_HARNESS.exists():
+        failures.append(f"missing provider conformance harness: {PROVIDER_HARNESS}")
+    else:
+        completed = subprocess.run(
+            [sys.executable, str(PROVIDER_HARNESS), "--json"],
+            cwd=ROOT, text=True, capture_output=True, check=False,
+        )
+        if completed.returncode != 0:
+            failures.append("provider conformance harness failed static contract checks")
+        else:
+            try:
+                report = json.loads(completed.stdout)
+                if not report.get("release_ready"):
+                    failures.append("provider conformance harness is not release-ready")
+            except json.JSONDecodeError:
+                failures.append("provider conformance harness did not emit valid JSON")
     return failures
 
 
@@ -115,19 +116,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run deterministic AI Coding Orchestrator evals")
     parser.add_argument("--json", action="store_true", help="emit machine-readable output")
     args = parser.parse_args()
-
     results = []
     for case in load_cases():
         passed, problems = evaluate_case(case)
         results.append({"id": case["id"], "passed": passed, "problems": problems})
-
     policy_failures = policy_checks()
     passed = sum(item["passed"] for item in results)
     total = len(results)
     report = {
-        "cases": total,
-        "passed": passed,
-        "failed": total - passed,
+        "cases": total, "passed": passed, "failed": total - passed,
         "accuracy": round(passed / total, 4) if total else 0.0,
         "policy_failures": policy_failures,
         "release_ready": passed == total and not policy_failures,
