@@ -15,6 +15,8 @@ CASES = HARNESS / "evals" / "cases.jsonl"
 ARTIFACT_CONTRACT = HARNESS / "ARTIFACT_UPGRADE_CONTRACT.json"
 PROVIDER_HARNESS = ROOT / "scripts" / "provider_conformance.py"
 BEHAVIORAL_HARNESS = ROOT / "scripts" / "behavioral_conformance.py"
+GROUND_TRUTH_HARNESS = ROOT / "scripts" / "behavioral_conformance_ground_truth.py"
+ORACLE_MODULE = ROOT / "scripts" / "conformance_oracles.py"
 BEHAVIORAL_TASKS = HARNESS / "conformance" / "tasks.jsonl"
 SKILLS = [
     ROOT / "skills/ai-coding-orchestrator/SKILL.md",
@@ -81,10 +83,7 @@ def policy_checks() -> list[str]:
     if not PROVIDER_HARNESS.exists():
         failures.append(f"missing provider conformance harness: {PROVIDER_HARNESS}")
     else:
-        completed = subprocess.run(
-            [sys.executable, str(PROVIDER_HARNESS), "--json"],
-            cwd=ROOT, text=True, capture_output=True, check=False,
-        )
+        completed = subprocess.run([sys.executable, str(PROVIDER_HARNESS), "--json"], cwd=ROOT, text=True, capture_output=True, check=False)
         if completed.returncode != 0:
             failures.append("provider conformance harness failed static contract checks")
         else:
@@ -95,8 +94,12 @@ def policy_checks() -> list[str]:
             except json.JSONDecodeError:
                 failures.append("provider conformance harness did not emit valid JSON")
 
-    if not BEHAVIORAL_HARNESS.exists():
-        failures.append(f"missing behavioral conformance harness: {BEHAVIORAL_HARNESS}")
+    for path, label in ((BEHAVIORAL_HARNESS, "behavioral conformance harness"), (GROUND_TRUTH_HARNESS, "ground-truth behavioral harness"), (ORACLE_MODULE, "behavioral oracle module")):
+        if not path.exists(): failures.append(f"missing {label}: {path}")
+        else:
+            check = subprocess.run([sys.executable, "-m", "py_compile", str(path)], cwd=ROOT, capture_output=True, check=False)
+            if check.returncode != 0: failures.append(f"{label} does not compile")
+
     if not BEHAVIORAL_TASKS.exists():
         failures.append(f"missing behavioral task corpus: {BEHAVIORAL_TASKS}")
     else:
@@ -110,8 +113,7 @@ def policy_checks() -> list[str]:
             required_fields = {"id", "name", "task", "mode", "required_capabilities", "acceptance"}
             for task in tasks:
                 missing = sorted(required_fields - set(task))
-                if missing:
-                    failures.append(f"behavioral task {task.get('id', '<unknown>')} missing fields: {missing}")
+                if missing: failures.append(f"behavioral task {task.get('id', '<unknown>')} missing fields: {missing}")
         except json.JSONDecodeError as exc:
             failures.append(f"invalid behavioral task corpus: {exc}")
     return failures
@@ -120,17 +122,11 @@ def policy_checks() -> list[str]:
 def evaluate_case(case: dict) -> tuple[bool, list[str]]:
     route = load_heuristic_route(case["prompt"])
     problems: list[str] = []
-    if route["mode"] != case["expected_mode"]:
-        problems.append(f"mode expected={case['expected_mode']} actual={route['mode']}")
-    selected = set(route.get("capabilities", []))
-    required = set(case.get("required_capabilities", case.get("capabilities", [])))
-    forbidden = set(case.get("forbidden_capabilities", []))
-    missing = required - selected
-    extra = selected & forbidden
-    if missing:
-        problems.append(f"missing capabilities={sorted(missing)}")
-    if extra:
-        problems.append(f"forbidden capabilities={sorted(extra)}")
+    if route["mode"] != case["expected_mode"]: problems.append(f"mode expected={case['expected_mode']} actual={route['mode']}")
+    selected = set(route.get("capabilities", [])); required = set(case.get("required_capabilities", case.get("capabilities", []))); forbidden = set(case.get("forbidden_capabilities", []))
+    missing = required - selected; extra = selected & forbidden
+    if missing: problems.append(f"missing capabilities={sorted(missing)}")
+    if extra: problems.append(f"forbidden capabilities={sorted(extra)}")
     return not problems, problems
 
 
@@ -140,33 +136,16 @@ def main() -> int:
     args = parser.parse_args()
     results = []
     for case in load_cases():
-        passed, problems = evaluate_case(case)
-        results.append({"id": case["id"], "passed": passed, "problems": problems})
-    policy_failures = policy_checks()
-    passed = sum(item["passed"] for item in results)
-    total = len(results)
-    report = {
-        "cases": total, "passed": passed, "failed": total - passed,
-        "accuracy": round(passed / total, 4) if total else 0.0,
-        "policy_failures": policy_failures,
-        "release_ready": passed == total and not policy_failures,
-        "results": results,
-    }
-    if args.json:
-        print(json.dumps(report, indent=2))
+        passed, problems = evaluate_case(case); results.append({"id": case["id"], "passed": passed, "problems": problems})
+    policy_failures = policy_checks(); passed = sum(item["passed"] for item in results); total = len(results)
+    report = {"cases": total, "passed": passed, "failed": total - passed, "accuracy": round(passed / total, 4) if total else 0.0, "policy_failures": policy_failures, "release_ready": passed == total and not policy_failures, "results": results}
+    if args.json: print(json.dumps(report, indent=2))
     else:
         print(f"Routing evals: {passed}/{total} passed ({report['accuracy']:.1%})")
-        for item in results:
-            status = "PASS" if item["passed"] else "FAIL"
-            suffix = f": {'; '.join(item['problems'])}" if item["problems"] else ""
-            print(f"{status} {item['id']}{suffix}")
+        for item in results: print(f"{'PASS' if item['passed'] else 'FAIL'} {item['id']}" + (f": {'; '.join(item['problems'])}" if item['problems'] else ""))
         if policy_failures:
-            print("Policy failures:")
-            for failure in policy_failures:
-                print(f"- {failure}")
+            print("Policy failures:"); [print(f"- {failure}") for failure in policy_failures]
         print("RELEASE READY" if report["release_ready"] else "NOT RELEASE READY")
     return 0 if report["release_ready"] else 1
 
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+if __name__ == "__main__": raise SystemExit(main())
