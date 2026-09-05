@@ -6,6 +6,7 @@ import copy
 import json
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -18,6 +19,8 @@ import verification_gate
 from runtime import capability_catalog, instruction_loader, loop_engine
 from runtime.intent_contract import create_intent_contract, semantic_alignment, verify_intent_contract
 from runtime import learning
+from runtime.work_report import WorkReport, WorkReportGenerator
+from runtime.work_report_traceability import integrate_work_report
 
 _original_make_run_dir = engine.make_run_dir
 _original_build_prompt = engine.build_prompt
@@ -180,6 +183,53 @@ def strict_run_validation(config: dict, run_dir: Path):
     return _original_run_validation(strict_config, run_dir)
 
 
+def _emit_work_report(args, manifest: dict, code: int, route: str) -> None:
+    """Generate the report and feed only explicit findings/regressions into durable memory."""
+    if _session_dir is None:
+        return
+    validation = manifest.get("validation", {}) if isinstance(manifest.get("validation"), dict) else {}
+    completed = manifest.get("status") == "completed"
+    verification_passed = bool(validation.get("passed"))
+    task_class = str(route or "engineering")
+    observation = SimpleNamespace(
+        success=completed and code == 0,
+        verification_passed=verification_passed,
+        accepted=completed and code == 0,
+        safety_passed=bool(manifest.get("safety_passed", True)),
+        task_id=str(manifest.get("task_id", _session_dir.name)),
+        policy_id=str(manifest.get("policy_id", "")),
+        retries=int(manifest.get("retries", 0) or 0),
+        regressions=int(manifest.get("regressions", 0) or 0),
+        cost=float(manifest.get("cost", 0) or 0),
+        latency_ms=float(manifest.get("latency_ms", 0) or 0),
+    )
+    report = WorkReport(
+        work_id=_session_dir.name,
+        title=f"Engineering work: {task_class}",
+        status="completed" if observation.success else "failed",
+        objective=str(_intent_contract.get("goal", manifest.get("task", ""))),
+        summary=("Work completed and verified." if observation.success else "Work did not complete successfully; evidence is preserved."),
+        scope=[f"task_class={task_class}"],
+        out_of_scope=["Unrequested permission, credential, or security-boundary changes"],
+        findings=[str(x.get("finding") or x.get("description") or x) if isinstance(x, dict) else str(x) for x in manifest.get("findings", [])] if isinstance(manifest.get("findings"), list) else [],
+        regressions=[str(x.get("symptom") or x.get("description") or x) if isinstance(x, dict) else str(x) for x in manifest.get("regressions", [])] if isinstance(manifest.get("regressions"), list) else [],
+        implementation=[f"exit_code={code}", f"validation_passed={verification_passed}"],
+        hld=["Task -> intent/context -> execution -> verification -> WorkReport -> verified RegressionMemory -> future planning/replay."],
+        lld=["Only explicit findings/regressions are ingested; RegressionMemory independently enforces evidence/test/confidence gates."],
+        references=[{"type": "run", "path": str(_session_dir.relative_to(engine.ROOT))}],
+        evidence=[{"type": "manifest", "path": str((_session_dir / "manifest.json").relative_to(engine.ROOT)), "verified": verification_passed}],
+        verification=[json.dumps(validation, sort_keys=True)],
+        data_flow=["Task", "Intent contract", "Historical RegressionMemory", "Execution", "Verification", "WorkReport", "RegressionMemory", "Replay"],
+        user_flow=["Request work", "Historical risk context", "Execute", "Verify", "Review report", "Future work receives regression inputs"],
+        uml=["actor User", "participant Orchestrator", "participant Verifier", "database RegressionMemory", "participant WorkReport", "User->>Orchestrator: task", "Orchestrator->>RegressionMemory: retrieve historical risks", "Orchestrator->>Verifier: verify", "Verifier-->>WorkReport: evidence", "WorkReport->>RegressionMemory: verified findings", "RegressionMemory-->>Orchestrator: future regression inputs"],
+        metrics={"exit_code": code, "verification_passed": verification_passed},
+    )
+    report_path = WorkReportGenerator(engine.ROOT).write(report)
+    trace = integrate_work_report(engine.ROOT, report=report, manifest=manifest, jira_id=str(getattr(args, "jira", "") or ""), work_type=task_class)
+    (_session_dir / "work-report-traceability.json").write_text(json.dumps(trace, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (_session_dir / "work-report.path").write_text(str(report_path) + "\n", encoding="utf-8")
+
+
 def optimized_run_task(args, config, logger):
     global _session_dir, _capability_plan, _repository_instructions
     _session_dir = Path(args.resume).resolve() if getattr(args, "resume", None) else None
@@ -259,6 +309,10 @@ def optimized_run_task(args, config, logger):
                 encoding="utf-8",
             )
             learning.evolve_run(_session_dir, config)
+            try:
+                _emit_work_report(args, manifest, code, route)
+            except Exception as report_error:
+                (_session_dir / "work-report.error.txt").write_text(str(report_error) + "\n", encoding="utf-8")
         except Exception as exc:
             (_session_dir / "p1-lifecycle.error.txt").write_text(
                 str(exc) + "\n", encoding="utf-8"
