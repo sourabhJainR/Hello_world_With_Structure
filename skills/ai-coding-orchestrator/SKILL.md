@@ -1,11 +1,11 @@
 ---
 name: ai-coding-orchestrator
-description: Repository-aware AI engineering control plane for precise task execution, evidence-based RCA, graph orchestration, bounded agent loops, verification, collaboration and bounded learning.
+description: Repository-aware AI engineering control plane for precise task execution, evidence-based RCA, graph orchestration, bounded agent loops, gated self-modification, verification, collaboration and learning.
 ---
 
 # Adaptive AI Coding Orchestrator
 
-Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Execute -> Observe -> Evaluate -> Graph join -> Verify -> Review -> Repair if justified -> Learn -> Stop`.
+Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Execute -> Observe -> Evaluate -> Graph join -> Verify -> Review -> Repair if justified -> Learn -> Self-modify -> Regression -> Safety -> Shadow -> Canary -> Promote -> Monitor -> Rollback -> Stop`.
 
 Normal mode is one bounded adaptive run. Never create an unrestricted autonomous loop. Repetition must have an explicit budget, measurable acceptance criteria and an evaluation gate.
 
@@ -74,9 +74,34 @@ The orchestrator must:
 9. Join graph branches only after required branch gates pass.
 10. Verify acceptance, regression paths and final changes before completion.
 11. Record outcome, open risks and unresolved checks in the state ledger.
-12. Emit a learning candidate from evidence rather than silently changing policy or executable behavior.
+12. Emit a learning candidate from evidence.
+13. If the candidate changes executable orchestration, compile and validate it as isolated candidate code.
+14. Run regression evaluation before safety evaluation; either failure blocks promotion.
+15. Automatically promote a candidate only when both gates pass, then support shadow/canary, monitoring and rollback.
 
 Evaluation is a first-class control point, not a final report. A failed evaluator blocks dependent graph nodes unless an explicit recovery path permits progress.
+
+## Gated self-modification
+
+AER may silently generate executable orchestration candidates from accumulated evidence. "Silently" means no human confirmation is required for candidate generation or gate evaluation; it does **not** mean bypassing controls.
+
+Self-modification follows:
+
+`Observed outcome -> Learning Candidate -> Executable Candidate -> Compile/Graph validation -> Regression Replay -> Safety Evaluation -> Shadow -> Canary -> Promote -> Monitor -> Rollback`
+
+The `SelfModificationEngine` stores candidate metadata and executable source outside the immutable AER version. A candidate must:
+
+- carry a stable candidate ID, parent digest and source digest;
+- compile successfully;
+- expose the narrow orchestration activation contract (`build_graph()` returning a valid `Graph`);
+- pass deterministic regression replay and safety gates;
+- be activated atomically only after both gates pass;
+- retain the previous active orchestration for rollback;
+- write an append-only promotion journal.
+
+A regression failure means **do not promote**. A safety failure means **do not promote**. The candidate remains evidence for future learning. There is no automatic bypass path.
+
+Self-modification can change executable routing, node composition, retry strategy and orchestration topology, but it cannot grant new permissions merely because a learned candidate requests them. Security, credential, sandbox, protected-behavior and permission boundaries remain outside the learned executable surface and are enforced by their own gates.
 
 ## Capability planning and collaboration
 
@@ -125,6 +150,8 @@ For non-trivial work maintain:
 
 For graph execution also retain node status and gate evidence: `READY | RUNNING | PASSED | FAILED | BLOCKED | SKIPPED`.
 
+For self-modification retain `CANDIDATE_ID | PARENT_DIGEST | SOURCE_DIGEST | REGRESSION | SAFETY | PROMOTION | ACTIVE_VERSION | ROLLBACK_TARGET`.
+
 Material decisions reference evidence. Verification identifies proof. Outcome records accepted/rejected/partial results, review/production feedback, regressions and metrics. Replay must preserve the original `intent_digest` and relevant evidence references.
 
 ## Regression replay
@@ -136,7 +163,7 @@ A regression is a durable learning signal. When a change, repair or learned stra
 3. Replay the case against the candidate behavior.
 4. Compare expected acceptance, safety and compatibility outcomes.
 5. Reject candidates that introduce known regressions or weaken protected behavior.
-6. Only then allow shadow evaluation and, where applicable, canary evaluation.
+6. Only then allow safety evaluation and shadow/canary evaluation.
 
 Replay should be deterministic where the underlying test permits it. Nondeterministic tests must expose their uncertainty rather than being treated as clean passes.
 
@@ -144,17 +171,23 @@ Replay should be deterministic where the underlying test permits it. Nondetermin
 
 Record evidence-backed outcomes, evaluator findings, retries, regressions and DO/DON'T lessons. Promote patterns only after repeated evidence and evaluation.
 
-Learning is proposal-based:
+Learning now has two outputs:
 
-`Outcome -> Learning Candidate -> Policy Proposal -> Regression Replay -> Shadow -> Canary -> Promote -> Monitor -> Rollback`
+`Outcome -> Advice Candidate`
 
-Learned advice may improve retrieval, routing and recommendations but never silently rewrites executable behavior, permissions, security policy or immutable safety controls. Skill, policy and orchestration changes remain proposals requiring evaluation and review.
+and, when evidence supports a behavioral change:
+
+`Outcome -> Executable Orchestration Candidate -> Regression -> Safety -> Shadow -> Canary -> Promote -> Monitor -> Rollback`
+
+The learning engine is allowed to generate executable candidates without waiting for human approval. Activation is automatic only after the required gates pass. This is the intended self-improvement loop.
+
+Learned executable behavior may improve retrieval, routing, node selection, retry strategy, graph topology and orchestration decisions. It must not silently expand credentials, permissions or protected security boundaries.
 
 ## Recovery, rollback and safety
 
 Failures are classified before recovery. Use targeted repair for actionable failures; do not restart the entire graph unless the failure invalidates its contract or required evidence.
 
-Every promoted behavioral change must remain reversible. Rollback returns AER to the last known-good pinned behavior without modifying the target repository. Security, permission and protected-behavior gates cannot be bypassed by learned strategies or retries.
+Every promoted behavioral change must remain reversible. Rollback returns AER to the last known-good orchestration behavior without modifying the target repository. Security, permission and protected-behavior gates cannot be bypassed by learned strategies or retries.
 
 ## Optional extensions
 
@@ -166,6 +199,6 @@ Precedence: `Repository/team rules > security/permissions > acceptance > local a
 
 ## Completion
 
-Report: `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Graph/loop summary | Extensions | Assumptions | Risks | Incomplete checks | Efficiency`.
+Report: `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Graph/loop summary | Self-modification candidate/promotion | Extensions | Assumptions | Risks | Incomplete checks | Efficiency`.
 
 Policies: `ORCHESTRATION_SPEC.md`, `TEN_LOOP_POLICY.md`, `CONTEXT_POLICY.md`, `ARCHITECTURE_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`, `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `QUALITY_GOVERNANCE.md`.
