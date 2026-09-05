@@ -18,10 +18,26 @@ A graph does not replace the local agent loop. Agentic nodes may contain their o
 ## State machine
 
 ```text
-INTAKE -> PROFILE -> ROUTE -> PLAN -> EXECUTE -> VERIFY -> REVIEW -> REPAIR (0..N) -> ACCEPT -> LEARN
+INTAKE -> PROFILE -> ROUTE -> PROBLEM-SOLVING -> PLAN -> EXECUTE -> VERIFY -> REVIEW -> REPAIR (0..N) -> ACCEPT -> LEARN
 ```
 
 A task may branch to RESEARCH, POC, GRILL, DEBUG, or ISOLATE before EXECUTE when risk or uncertainty requires it.
+
+## Problem-solving routing
+
+Every non-trivial task passes through adaptive problem-solving selection before mutation or substantive execution. The router classifies work by problem type, uncertainty, risk and time pressure, then selects the smallest useful set from:
+
+- OODA Loop: adaptive, time-sensitive work and changing evidence
+- DMAIC: measurable existing-process improvement
+- 5 Whys / Root Cause Analysis: failures, defects and recurring symptoms
+- Pre-Mortem: consequential changes and proactive risk discovery
+- First Principles: assumptions, POCs and architecture redesign
+- Six Thinking Hats: multi-perspective decisions and collaboration
+- Decision Tree: uncertain choices, tradeoffs and reversibility
+
+The selection is recorded as evidence. A framework can be marked `not needed` with a reason; no artificial analysis is required. Frameworks organize reasoning and do not override repository rules, security controls, acceptance criteria, tests or human approvals.
+
+Detailed routing and evidence requirements live in `.ai-harness/PROBLEM_SOLVING_FRAMEWORKS.md`.
 
 ## Graph contract
 
@@ -41,6 +57,8 @@ Independent read-only branches may run in parallel. Mutating nodes touching the 
 ## Evidence contract
 
 Every phase/node must produce a timestamp, status, input context identifier, output artifact, tool/provider result when applicable, and next-state decision. A model assertion is never sufficient evidence for VERIFY or ACCEPT.
+
+For non-trivial work, the evidence projection also records the selected problem-solving framework(s), purpose, key findings, decision and next action. For RCA, retain symptom, causal chain, root-cause confidence, containment and corrective action. For consequential decisions, retain premortem failures, mitigations, options, tradeoffs and rollback trigger.
 
 Evidence is append-only and content-addressed. Replay consumes evidence projections; replay does not silently re-execute provider actions.
 
@@ -87,7 +105,8 @@ Escalate policy, product-intent, irreversible-production, security-authorization
 - memory cannot modify permissions or security policy;
 - accepted runs retain enough evidence for independent replay and review;
 - every stop has an explicit reason;
-- budgets prevent unbounded autonomous execution.
+- budgets prevent unbounded autonomous execution;
+- non-trivial work has an explicit problem-solving selection and rationale.
 
 ## Reference implementation
 
