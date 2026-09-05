@@ -1,9 +1,13 @@
 from pathlib import Path
 import importlib.util
+import sys
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+RUNTIME = ROOT / ".ai-harness" / "runtime"
+sys.path.insert(0, str(RUNTIME))
+
 
 def load(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
@@ -35,7 +39,6 @@ class WorkReportTraceabilityTests(unittest.TestCase):
             )
             self.assertEqual(len(trace["new_verified_regression_ids"]), 1)
             self.assertTrue(trace["new_verified_regression_ids"][0])
-            self.assertTrue(trace["historical_regression_ids"] == [] or trace["historical_regression_ids"])
             html = report_path.read_text(encoding="utf-8")
             self.assertIn("Learning and regression traceability", html)
             self.assertTrue((root / ".ai-harness/reports/traceability/bug-a.json").is_file())
