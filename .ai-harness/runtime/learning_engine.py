@@ -6,61 +6,31 @@ from hashlib import sha256
 import json
 import math
 from typing import Iterable, Sequence
-from experience_store import Experience
+try:
+    from .experience_store import Experience
+except ImportError:
+    from experience_store import Experience
 
 VERSION = "2.0"
 
 @dataclass(frozen=True, slots=True)
 class Observation:
-    task_id: str
-    task_class: str
-    strategy: str
-    success: bool
-    accepted: bool
-    verification_passed: bool
-    retries: int = 0
-    regressions: int = 0
-    cost: float = 0.0
-    latency_ms: float = 0.0
-    safety_passed: bool = True
-    evidence_score: float = 1.0
-    environment_fingerprint: str = ""
-    policy_id: str = ""
-    transfer_key: str = ""
-    failure_class: str = ""
-    timestamp: int = 0
+    task_id: str; task_class: str; strategy: str; success: bool; accepted: bool; verification_passed: bool
+    retries: int = 0; regressions: int = 0; cost: float = 0.0; latency_ms: float = 0.0
+    safety_passed: bool = True; evidence_score: float = 1.0; environment_fingerprint: str = ""
+    policy_id: str = ""; transfer_key: str = ""; failure_class: str = ""; timestamp: int = 0
 
 @dataclass(frozen=True, slots=True)
 class CandidateScore:
-    policy_id: str
-    task_class: str
-    strategy: str
-    score: float
-    lower_bound: float
-    quality: float
-    sample_count: int
-    regression_rate: float
-    retry_rate: float
-    efficiency: float
-    improvement_over_incumbent: float
-    eligible: bool
-    reasons: tuple[str, ...]
+    policy_id: str; task_class: str; strategy: str; score: float; lower_bound: float; quality: float
+    sample_count: int; regression_rate: float; retry_rate: float; efficiency: float
+    improvement_over_incumbent: float; eligible: bool; reasons: tuple[str, ...]
 
 @dataclass(frozen=True, slots=True)
 class PolicyCandidate:
-    policy_id: str
-    task_class: str
-    strategy: str
-    reason: str
-    evidence: tuple[str, ...]
-    confidence: float
-    risk: str = "medium"
-    score: float = 0.0
-    lower_bound: float = 0.0
-    sample_count: int = 0
-    incumbent_policy_id: str = ""
-    improvement: float = 0.0
-    evidence_hash: str = ""
+    policy_id: str; task_class: str; strategy: str; reason: str; evidence: tuple[str, ...]; confidence: float
+    risk: str = "medium"; score: float = 0.0; lower_bound: float = 0.0; sample_count: int = 0
+    incumbent_policy_id: str = ""; improvement: float = 0.0; evidence_hash: str = ""
 
 def _id(payload: object) -> str:
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -85,7 +55,7 @@ def _efficiency(rows: Sequence[Observation]) -> float:
 
 def _coerce(row: Observation | Experience) -> Observation:
     if isinstance(row, Observation): return row
-    return Observation(task_id=row.task_id, task_class=row.task_class, strategy=row.strategy, success=row.success, accepted=row.accepted, verification_passed=row.verification_passed, retries=row.retries, regressions=row.regressions, cost=row.cost, latency_ms=row.latency_ms, safety_passed=row.safety_passed, evidence_score=row.evidence_score, environment_fingerprint=row.environment_fingerprint, policy_id=row.policy_id, transfer_key=row.transfer_key, failure_class=row.failure_class, timestamp=row.timestamp)
+    return Observation(row.task_id, row.task_class, row.strategy, row.success, row.accepted, row.verification_passed, row.retries, row.regressions, row.cost, row.latency_ms, row.safety_passed, row.evidence_score, row.environment_fingerprint, row.policy_id, row.transfer_key, row.failure_class, row.timestamp)
 
 def score_candidates(observations: Iterable[Observation | Experience], *, task_class: str | None = None, incumbent: tuple[str, str, float] | None = None, min_samples: int = 5, min_lower_bound: float = 0.70, min_improvement: float = 0.03) -> list[CandidateScore]:
     rows = [_coerce(x) for x in observations]
@@ -95,7 +65,7 @@ def score_candidates(observations: Iterable[Observation | Experience], *, task_c
     incumbent_score = incumbent[2] if incumbent else 0.0; result: list[CandidateScore] = []
     for (family, strategy), group in groups.items():
         quality = _quality(group); successes = sum(r.success and r.accepted and r.verification_passed and r.regressions == 0 and r.safety_passed for r in group); lower = _wilson_lower(successes, len(group)); regression_rate = sum(r.regressions > 0 for r in group) / len(group); retry_rate = sum(r.retries > 0 for r in group) / len(group); efficiency = _efficiency(group)
-        score = 0.45 * quality + 0.25 * lower + 0.15 * efficiency + 0.10 * (1.0 - regression_rate) + 0.05 * (1.0 - retry_rate); improvement = score - incumbent_score; reasons: list[str] = []
+        score = 0.55 * quality + 0.20 * lower + 0.15 * efficiency + 0.07 * (1.0 - regression_rate) + 0.03 * (1.0 - retry_rate); improvement = score - incumbent_score; reasons: list[str] = []
         if len(group) < min_samples: reasons.append(f"needs {min_samples - len(group)} more samples")
         if lower < min_lower_bound: reasons.append("confidence lower bound below gate")
         if improvement < min_improvement: reasons.append("improvement below gate")
@@ -104,7 +74,6 @@ def score_candidates(observations: Iterable[Observation | Experience], *, task_c
     return sorted(result, key=lambda x: (x.eligible, x.score, x.lower_bound, x.sample_count, x.policy_id), reverse=True)
 
 def learn(observations: Iterable[Observation | Experience], min_samples: int = 3, *, incumbent: tuple[str, str, float] | None = None, min_lower_bound: float = 0.0, min_improvement: float = 0.03) -> list[PolicyCandidate]:
-    """Create candidates from complete history; min_samples remains backward compatible."""
     rows = [_coerce(x) for x in observations]; scored = score_candidates(rows, incumbent=incumbent, min_samples=min_samples, min_lower_bound=min_lower_bound, min_improvement=min_improvement); candidates: list[PolicyCandidate] = []
     for item in scored:
         if not item.eligible: continue
