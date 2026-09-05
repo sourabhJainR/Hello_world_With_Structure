@@ -19,11 +19,25 @@ _original_make_run_dir = _legacy._original_make_run_dir
 _original_build_prompt = _legacy._original_build_prompt
 _original_run_task = _legacy._original_run_task
 _original_run_validation = _legacy._original_run_validation
-_session_dir = _legacy._session_dir
+_session_dir = None
 _knowledge = _legacy._knowledge
 _intent_contract = _legacy._intent_contract
 _capability_plan = _legacy._capability_plan
 _repository_instructions = _legacy._repository_instructions
+
+
+def session_make_run_dir() -> Path:
+    """Compatibility wrapper with state owned by this import surface.
+
+    Older integrations patch ``run.py._original_make_run_dir`` directly.
+    Keep that contract independent from run_legacy's module globals so tests
+    and embedding applications cannot accidentally share session state.
+    """
+    global _session_dir
+    if _session_dir is None:
+        _session_dir = _original_make_run_dir()
+    return _session_dir
+
 
 # Install graph orchestration only after engine has completed initialization.
 # runtime.__init__ deliberately has no import-time side effects.
