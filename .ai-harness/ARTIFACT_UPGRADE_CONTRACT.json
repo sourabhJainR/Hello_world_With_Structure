@@ -1,0 +1,14 @@
+{
+  "contract_version": 1,
+  "artifact_type": "aer-portable",
+  "upgrade_mode": "side-by-side",
+  "state_policy": "preserve",
+  "activation": "atomic",
+  "rollback": "required",
+  "downgrade": "forbidden",
+  "same_version_different_hash": "new_build",
+  "compatible_previous_artifacts": "supported",
+  "migration": "versioned",
+  "verification": "required",
+  "behavior_activation": "validated_then_active"
+}
