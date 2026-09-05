@@ -1,6 +1,17 @@
+import tempfile
 import unittest
+from pathlib import Path
 
-from portable.orchestration import Graph, Node, NodeKind, NodeStatus, Orchestrator, RunStatus
+from portable.orchestration import (
+    Graph,
+    Node,
+    NodeKind,
+    NodeStatus,
+    Orchestrator,
+    PromotionStatus,
+    RunStatus,
+    SelfModificationEngine,
+)
 
 
 class OrchestrationTests(unittest.TestCase):
@@ -43,7 +54,7 @@ class OrchestrationTests(unittest.TestCase):
         self.assertGreaterEqual(result.repair_count, 1)
         self.assertGreaterEqual(len(result.evidence), 3)
 
-    def test_self_improvement_is_proposal_only(self):
+    def test_self_improvement_is_candidate_based(self):
         graph = Graph([
             Node("agent", NodeKind.AGENT, lambda _: "ok", evaluator=lambda _: True)
         ])
@@ -63,6 +74,40 @@ class OrchestrationTests(unittest.TestCase):
         second = orchestrator.replay_json(run)
         self.assertEqual(first, second)
         self.assertEqual(before, len(calls))
+
+    def test_self_modification_requires_both_gates_before_activation(self):
+        source = '''\nfrom portable.orchestration import Graph, Node, NodeKind\n\ndef build_graph():\n    return Graph([Node("learned", NodeKind.DETERMINISTIC, lambda _: "new")])\n'''
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = SelfModificationEngine(Path(tmp))
+            candidate = engine.propose(source, "parent-digest", "learned better routing")
+            rejected = engine.evaluate_and_promote(candidate, regression_gate=lambda _: True, safety_gate=lambda _: False)
+            self.assertEqual(rejected.status, PromotionStatus.SAFETY_FAILED)
+            self.assertFalse((Path(tmp) / "active.py").exists())
+
+            promoted = engine.evaluate_and_promote(candidate, regression_gate=lambda _: True, safety_gate=lambda _: True)
+            self.assertEqual(promoted.status, PromotionStatus.PROMOTED)
+            self.assertTrue((Path(tmp) / "active.py").exists())
+
+    def test_self_modification_regression_failure_cannot_activate(self):
+        source = '''\nfrom portable.orchestration import Graph, Node, NodeKind\n\ndef build_graph():\n    return Graph([Node("candidate", NodeKind.DETERMINISTIC, lambda _: "candidate")])\n'''
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = SelfModificationEngine(Path(tmp))
+            candidate = engine.propose(source, "parent-digest", "candidate")
+            result = engine.evaluate_and_promote(candidate, regression_gate=lambda _: False, safety_gate=lambda _: True)
+            self.assertEqual(result.status, PromotionStatus.REGRESSION_FAILED)
+            self.assertFalse((Path(tmp) / "active.py").exists())
+
+    def test_self_modification_rolls_back_previous_active_behavior(self):
+        first = '''\nfrom portable.orchestration import Graph, Node, NodeKind\n\ndef build_graph():\n    return Graph([Node("first", NodeKind.DETERMINISTIC, lambda _: "first")])\n'''
+        second = '''\nfrom portable.orchestration import Graph, Node, NodeKind\n\ndef build_graph():\n    return Graph([Node("second", NodeKind.DETERMINISTIC, lambda _: "second")])\n'''
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = SelfModificationEngine(Path(tmp))
+            a = engine.propose(first, "root", "first")
+            engine.evaluate_and_promote(a, regression_gate=lambda _: True, safety_gate=lambda _: True)
+            b = engine.propose(second, a.source_digest, "second")
+            engine.evaluate_and_promote(b, regression_gate=lambda _: True, safety_gate=lambda _: True)
+            engine.rollback()
+            self.assertIn('"first"', (Path(tmp) / "active.py").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
