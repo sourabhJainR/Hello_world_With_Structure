@@ -84,7 +84,7 @@ Promoted behavior is versioned, content-addressed and reversible. Retain parent/
 
 Treat the repository as structured evidence. Prefer rules/acceptance, AST/symbol/dependency structure, impact paths, exact search, configured semantic retrieval, targeted reads and verification output. Keep stable context small, rank evidence, compact history by information value, preserve proof-bearing state, reuse summaries and avoid transcript replay. Optimize verified outcome per token, call, retry and latency.
 
-## State ledger
+## Engineering State Ledger
 
 For non-trivial work maintain:
 `INTENT | CONTRACT | REPO_FACTS | DECISIONS | EVIDENCE | CHANGESET | VERIFY | OUTCOME | OPEN_RISKS | NEXT`.
