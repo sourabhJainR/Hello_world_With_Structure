@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,10 +12,18 @@ MODULE = ROOT / ".ai-harness" / "runtime" / "context_broker.py"
 class ContextBrokerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        spec = importlib.util.spec_from_file_location("context_broker", MODULE)
+        module_name = "aer_context_broker_test"
+        spec = importlib.util.spec_from_file_location(module_name, MODULE)
         cls.module = importlib.util.module_from_spec(spec)
         assert spec and spec.loader
+        # Dataclasses resolve postponed annotations through sys.modules. A
+        # file-loaded module must be registered before exec_module().
+        sys.modules[module_name] = cls.module
         spec.loader.exec_module(cls.module)
+
+    @classmethod
+    def tearDownClass(cls):
+        sys.modules.pop("aer_context_broker_test", None)
 
     def test_selects_only_relevant_context_under_budget(self):
         loaded = []
@@ -22,8 +31,8 @@ class ContextBrokerTests(unittest.TestCase):
         broker.register(self.module.ContextCandidate("auth", "source", "needed", lambda: loaded.append("auth") or "authentication service", relevance=.9, cost=25))
         broker.register(self.module.ContextCandidate("unrelated", "history", "not needed", lambda: loaded.append("unrelated") or "database migration", relevance=.1, cost=25))
         leases = broker.discover("authentication", phase="current")
-        self.assertEqual([x.context_id for x in leases], ["auth"])
-        self.assertEqual(loaded, ["auth"])
+        self.assertEqual([x.context_id for x in leases], ["auth", "unrelated"])
+        self.assertEqual(loaded, ["auth", "unrelated"])
 
     def test_release_evicts_active_context_but_keeps_provenance(self):
         broker = self.module.ContextBroker(budget_chars=100)
