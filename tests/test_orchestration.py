@@ -33,6 +33,8 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(run.status, RunStatus.ACCEPTED)
         self.assertEqual(seen, ["build", "verify"])
         self.assertTrue(run.intent_digest)
+        self.assertTrue(run.environment_fingerprint)
+        self.assertTrue(run.trajectory)
 
     def test_agent_loop_requires_evidence_and_bounds_retries(self):
         attempts = []
@@ -53,6 +55,10 @@ class OrchestrationTests(unittest.TestCase):
         self.assertEqual(result.attempts, 3)
         self.assertGreaterEqual(result.repair_count, 1)
         self.assertGreaterEqual(len(result.evidence), 3)
+        signal = Orchestrator.learning_signal(run)
+        self.assertEqual(signal.attempt_count, 3)
+        self.assertGreater(signal.trajectory_digest, "")
+        self.assertGreater(signal.transfer_key, "")
 
     def test_self_improvement_is_candidate_based(self):
         graph = Graph([
@@ -74,6 +80,8 @@ class OrchestrationTests(unittest.TestCase):
         second = orchestrator.replay_json(run)
         self.assertEqual(first, second)
         self.assertEqual(before, len(calls))
+        self.assertIn("trajectory", first)
+        self.assertIn("graph_digest", first)
 
     def test_self_modification_requires_both_gates_before_activation(self):
         source = '''\nfrom portable.orchestration import Graph, Node, NodeKind\n\ndef build_graph():\n    return Graph([Node("learned", NodeKind.DETERMINISTIC, lambda _: "new")])\n'''
@@ -96,6 +104,21 @@ class OrchestrationTests(unittest.TestCase):
             result = engine.evaluate_and_promote(candidate, regression_gate=lambda _: False, safety_gate=lambda _: True)
             self.assertEqual(result.status, PromotionStatus.REGRESSION_FAILED)
             self.assertFalse((Path(tmp) / "active.py").exists())
+
+    def test_candidate_validation_does_not_execute_generated_code(self):
+        source = '''\nfrom portable.orchestration import Graph, Node, NodeKind\nopen("SHOULD_NOT_EXIST", "w").write("executed")\n\ndef build_graph():\n    return Graph([Node("candidate", NodeKind.DETERMINISTIC, lambda _: "candidate")])\n'''
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = SelfModificationEngine(Path(tmp))
+            with self.assertRaises(ValueError):
+                engine.propose(source, "parent-digest", "unsafe candidate")
+            self.assertFalse((Path(tmp) / "SHOULD_NOT_EXIST").exists())
+
+    def test_candidate_validation_rejects_dangerous_imports(self):
+        source = '''\nimport subprocess\nfrom portable.orchestration import Graph, Node, NodeKind\n\ndef build_graph():\n    return Graph([Node("candidate", NodeKind.DETERMINISTIC, lambda _: "candidate")])\n'''
+        with tempfile.TemporaryDirectory() as tmp:
+            engine = SelfModificationEngine(Path(tmp))
+            with self.assertRaises(ValueError):
+                engine.propose(source, "parent-digest", "unsafe import")
 
     def test_self_modification_rolls_back_previous_active_behavior(self):
         first = '''\nfrom portable.orchestration import Graph, Node, NodeKind\n\ndef build_graph():\n    return Graph([Node("first", NodeKind.DETERMINISTIC, lambda _: "first")])\n'''
