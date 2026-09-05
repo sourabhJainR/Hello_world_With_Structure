@@ -1,19 +1,42 @@
 ---
 name: ai-coding-orchestrator
-description: Repository-aware AI engineering control plane for precise task execution, evidence-based RCA, minimal safe changes, verification, collaboration and bounded learning.
+description: Repository-aware AI engineering control plane for precise task execution, evidence-based RCA, minimal safe changes, verification, collaboration and bounded learning across Claude Code, Codex, Gemini and ChatGPT/Codex surfaces.
 ---
 
 # Adaptive AI Coding Orchestrator
 
-Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair if justified -> Learn -> Self-modify -> Regression -> Safety -> Shadow -> Canary -> Promote -> Monitor -> Rollback -> Stop`.
+## Provider-neutral contract
 
-Normal mode is one bounded adaptive run. Never create an unrestricted autonomous loop. Repetition requires an explicit attempt/time/token/risk budget, measurable acceptance criteria and an evaluation gate.
+AER owns intent, routing, context selection, budgets, safety, verification, learning and promotion. The active AI provider supplies inference and native tools; it must not redefine AER semantics.
+
+Provider projection:
+- Claude Code: `CLAUDE.md` + this skill + hooks/MCP when available.
+- Codex: `AGENTS.md` + supported skills/MCP/plugins.
+- Gemini: `GEMINI.md` + hierarchical/JIT context + extensions/MCP/A2A when available.
+- ChatGPT: use the ChatGPT project/app, Codex-in-ChatGPT, or an approved MCP/API execution surface. Never assume ordinary ChatGPT chat is a local shell.
+
+Preserve the same `intent_digest`, boundaries, acceptance criteria, protected behavior, capability plan and verification evidence across providers. Unsupported capabilities are explicitly recorded as unavailable; never inferred.
+
+## Progressive discovery
+
+Keep always-active context small. Do not preload the full AER methodology, every policy, framework, history, capability, repository dump or transcript.
+
+Runtime context follows:
+`DISCOVER -> SCORE -> LEASE -> USE -> COMPRESS -> RELEASE`.
+
+The Context Broker decides what becomes active next. Retrieve only what the current phase, uncertainty, dependency, risk or verification gate justifies. Prefer targeted source reads and structural evidence over large prompt dumps. Release raw context after the decision and retain compact references, decisions, digests and proof-bearing evidence.
+
+## Lifecycle
+
+`Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair if justified -> Learn -> Self-modify -> Regression -> Safety -> Shadow -> Canary -> Promote -> Monitor -> Rollback -> Stop`.
+
+Normal mode is one bounded adaptive run. Never create an unrestricted autonomous loop. Repetition requires explicit attempt/time/token/risk budgets, measurable acceptance criteria and an evaluation gate.
 
 ## Task contract
 
 Create or load:
 `GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS | intent_digest`.
-Carry the intent digest through phases, graph nodes, retries, resumes and handoffs. Challenge ambiguity when it materially affects correctness, safety, architecture, scope or verification; otherwise state assumptions and continue.
+Carry the intent digest through phases, graph nodes, retries, resumes and handoffs.
 
 ## Repository-first engineering
 
@@ -47,6 +70,8 @@ When tests are weak, add characterization, invariant, metamorphic or property-ba
 ## Capability planning and collaboration
 
 Before provider execution, record a deterministic `capability-plan.json`. Select only justified roles: planner, explorer, researcher, builder, verifier, reviewer, security reviewer or RCA investigator.
+
+For provider tools/MCP, negotiate minimum permissions per phase. Read-only investigation precedes mutation when practical. Preserve compact tool observations with provider, phase, permission mode, input/output digests and status.
 
 Meaningful handoffs contain `intent_digest + source + destination + phase + findings + decisions + open risks + next actions`. Validate intent and scope before consuming a handoff.
 
@@ -105,4 +130,4 @@ Precedence: `Repository/team rules > security/permissions > acceptance > local a
 
 Report: `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Graph/loop summary | Learning signal | Self-modification candidate/promotion | Assumptions | Risks | Incomplete checks | Efficiency`.
 
-Policies: `ORCHESTRATION_SPEC.md`, `TEN_LOOP_POLICY.md`, `CONTEXT_POLICY.md`, `ARCHITECTURE_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`, `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `QUALITY_GOVERNANCE.md`.
+Policies: `ORCHESTRATION_SPEC.md`, `TEN_LOOP_POLICY.md`, `CONTEXT_POLICY.md`, `ARCHITECTURE_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`, `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `PROVIDER_MATRIX.json`, `QUALITY_GOVERNANCE.md`.
