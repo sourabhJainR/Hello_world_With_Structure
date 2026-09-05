@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +37,13 @@ def _install_graph_team_bridge() -> None:
             task = str(manifest.get("task", "")).strip()
             intent_digest = str(manifest.get("intent_digest", "")).strip()
             if not intent_digest:
-                intent_digest = engine.Orchestrator.intent_digest(task) if hasattr(engine, "Orchestrator") else ""
+                contract_path = run_dir / "intent-contract.json"
+                if contract_path.exists():
+                    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+                    intent_digest = str(contract.get("intent_digest", "")).strip()
+            if not intent_digest:
+                import hashlib
+                intent_digest = hashlib.sha256(task.encode("utf-8")).hexdigest()
             base_prompt = prompt_file.read_text(encoding="utf-8")
             team = team_for_route(route)
             memory = SharedTaskMemory(run_dir / "graph-team-memory.jsonl", intent_digest)
