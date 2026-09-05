@@ -14,6 +14,11 @@ Always active:
 Task contract:
 `GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS | intent_digest`.
 
+## Provider-native capability routing and hooks
+Discover actual provider capabilities before choosing execution surfaces. Prefer native `subagent`, `hooks`, `session_resume`, `structured_output`, `tool_interception`, `mcp` or `background_execution` only when evidence shows they are available; otherwise use the AER fallback. Native capabilities cannot override AER security, acceptance, verification or promotion rules.
+
+Map provider events to AER lifecycle phases when possible: `session_start | plan_start | before_agent | after_agent | before_tool | after_tool | before_verify | after_verify | before_promotion | after_promotion | session_end | recovery`. Hooks may annotate or veto work and fail closed on handler errors.
+
 ## Progressive discovery
 Do not preload full methodology, every policy, framework, history, capability, repository dump or transcript. Runtime:
 `DISCOVER -> SCORE -> LEASE -> USE -> COMPRESS -> RELEASE`.
@@ -26,9 +31,12 @@ Read repository/team instructions, git state, structure, dependencies and tests 
 ## Bounded execution
 `Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Execute -> Verify -> Review -> Repair if justified -> Learn -> Stop`.
 
-For non-trivial work, prefer the graph agent team: `Planner -> Explorer/Researcher/RCA -> Builder -> Verifier -> Parallel Reviewers -> Synthesizer`. Each agent must receive and update task-scoped shared memory for the current intent digest. Parallelize independent read-only roles only; serialize mutating roles.
+For non-trivial work, prefer the graph agent team and native subagents for independent read-only work when available: `Planner -> Explorer/Researcher/RCA -> Builder -> Verifier -> Parallel Reviewers -> Synthesizer`. Each agent must receive and update task-scoped shared memory for the current intent digest. Parallelize independent read-only roles only; serialize mutating roles.
 
 The single-agent path is a fallback for trivial work, unavailable graph execution, or explicit disablement. Never run an unrestricted autonomous loop.
+
+## Durable recovery
+For multi-batch or multi-session work, persist checkpoints through `portable.session_state.SessionStore` containing `session_id | task_id | project_key | stage | completed_batches | remaining_batches | active_provider | attempt | last_error | state_digest`. Validate before resuming and continue from the first incomplete batch. Retry transient failures within bounded policy rather than rebuilding state from chat history.
 
 ## Verification and recovery
 Verification outranks model confidence. Use the smallest sufficient ladder:
