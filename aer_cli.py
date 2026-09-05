@@ -142,51 +142,66 @@ def _should_activate_claude(args: list[str]) -> bool:
     return skill in {"claude", "all", "auto"} or (skill is None and _claude_available() is not None)
 
 
-def _emit_work_report(args: list[str], result: int, root: Path) -> None:
-    """Create a durable HTML report for every CLI invocation, including failures."""
+def _load_work_report_module(root: Path):
+    """Load WorkReport safely even when aer_cli.py is run as a top-level script."""
     try:
         from .ai_harness.runtime.work_report import WorkReport, WorkReportGenerator
+        return WorkReport, WorkReportGenerator
     except Exception:
         try:
             from ai_harness.runtime.work_report import WorkReport, WorkReportGenerator
+            return WorkReport, WorkReportGenerator
         except Exception:
             runtime_report = root / ".ai-harness" / "runtime" / "work_report.py"
             if not runtime_report.is_file():
-                return
+                return None
             spec = importlib.util.spec_from_file_location("aer_work_report", runtime_report)
             if spec is None or spec.loader is None:
-                return
+                return None
             module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            WorkReport, WorkReportGenerator = module.WorkReport, module.WorkReportGenerator
-    command = args[0] if args else "default"
-    work_id = "cli-" + command + "-" + str(abs(hash(tuple(args))) % 10**10)
-    report = WorkReport(
-        work_id=work_id,
-        title=f"Engineering work: {command}",
-        status="completed" if result == 0 else "failed",
-        objective="Execute the requested orchestrator command with traceable evidence and documented boundaries.",
-        summary=f"Command {'completed successfully' if result == 0 else 'failed'} with exit code {result}.",
-        scope=["CLI command execution", "runtime distribution / orchestration entry point"],
-        out_of_scope=["Changing credentials, permissions, security policy, or approval authority"],
-        assumptions=["The invoked runtime remains the authoritative execution component.", "HTML generation must not change command success/failure semantics."],
-        constraints=["Report generation is best-effort and must never mask the primary command result."],
-        findings=[f"Command: {' '.join(args) if args else '(none)'}", f"Exit code: {result}"],
-        risks=["A failed report write can leave documentation incomplete; command outcome is preserved."],
-        threats=["Report content must not become an authorization mechanism.", "Sensitive credentials and secrets must never be copied into reports."],
-        implementation=["Structured WorkReport is rendered to a self-contained HTML artifact.", "Mermaid source is embedded so diagrams remain inspectable and reproducible."],
-        hld=["CLI -> runtime -> work outcome -> reporting subsystem -> .ai-harness/reports/latest.html"],
-        lld=["Reporter is isolated, deterministic, dependency-free, and best-effort.", "The report records scope, assumptions, boundaries, findings, risks, threats, verification, regression areas, evidence, and diagrams."],
-        references=[{"type":"repository", "path":".ai-harness/runtime/work_report.py"}, {"type":"entry-point", "path":"aer_cli.py"}],
-        evidence=[{"type":"command", "argv":args, "exit_code":result}],
-        verification=["Primary CLI result is returned unchanged after report generation.", "Report generation is exception-isolated."],
-        regressions=["CLI failure behavior", "portable runtime loading", "Claude plugin activation", "report-write failure isolation"],
-        data_flow=["CLI arguments", "Runtime execution", "Exit status", "Structured report model", "HTML artifact"],
-        user_flow=["Submit command", "Runtime executes", "Review result", "Open latest.html", "Inspect evidence and risks"],
-        uml=["actor User", "participant CLI", "participant Runtime", "participant Reporter", "User->>CLI: command", "CLI->>Runtime: execute", "Runtime-->>CLI: result", "CLI->>Reporter: report outcome", "Reporter-->>User: HTML artifact"],
-        metrics={"exit_code": result, "argument_count": len(args)},
-    )
+            sys.modules[spec.name] = module
+            try:
+                spec.loader.exec_module(module)
+            except Exception:
+                sys.modules.pop(spec.name, None)
+                raise
+            return module.WorkReport, module.WorkReportGenerator
+
+
+def _emit_work_report(args: list[str], result: int, root: Path) -> None:
+    """Create a durable HTML report for every CLI invocation, including failures."""
     try:
+        loaded = _load_work_report_module(root)
+        if loaded is None:
+            return
+        WorkReport, WorkReportGenerator = loaded
+        command = args[0] if args else "default"
+        work_id = "cli-" + command + "-" + str(abs(hash(tuple(args))) % 10**10)
+        report = WorkReport(
+            work_id=work_id,
+            title=f"Engineering work: {command}",
+            status="completed" if result == 0 else "failed",
+            objective="Execute the requested orchestrator command with traceable evidence and documented boundaries.",
+            summary=f"Command {'completed successfully' if result == 0 else 'failed'} with exit code {result}.",
+            scope=["CLI command execution", "runtime distribution / orchestration entry point"],
+            out_of_scope=["Changing credentials, permissions, security policy, or approval authority"],
+            assumptions=["The invoked runtime remains the authoritative execution component.", "HTML generation must not change command success/failure semantics."],
+            constraints=["Report generation is best-effort and must never mask the primary command result."],
+            findings=[f"Command: {' '.join(args) if args else '(none)'}", f"Exit code: {result}"],
+            risks=["A failed report write can leave documentation incomplete; command outcome is preserved."],
+            threats=["Report content must not become an authorization mechanism.", "Sensitive credentials and secrets must never be copied into reports."],
+            implementation=["Structured WorkReport is rendered to a self-contained HTML artifact.", "Mermaid source is embedded so diagrams remain inspectable and reproducible."],
+            hld=["CLI -> runtime -> work outcome -> reporting subsystem -> .ai-harness/reports/latest.html"],
+            lld=["Reporter is isolated, deterministic, dependency-free, and best-effort.", "The report records scope, assumptions, boundaries, findings, risks, threats, verification, regression areas, evidence, and diagrams."],
+            references=[{"type":"repository", "path":".ai-harness/runtime/work_report.py"}, {"type":"entry-point", "path":"aer_cli.py"}],
+            evidence=[{"type":"command", "argv":args, "exit_code":result}],
+            verification=["Primary CLI result is returned unchanged after report generation.", "Report generation is exception-isolated."],
+            regressions=["CLI failure behavior", "portable runtime loading", "Claude plugin activation", "report-write failure isolation"],
+            data_flow=["CLI arguments", "Runtime execution", "Exit status", "Structured report model", "HTML artifact"],
+            user_flow=["Submit command", "Runtime executes", "Review result", "Open latest.html", "Inspect evidence and risks"],
+            uml=["actor User", "participant CLI", "participant Runtime", "participant Reporter", "User->>CLI: command", "CLI->>Runtime: execute", "Runtime-->>CLI: result", "CLI->>Reporter: report outcome", "Reporter-->>User: HTML artifact"],
+            metrics={"exit_code": result, "argument_count": len(args)},
+        )
         path = WorkReportGenerator(root).write(report)
         print(f"Engineering HTML report: {path}")
     except Exception as exc:
