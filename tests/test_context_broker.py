@@ -31,8 +31,8 @@ class ContextBrokerTests(unittest.TestCase):
         broker.register(self.module.ContextCandidate("auth", "source", "needed", lambda: loaded.append("auth") or "authentication service", relevance=.9, cost=25))
         broker.register(self.module.ContextCandidate("unrelated", "history", "not needed", lambda: loaded.append("unrelated") or "database migration", relevance=.1, cost=25))
         leases = broker.discover("authentication", phase="current")
-        self.assertEqual([x.context_id for x in leases], ["auth", "unrelated"])
-        self.assertEqual(loaded, ["auth", "unrelated"])
+        self.assertEqual([x.context_id for x in leases], ["auth"])
+        self.assertEqual(loaded, ["auth"])
 
     def test_release_evicts_active_context_but_keeps_provenance(self):
         broker = self.module.ContextBroker(budget_chars=100)
