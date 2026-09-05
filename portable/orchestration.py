@@ -1,17 +1,22 @@
 """Provider-neutral orchestration primitives for AER.
 
-The engine models the progression from an agent loop to a graph of bounded
-agentic and deterministic nodes. It does not call an LLM itself. A provider
-adapter supplies node execution; AER owns topology, budgets, evidence,
-evaluation, repair policy, and promotion boundaries.
+AER models Agent -> bounded Loop -> Graph -> Orchestration and can learn changes
+to its own executable orchestration. Self-modification is candidate-based: a
+candidate is compiled and evaluated in isolation, regression and safety gates
+must both pass, and only then is the executable overlay atomically promoted.
 """
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
+import os
+import py_compile
+import tempfile
 import time
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any, Callable, Mapping
 
 
@@ -38,6 +43,14 @@ class RunStatus(str, Enum):
     ACCEPTED = "accepted"
     FAILED = "failed"
     BLOCKED = "blocked"
+
+
+class PromotionStatus(str, Enum):
+    CANDIDATE = "candidate"
+    REGRESSION_FAILED = "regression_failed"
+    SAFETY_FAILED = "safety_failed"
+    PROMOTED = "promoted"
+    ROLLED_BACK = "rolled_back"
 
 
 @dataclass(frozen=True)
@@ -91,6 +104,157 @@ class OrchestrationRun:
         self.evidence.append(evidence)
 
 
+@dataclass(frozen=True)
+class OrchestrationCandidate:
+    """Executable orchestration proposed by the learning engine.
+
+    ``source`` is treated as untrusted candidate code. It is never imported by
+    the active runtime until both gates pass. The candidate module must expose
+    ``build_graph()`` returning a :class:`Graph`; this keeps the activation
+    contract narrow and makes graph validation part of promotion.
+    """
+
+    candidate_id: str
+    source: str
+    parent_digest: str
+    source_digest: str
+    created_at: float
+    reason: str
+    status: PromotionStatus = PromotionStatus.CANDIDATE
+    regression: bool | None = None
+    safety: bool | None = None
+
+    @classmethod
+    def create(cls, source: str, parent_digest: str, reason: str) -> "OrchestrationCandidate":
+        source_digest = hashlib.sha256(source.encode("utf-8")).hexdigest()
+        candidate_id = hashlib.sha256(f"{parent_digest}:{source_digest}".encode()).hexdigest()[:24]
+        return cls(candidate_id, source, parent_digest, source_digest, time.time(), reason)
+
+
+class SelfModificationEngine:
+    """Turn learning output into executable orchestration only through gates.
+
+    The learning engine may silently create and evaluate candidates. Activation
+    is automatic once both regression and safety gates pass. Candidates are
+    persisted separately from the immutable AER installation, and promotion is
+    atomic so a failed write cannot leave a partially active program.
+    """
+
+    def __init__(self, active_dir: Path | str | None = None) -> None:
+        self.active_dir = Path(active_dir or (Path.home() / ".aer" / "orchestration"))
+        self.active_file = self.active_dir / "active.py"
+        self.previous_file = self.active_dir / "previous.py"
+        self.journal_file = self.active_dir / "promotion.jsonl"
+
+    @staticmethod
+    def _validate_candidate(source: str) -> None:
+        if not source.strip():
+            raise ValueError("self-modification candidate is empty")
+        with tempfile.NamedTemporaryFile("w", suffix=".py", encoding="utf-8", delete=False) as handle:
+            handle.write(source)
+            path = Path(handle.name)
+        try:
+            py_compile.compile(str(path), doraise=True)
+            spec = importlib.util.spec_from_file_location("aer_candidate_validation", path)
+            if spec is None or spec.loader is None:
+                raise ValueError("candidate module cannot be loaded")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            build_graph = getattr(module, "build_graph", None)
+            if not callable(build_graph):
+                raise ValueError("candidate must expose callable build_graph()")
+            graph = build_graph()
+            if not isinstance(graph, Graph):
+                raise ValueError("build_graph() must return Graph")
+        finally:
+            path.unlink(missing_ok=True)
+
+    def propose(self, source: str, parent_digest: str, reason: str) -> OrchestrationCandidate:
+        candidate = OrchestrationCandidate.create(source, parent_digest, reason)
+        self._validate_candidate(candidate.source)
+        self._append({"event": "candidate", **self._record(candidate)})
+        return candidate
+
+    def evaluate_and_promote(
+        self,
+        candidate: OrchestrationCandidate,
+        *,
+        regression_gate: Callable[[OrchestrationCandidate], bool],
+        safety_gate: Callable[[OrchestrationCandidate], bool],
+    ) -> OrchestrationCandidate:
+        """Run gates in order and atomically activate a passing candidate."""
+        if not callable(regression_gate) or not callable(safety_gate):
+            raise ValueError("both regression_gate and safety_gate are required")
+        self._validate_candidate(candidate.source)
+
+        regression_ok = bool(regression_gate(candidate))
+        if not regression_ok:
+            rejected = self._with_status(candidate, PromotionStatus.REGRESSION_FAILED, regression=False)
+            self._append({"event": "reject", **self._record(rejected)})
+            return rejected
+
+        safety_ok = bool(safety_gate(candidate))
+        if not safety_ok:
+            rejected = self._with_status(candidate, PromotionStatus.SAFETY_FAILED, regression=True, safety=False)
+            self._append({"event": "reject", **self._record(rejected)})
+            return rejected
+
+        promoted = self._with_status(candidate, PromotionStatus.PROMOTED, regression=True, safety=True)
+        self._activate(promoted)
+        self._append({"event": "promote", **self._record(promoted)})
+        return promoted
+
+    def rollback(self) -> None:
+        if not self.previous_file.is_file():
+            raise FileNotFoundError("no previous orchestration version is available")
+        self.active_dir.mkdir(parents=True, exist_ok=True)
+        temp = self.active_dir / ".active.rollback.tmp"
+        temp.write_bytes(self.previous_file.read_bytes())
+        os.replace(temp, self.active_file)
+        self._append({"event": "rollback", "timestamp": time.time()})
+
+    def _activate(self, candidate: OrchestrationCandidate) -> None:
+        self.active_dir.mkdir(parents=True, exist_ok=True)
+        if self.active_file.is_file():
+            os.replace(self.active_file, self.previous_file)
+        temp = self.active_dir / ".active.tmp"
+        temp.write_text(candidate.source, encoding="utf-8")
+        self._validate_candidate(temp.read_text(encoding="utf-8"))
+        os.replace(temp, self.active_file)
+
+    def _append(self, value: dict[str, Any]) -> None:
+        self.active_dir.mkdir(parents=True, exist_ok=True)
+        with self.journal_file.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(value, sort_keys=True) + "\n")
+
+    @staticmethod
+    def _record(candidate: OrchestrationCandidate) -> dict[str, Any]:
+        return {
+            "candidate_id": candidate.candidate_id,
+            "parent_digest": candidate.parent_digest,
+            "source_digest": candidate.source_digest,
+            "created_at": candidate.created_at,
+            "reason": candidate.reason,
+            "status": candidate.status.value,
+            "regression": candidate.regression,
+            "safety": candidate.safety,
+        }
+
+    @staticmethod
+    def _with_status(candidate: OrchestrationCandidate, status: PromotionStatus, *, regression: bool | None = None, safety: bool | None = None) -> OrchestrationCandidate:
+        return OrchestrationCandidate(
+            candidate.candidate_id,
+            candidate.source,
+            candidate.parent_digest,
+            candidate.source_digest,
+            candidate.created_at,
+            candidate.reason,
+            status,
+            regression,
+            safety,
+        )
+
+
 class Graph:
     """Small dependency graph with deterministic topological execution order."""
 
@@ -127,9 +291,7 @@ class Graph:
         done: set[str] = set()
         remaining = set(self.nodes)
         while remaining:
-            ready = sorted(
-                name for name in remaining if set(self.nodes[name].depends_on) <= done
-            )
+            ready = sorted(name for name in remaining if set(self.nodes[name].depends_on) <= done)
             if not ready:
                 raise ValueError("graph could not be ordered")
             for name in ready:
@@ -142,13 +304,7 @@ class Graph:
 class Orchestrator:
     """Execute a graph whose agentic nodes contain bounded local loops."""
 
-    def __init__(
-        self,
-        graph: Graph,
-        *,
-        max_total_attempts: int = 32,
-        allow_self_improvement: bool = True,
-    ) -> None:
+    def __init__(self, graph: Graph, *, max_total_attempts: int = 32, allow_self_improvement: bool = True) -> None:
         if max_total_attempts < 1:
             raise ValueError("max_total_attempts must be positive")
         self.graph = graph
@@ -197,13 +353,7 @@ class Orchestrator:
             run.learned_candidates.extend(self._propose_learning(run))
         return run
 
-    def _execute_node(
-        self,
-        node: Node,
-        state: Mapping[str, Any],
-        run: OrchestrationRun,
-        total_attempts: int,
-    ) -> NodeResult:
+    def _execute_node(self, node: Node, state: Mapping[str, Any], run: OrchestrationRun, total_attempts: int) -> NodeResult:
         attempts = 0
         repairs = 0
         evidence: list[Evidence] = []
@@ -223,7 +373,7 @@ class Orchestrator:
                     return NodeResult(node.name, NodeStatus.PASSED, attempts, output, evidence, repair_count=repairs)
                 last_error = "evaluator rejected node output"
                 evidence.append(Evidence("evaluation-failure", last_error, node.name))
-            except Exception as exc:  # provider/tool failures become evidence, not crashes
+            except Exception as exc:
                 last_error = f"{type(exc).__name__}: {exc}"
                 evidence.append(Evidence("execution-error", last_error, node.name))
 
@@ -231,11 +381,8 @@ class Orchestrator:
                 break
             repairs += 1
             try:
-                repaired = node.repair(last_output, state)
-                last_output = repaired
+                last_output = node.repair(last_output, state)
                 evidence.append(Evidence("repair", f"{node.name} produced a repair candidate {repairs}", node.name))
-                # Repair changes state for the next provider invocation without
-                # silently becoming a promoted policy.
             except Exception as exc:
                 last_error = f"repair {type(exc).__name__}: {exc}"
                 evidence.append(Evidence("repair-error", last_error, node.name))
@@ -253,36 +400,19 @@ class Orchestrator:
             "type": "strategy-candidate",
             "task_id": run.task_id,
             "intent_digest": run.intent_digest,
-            "observations": {
-                "repair_count": repairs,
-                "failure_count": failures,
-                "evidence_count": len(run.evidence),
-            },
-            "promotion": "proposal-only",
+            "observations": {"repair_count": repairs, "failure_count": failures, "evidence_count": len(run.evidence)},
+            "promotion": "candidate -> regression -> safety -> active",
             "requires_regression_evaluation": True,
             "requires_safety_evaluation": True,
         }]
 
     def replay(self, run: OrchestrationRun) -> dict[str, Any]:
-        """Return a stable, evidence-only replay projection.
-
-        Replay never executes provider code. It is intentionally safe for
-        regression comparison and can be persisted as a golden run summary.
-        """
         return {
             "task_id": run.task_id,
             "intent_digest": run.intent_digest,
             "status": run.status.value,
             "stop_reason": run.stop_reason,
-            "nodes": {
-                name: {
-                    "status": result.status.value,
-                    "attempts": result.attempts,
-                    "repair_count": result.repair_count,
-                    "evidence": [item.digest for item in result.evidence],
-                }
-                for name, result in run.results.items()
-            },
+            "nodes": {name: {"status": result.status.value, "attempts": result.attempts, "repair_count": result.repair_count, "evidence": [item.digest for item in result.evidence]} for name, result in run.results.items()},
             "evidence": [item.digest for item in run.evidence],
             "learned_candidates": run.learned_candidates,
         }
