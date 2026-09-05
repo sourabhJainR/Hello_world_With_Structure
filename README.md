@@ -1,6 +1,6 @@
 # Adaptive AI Coding Orchestrator
 
-A provider-neutral AI software-engineering control plane for Claude Code and compatible coding agents. **AER (Adaptive Engineering Runtime)** is the engineering control-plane concept behind the orchestrator: it turns a natural-language task, Jira issue, bug, review, research question, or POC into a repository-aware workflow with bounded context, capability routing, verification, review, repair, durable evidence, and evidence-backed learning.
+A provider-neutral AI software-engineering control plane for Claude Code and compatible coding agents. **AER (Adaptive Engineering Runtime)** is the engineering control-plane concept behind the orchestrator: it turns a natural-language task, Jira issue, bug, review, research question, or POC into a repository-aware workflow with bounded context, capability routing, verification, review, repair, durable evidence, graph orchestration, regression replay, and evidence-backed learning.
 
 ## AER CLI naming
 
@@ -81,7 +81,51 @@ The AER skill is exposed as:
 /adaptive-ai-coding-orchestrator:ai-coding-orchestrator
 ```
 
-For normal engineering prompts, the plugin's `UserPromptSubmit` hook injects a small AER control-plane reminder before Claude processes the prompt. The detailed skill is then available for repository-aware engineering work. Claude Code skills can also be invoked directly when needed. citeturn0news0turn0news4
+For normal engineering prompts, the plugin's `UserPromptSubmit` hook injects a small AER control-plane reminder before Claude processes the prompt. The detailed skill is then available for repository-aware engineering work.
+
+## Upgrade existing installations
+
+If AER was installed from an earlier portable artifact, **do not reinstall files manually and do not copy the new orchestration files into repositories**. Update the existing machine-scoped installation:
+
+```bash
+python ~/.aer/current/aer_cli.py check-update --ref main
+python ~/.aer/current/aer_cli.py update --ref main
+python ~/.aer/current/aer_cli.py check-update
+```
+
+The update installs the new pinned AER bundle, including the graph orchestration runtime and updated `ai-coding-orchestrator` skill, then switches the user-level `~/.aer/current` pointer. Existing repositories remain untouched.
+
+After updating Claude Code, reload the plugin:
+
+```text
+/reload-plugins
+```
+
+Then verify:
+
+```text
+/plugin
+```
+
+The updated skill now applies the graph-aware lifecycle:
+
+```text
+Intent / Contract
+      -> Repository evidence
+      -> Capability plan
+      -> Dependency-aware graph
+      -> Agent execution
+      -> Bounded Plan / Act / Observe / Evaluate loop
+      -> Graph gates / joins
+      -> Verification / Review
+      -> Targeted Repair + Re-evaluation
+      -> Regression Replay
+      -> Learning Candidate
+      -> Shadow / Canary
+      -> Promote / Monitor / Rollback
+```
+
+This is a behavior and runtime update to AER; it does not require AER files to be added to the project repository.
 
 ## Using AER after installation
 
@@ -110,15 +154,17 @@ The intended flow is:
 ```text
 User prompt
     -> AER prompt hook
-    -> AER engineering guidance
-    -> repository evidence
-    -> implementation
-    -> verification
-    -> review
-    -> learning/evidence
+    -> Contract + repository evidence
+    -> Capability plan
+    -> Dependency-aware graph
+    -> Agent execution with bounded loops
+    -> Evaluation gates
+    -> Verification + review
+    -> Regression replay
+    -> Learning / evidence
 ```
 
-AER is a control plane around Claude Code, not a second coding model. Claude remains responsible for the interactive agent work; AER provides the engineering discipline, evidence flow, verification, policy, and learning controls.
+AER is a control plane around Claude Code, not a second coding model. Claude remains responsible for the interactive agent work; AER provides the engineering discipline, evidence flow, graph orchestration, verification, policy, and learning controls.
 
 ## Update and rollback
 
@@ -167,7 +213,7 @@ aer-portable.zip
     |   +-- marketplace.json          # local marketplace metadata
     +-- skills/
         +-- ai-coding-orchestrator/
-            +-- SKILL.md
+            +-- SKILL.md              # graph-aware engineering instructions
             +-- hooks/aer_prompt.py   # UserPromptSubmit hook
 ```
 
@@ -220,8 +266,6 @@ INTENT
   -> OPEN_RISKS
   -> NEXT
 ```
-
-This keeps decisions, evidence, changes, verification, and open risks connected.
 
 ## Capability roles
 
@@ -301,7 +345,9 @@ User task / Jira / bug / review / research
         | Evidence retrieval    |
         | Context budget/cache  |
         | Capability routing    |
-        | Execution controls    |
+        | Graph orchestration   |
+        | Bounded agent loops   |
+        | Evaluation gates     |
         | Verification + review |
         | Learning + policies   |
         | Regression replay     |
