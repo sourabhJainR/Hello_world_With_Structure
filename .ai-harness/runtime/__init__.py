@@ -2,6 +2,11 @@
 
 The graph-team integration is enabled by default. Set AER_GRAPH_TEAM=0 to
 fall back to the legacy single-provider phase execution for diagnostics.
+
+Important: installation is explicit. This module is imported while engine.py
+is still initializing, so importing runtime must never mutate engine.invoke.
+The public .ai-harness/run.py wrapper installs the bridge only after engine
+has completed importing.
 """
 
 from __future__ import annotations
@@ -112,6 +117,3 @@ def _install_graph_team_bridge() -> None:
             return fallback
 
     engine.invoke = graph_invoke
-
-
-_install_graph_team_bridge()
