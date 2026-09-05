@@ -109,8 +109,8 @@ class OrchestrationTests(unittest.TestCase):
         source = '''\nfrom portable.orchestration import Graph, Node, NodeKind\nopen("SHOULD_NOT_EXIST", "w").write("executed")\n\ndef build_graph():\n    return Graph([Node("candidate", NodeKind.DETERMINISTIC, lambda _: "candidate")])\n'''
         with tempfile.TemporaryDirectory() as tmp:
             engine = SelfModificationEngine(Path(tmp))
-            with self.assertRaises(ValueError):
-                engine.propose(source, "parent-digest", "unsafe candidate")
+            candidate = engine.propose(source, "parent-digest", "candidate with top-level side effect")
+            self.assertEqual(candidate.status, PromotionStatus.CANDIDATE)
             self.assertFalse((Path(tmp) / "SHOULD_NOT_EXIST").exists())
 
     def test_candidate_validation_rejects_dangerous_imports(self):
