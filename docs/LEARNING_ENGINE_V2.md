@@ -12,7 +12,7 @@ The learning system is now a closed decision loop rather than a telemetry heuris
 
 ### Candidate scoring
 
-`.ai-harness/runtime/learning_engine.py` groups history by task family and strategy. The score combines verified quality, acceptance, safety, regression absence, retry/cost efficiency and a Wilson confidence lower bound. Sparse evidence is therefore penalized instead of allowing a single successful task to replace the incumbent.
+`.ai-harness/runtime/learning_engine.py` groups history by task family and strategy. The score combines verified quality, acceptance, safety, regression absence, retry/cost efficiency and a Wilson confidence lower bound. Sparse evidence is penalized instead of allowing a single successful task to replace the incumbent.
 
 ### Task-family regression selection
 
@@ -32,17 +32,7 @@ Learning can propose changes to routing, retrieval, graph topology, retry strate
 
 ## Configuration
 
-The production-oriented defaults are:
-
-- minimum observations: 5
-- confidence lower bound: 0.70
-- minimum improvement over incumbent: 0.03
-- staged canary: 5%, 10%, 25%, 50%, 100%
-- minimum canary cases per stage: 3
-- canary pass rate: 100%
-- canary verification rate: 100%
-
-The intentionally strict gates can be relaxed only through explicit repository configuration and should be validated against the regression corpus before doing so.
+The production-oriented defaults are intentionally conservative: minimum observations 5, candidate confidence lower bound 0.70, minimum improvement 0.03, and staged canary exposure of 5%, 10%, 25%, 50%, and 100% with 100% pass and verification gates.
 
 ## Evidence model
 
