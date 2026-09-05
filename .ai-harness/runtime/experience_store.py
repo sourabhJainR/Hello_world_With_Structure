@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
-"""Durable, indexed experience store for the self-improving coding loop.
-
-SQLite is used because it is part of the Python standard library, gives us
-atomic writes and indexes, and avoids adding a runtime dependency to the
-portable harness. Raw model text is never required by this store; callers pass
-structured evidence and compact metadata instead.
-"""
+"""Durable, indexed experience store for the self-improving coding loop."""
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 import hashlib
 import json
 from pathlib import Path
@@ -48,7 +42,7 @@ class Experience:
 
 
 class ExperienceStore:
-    """Small local database with append-only experience semantics."""
+    """Local SQLite store with atomic writes and indexed task-family queries."""
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
@@ -120,62 +114,48 @@ class ExperienceStore:
         return count
 
     def recent(self, limit: int = 500) -> list[Experience]:
-        return self._query("SELECT * FROM experiences ORDER BY timestamp DESC LIMIT ?", (max(1, min(10000, int(limit))),))
+        return self._query("SELECT * FROM experiences ORDER BY timestamp DESC, id DESC LIMIT ?", (self._limit(limit),))
 
     def by_task_class(self, task_class: str, limit: int = 500) -> list[Experience]:
-        return self._query("SELECT * FROM experiences WHERE task_class=? ORDER BY timestamp DESC LIMIT ?", (task_class, max(1, min(10000, int(limit)))))
+        return self._query("SELECT * FROM experiences WHERE task_class=? ORDER BY timestamp DESC, id DESC LIMIT ?", (task_class, self._limit(limit)))
 
     def by_strategy(self, task_class: str, strategy: str, limit: int = 500) -> list[Experience]:
-        return self._query("SELECT * FROM experiences WHERE task_class=? AND strategy=? ORDER BY timestamp DESC LIMIT ?", (task_class, strategy, max(1, min(10000, int(limit)))))
+        return self._query("SELECT * FROM experiences WHERE task_class=? AND strategy=? ORDER BY timestamp DESC, id DESC LIMIT ?", (task_class, strategy, self._limit(limit)))
 
     def count(self, task_class: str | None = None) -> int:
         with self._connect() as db:
-            if task_class:
-                row = db.execute("SELECT COUNT(*) AS n FROM experiences WHERE task_class=?", (task_class,)).fetchone()
-            else:
-                row = db.execute("SELECT COUNT(*) AS n FROM experiences").fetchone()
+            row = db.execute("SELECT COUNT(*) AS n FROM experiences" if task_class is None else "SELECT COUNT(*) AS n FROM experiences WHERE task_class=?", () if task_class is None else (task_class,)).fetchone()
             return int(row["n"])
 
     @staticmethod
-    def _query(sql: str, params: tuple[Any, ...]) -> list[Experience]:
-        # Static helper is intentionally backed by a one-off connection below;
-        # callers should prefer the public methods so the DB path remains local.
-        raise RuntimeError("_query requires an instance")
+    def _limit(limit: int) -> int:
+        return max(1, min(10000, int(limit)))
 
-    def _query(self, sql: str, params: tuple[Any, ...]) -> list[Experience]:  # type: ignore[override]
+    def _query(self, sql: str, params: tuple[Any, ...]) -> list[Experience]:
         with self._connect() as db:
             rows = db.execute(sql, params).fetchall()
-        result: list[Experience] = []
-        for row in rows:
-            result.append(Experience(
-                task_id=row["task_id"], task_class=row["task_class"], strategy=row["strategy"],
-                success=bool(row["success"]), accepted=bool(row["accepted"]),
-                verification_passed=bool(row["verification_passed"]), retries=int(row["retries"]),
-                regressions=int(row["regressions"]), cost=float(row["cost"]),
-                latency_ms=float(row["latency_ms"]), safety_passed=bool(row["safety_passed"]),
-                evidence_score=float(row["evidence_score"]),
-                environment_fingerprint=row["environment_fingerprint"], policy_id=row["policy_id"],
-                transfer_key=row["transfer_key"], failure_class=row["failure_class"],
-                timestamp=int(row["timestamp"]), metadata=json.loads(row["metadata_json"] or "{}"),
-            ))
-        return result
+        return [Experience(
+            task_id=row["task_id"], task_class=row["task_class"], strategy=row["strategy"],
+            success=bool(row["success"]), accepted=bool(row["accepted"]),
+            verification_passed=bool(row["verification_passed"]), retries=int(row["retries"]),
+            regressions=int(row["regressions"]), cost=float(row["cost"]), latency_ms=float(row["latency_ms"]),
+            safety_passed=bool(row["safety_passed"]), evidence_score=float(row["evidence_score"]),
+            environment_fingerprint=row["environment_fingerprint"], policy_id=row["policy_id"],
+            transfer_key=row["transfer_key"], failure_class=row["failure_class"], timestamp=int(row["timestamp"]),
+            metadata=json.loads(row["metadata_json"] or "{}")) for row in rows]
 
     def summary(self, task_class: str | None = None) -> dict[str, Any]:
         rows = self.recent(10000) if task_class is None else self.by_task_class(task_class, 10000)
         if not rows:
-            return {"count": 0, "success_rate": 0.0, "acceptance_rate": 0.0,
-                    "verification_rate": 0.0, "regression_rate": 0.0}
+            return {"count": 0, "success_rate": 0.0, "acceptance_rate": 0.0, "verification_rate": 0.0, "regression_rate": 0.0}
         n = len(rows)
-        return {
-            "count": n,
-            "success_rate": sum(x.success for x in rows) / n,
-            "acceptance_rate": sum(x.accepted for x in rows) / n,
-            "verification_rate": sum(x.verification_passed for x in rows) / n,
-            "regression_rate": sum(x.regressions > 0 for x in rows) / n,
-            "avg_retries": sum(x.retries for x in rows) / n,
-            "avg_cost": sum(x.cost for x in rows) / n,
-            "avg_latency_ms": sum(x.latency_ms for x in rows) / n,
-        }
+        return {"count": n, "success_rate": sum(x.success for x in rows) / n,
+                "acceptance_rate": sum(x.accepted for x in rows) / n,
+                "verification_rate": sum(x.verification_passed for x in rows) / n,
+                "regression_rate": sum(x.regressions > 0 for x in rows) / n,
+                "avg_retries": sum(x.retries for x in rows) / n,
+                "avg_cost": sum(x.cost for x in rows) / n,
+                "avg_latency_ms": sum(x.latency_ms for x in rows) / n}
 
 
 def experience_from_mapping(value: dict[str, Any]) -> Experience:
@@ -183,20 +163,13 @@ def experience_from_mapping(value: dict[str, Any]) -> Experience:
     return Experience(
         task_id=str(value.get("task_id", value.get("turn_id", "unknown"))),
         task_class=str(value.get("task_class", value.get("mode", "implement"))),
-        strategy=str(value.get("strategy", "unknown")),
-        success=bool(value.get("success", False)),
+        strategy=str(value.get("strategy", "unknown")), success=bool(value.get("success", False)),
         accepted=bool(value.get("accepted", False)),
         verification_passed=bool(value.get("verification_passed", value.get("verification_score", 0) >= .75)),
-        retries=int(value.get("retries", 0) or 0),
-        regressions=int(value.get("regressions", 0) or 0),
-        cost=float(value.get("cost", value.get("token_cost", 0)) or 0),
-        latency_ms=float(value.get("latency_ms", 0) or 0),
-        safety_passed=bool(value.get("safety_passed", True)),
-        evidence_score=float(value.get("evidence_score", 1.0) or 0),
-        environment_fingerprint=str(value.get("environment_fingerprint", "")),
-        policy_id=str(value.get("policy_id", "")),
+        retries=int(value.get("retries", 0) or 0), regressions=int(value.get("regressions", 0) or 0),
+        cost=float(value.get("cost", value.get("token_cost", 0)) or 0), latency_ms=float(value.get("latency_ms", 0) or 0),
+        safety_passed=bool(value.get("safety_passed", True)), evidence_score=float(value.get("evidence_score", 1.0) or 0),
+        environment_fingerprint=str(value.get("environment_fingerprint", "")), policy_id=str(value.get("policy_id", "")),
         transfer_key=str(value.get("transfer_key", value.get("task_class", ""))),
-        failure_class=str(value.get("failure_class", "")),
-        timestamp=int(value.get("timestamp", time.time())),
-        metadata=dict(value.get("metadata", {})) if isinstance(value.get("metadata"), dict) else {},
-    )
+        failure_class=str(value.get("failure_class", "")), timestamp=int(value.get("timestamp", time.time())),
+        metadata=dict(value.get("metadata", {})) if isinstance(value.get("metadata"), dict) else {})
