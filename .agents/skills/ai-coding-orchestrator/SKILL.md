@@ -18,7 +18,7 @@ Task contract:
 Do **not** preload methodology, policies, frameworks, history, capability catalogs, repository dumps or transcripts. Runtime:
 `DISCOVER -> SCORE -> LEASE -> USE -> COMPRESS -> RELEASE`.
 
-The Context Broker selects just-in-time evidence under a hard budget. Prefer exact files/symbols/tests and structural evidence. Release raw context after use; retain digests, decisions, constraints and proof-bearing evidence.
+The Context Broker selects just-in-time evidence under a hard budget. Prefer exact files/symbols/tests and structural evidence. Release raw context after use; retain digests, decisions, constraints and proof-bearing evidence. Optional context packs and extensions are loaded only when justified.
 
 Additional methodology is split into `.agents/skills/ai-coding-orchestrator/context/`. Start with `context/INDEX.md`; load only the pack required by the current phase. Never load all packs at startup.
 
@@ -58,6 +58,9 @@ Classify failure before repair. Preserve failing evidence, change strategy and r
 
 ## Provider projection
 Preserve the same intent digest, boundaries, acceptance, protected behavior, capability plan and verification evidence across providers. Load `context/providers.md` only when provider-specific execution is relevant. Unsupported capabilities are explicitly unavailable.
+
+## Control-plane policies
+Policy files are optional/on-demand context, not startup context. The complete control-plane contract is defined by: `ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md`.
 
 ## Installation and precedence
 Global AER state stays outside workspaces. Use the installed CLI for upgrades. Artifact upgrades are side-by-side, state-preserving, verified, atomic and rollback-capable under `.ai-harness/ARTIFACT_UPGRADE_CONTRACT.json`.
