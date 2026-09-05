@@ -3,10 +3,9 @@
 The graph-team integration is enabled by default. Set AER_GRAPH_TEAM=0 to
 fall back to the legacy single-provider phase execution for diagnostics.
 
-Important: installation is explicit. This module is imported while engine.py
-is still initializing, so importing runtime must never mutate engine.invoke.
-The public .ai-harness/run.py wrapper installs the bridge only after engine
-has completed importing.
+The graph team is the default collaboration layer for every provider-driven
+execution phase after routing. Deterministic lifecycle controls such as
+validation and learning remain owned by the harness itself.
 """
 
 from __future__ import annotations
@@ -50,18 +49,18 @@ def _install_graph_team_bridge() -> None:
         GraphAgentTeam.execute = guarded_execute
 
     original_invoke = engine.invoke
-    trigger_for_mode = {
-        "implement": "execute",
-        "debug": "debug",
-        "research": "research",
-        "poc": "poc",
-        "review": "review",
-        "grill": "grill",
-    }
 
     def graph_invoke(provider: dict[str, Any], prompt_file: Path, phase: str,
                      run_dir: Path, timeout: int, dry_run: bool, logger):
-        marker = run_dir / "graph-team.json"
+        # Routing is intentionally deterministic/provider-assisted but must not
+        # recursively invoke a graph before the task route and manifest exist.
+        if phase == "route":
+            return original_invoke(provider, prompt_file, phase, run_dir, timeout, dry_run, logger)
+
+        # Each provider-driven phase gets its own graph execution and memory
+        # entry. Do not use a single run-level marker: that would silently turn
+        # later phases back into single-agent execution.
+        marker = run_dir / f"graph-team-{phase}.json"
         if marker.exists():
             return original_invoke(provider, prompt_file, phase, run_dir, timeout, dry_run, logger)
 
@@ -69,10 +68,8 @@ def _install_graph_team_bridge() -> None:
             manifest_path = run_dir / "manifest.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else {}
             route = manifest.get("route") if isinstance(manifest.get("route"), dict) else engine.heuristic_route(str(manifest.get("task", "")))
-            mode = str(route.get("mode", "implement"))
-            trigger_phase = trigger_for_mode.get(mode, "execute")
-            if phase != trigger_phase:
-                return original_invoke(provider, prompt_file, phase, run_dir, timeout, dry_run, logger)
+            route = dict(route)
+            route["phase"] = phase
 
             task = str(manifest.get("task", "")).strip()
             intent_digest = str(manifest.get("intent_digest", "")).strip()
@@ -91,9 +88,9 @@ def _install_graph_team_bridge() -> None:
             started = engine.time.monotonic()
 
             def invoke_agent(agent, prompt):
-                agent_prompt = run_dir / f"graph-{agent.name}.prompt.md"
+                agent_prompt = run_dir / f"graph-{phase}-{agent.name}.prompt.md"
                 agent_prompt.write_text(prompt, encoding="utf-8")
-                return original_invoke(provider, agent_prompt, f"graph-{agent.name}", run_dir, timeout, dry_run, logger)
+                return original_invoke(provider, agent_prompt, f"graph-{phase}-{agent.name}", run_dir, timeout, dry_run, logger)
 
             result = team.execute(
                 task=task,
@@ -106,6 +103,14 @@ def _install_graph_team_bridge() -> None:
             result["duration_seconds"] = round(engine.time.monotonic() - started, 3)
             result["provider"] = provider.get("name")
             result["mode"] = "graph-agent-team"
+            result["collaboration"] = {
+                "enabled": True,
+                "phase_scoped": True,
+                "shared_memory": True,
+                "dependency_graph": True,
+                "parallel_read_only": True,
+                "serialized_mutations": True,
+            }
             marker.write_text(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             output = "GRAPH_TEAM_JSON: " + json.dumps(result, ensure_ascii=False, sort_keys=True)
             (run_dir / f"{phase}.output.md").write_text(output + "\n", encoding="utf-8")
@@ -113,7 +118,7 @@ def _install_graph_team_bridge() -> None:
         except Exception as exc:
             logger.exception("graph agent team failed; falling back to single-agent phase", exc_info=exc)
             fallback = original_invoke(provider, prompt_file, phase, run_dir, timeout, dry_run, logger)
-            marker.write_text(json.dumps({"mode": "graph-agent-team", "status": "fallback", "error": str(exc)}, indent=2) + "\n", encoding="utf-8")
+            marker.write_text(json.dumps({"mode": "graph-agent-team", "status": "fallback", "phase": phase, "error": str(exc)}, indent=2) + "\n", encoding="utf-8")
             return fallback
 
     engine.invoke = graph_invoke
