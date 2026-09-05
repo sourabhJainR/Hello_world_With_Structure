@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-orchestrator"
-version = 20
+version = 21
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -203,10 +203,13 @@ never_parallel_edit_same_file = true
 use_worktrees_for_mutating_agents = true
 
 [learning]
-min_observations_for_promotion = 3
-min_success_rate_for_promotion = 0.75
+min_observations_for_promotion = 5
+min_success_rate_for_promotion = 0.80
+min_lower_bound_for_candidate = 0.70
+min_improvement_over_incumbent = 0.03
 stale_after_days = 120
 max_memory_items = 250
+experience_store = ".ai-harness/learning/experience.db"
 record_route_metrics = true
 record_verification_metrics = true
 record_token_metrics_when_available = true
@@ -221,6 +224,14 @@ record_feature_misses = true
 feed_history_into_context = true
 require_repeated_evidence_before_trust = true
 policy_file = ".ai-harness/LEARNING_POLICY.md"
+auto_shadow = true
+auto_canary = true
+canary_exposures = [0.05, 0.10, 0.25, 0.50, 1.0]
+canary_min_cases_per_stage = 3
+canary_min_pass_rate = 1.0
+canary_min_verification_rate = 1.0
+rollback_acceptance_drop = 0.10
+rollback_regression_increase = 0.05
 
 default_principles = ["DRY", "YAGNI", "KISS", "DI", "SOLID", "separation-of-concerns", "high-cohesion-low-coupling", "composition-over-inheritance", "least-knowledge", "fail-fast", "single-source-of-truth", "least-surprise", "illegal-states-hard-to-represent", "compatibility-by-default", "behavior-focused-testing", "security-by-default", "failure-awareness", "observability", "reversibility", "least-privilege", "locality-of-change", "evidence-over-assumption", "token-economy"]
 
