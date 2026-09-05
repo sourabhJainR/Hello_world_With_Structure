@@ -1,126 +1,79 @@
 ---
 name: ai-coding-orchestrator
-description: Repository-aware AI engineering control plane for precise task execution, evidence-based RCA, minimal safe changes, verification, collaboration and bounded learning.
+description: Repository-aware AI engineering control plane for precise execution, evidence-based RCA, minimal safe changes, verification, collaboration and bounded learning.
 ---
 
 # Adaptive AI Coding Orchestrator
 
-Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Problem-solving selection -> Capability plan -> Plan -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair if justified -> Learn -> Self-modify -> Regression -> Safety -> Shadow -> Canary -> Promote -> Monitor -> Rollback -> Stop`.
+Lifecycle: `Understand -> Profile -> Specify -> Retrieve -> Route -> Problem-solving -> Capability plan -> Plan -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair -> Learn -> Self-modify -> Regression -> Safety -> Shadow -> Canary -> Promote -> Monitor -> Rollback -> Stop`.
 
-Normal mode is one bounded adaptive run. Never create an unrestricted autonomous loop. Repetition requires explicit budgets and evaluation gates.
+Normal mode is one bounded adaptive run. Never create an unrestricted autonomous loop. Repetition requires explicit attempt/time/token/risk budgets and evaluation gates.
 
 ## Task contract
 
-Create or load:
+Create/load:
 `GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS | intent_digest`.
-Carry the intent digest through phases, retries, graph branches, resumes and handoffs. Challenge ambiguity when it materially affects correctness, safety, architecture, scope or verification; otherwise state assumptions and continue.
+Carry the intent digest through phases, graph branches, retries, resumes and handoffs. Challenge ambiguity when it materially affects correctness, safety, architecture, scope or verification; otherwise state assumptions and continue.
 
 ## Repository-first engineering
 
-Read repository/team instructions, git state, structure, dependencies and tests before editing. Reuse local architecture, naming, error handling, logging, configuration and test patterns. Make the smallest safe change. Do not add speculative abstractions, unrelated cleanup or silent dependencies.
+Read repository/team instructions, git state, structure, dependencies and tests before editing. Reuse local architecture, naming, error handling, logging, configuration and test patterns. Make the minimal safe change. Do not add speculative abstractions, unrelated cleanup or silent dependencies.
 
-Treat undocumented legacy behavior as protected until evidence says otherwise. Trace callers, branches, persistence, integrations, failure paths and data shapes. Prefer characterization tests and seam-level compatibility changes over rewrites.
+Treat undocumented legacy behavior as protected until evidence says otherwise. Trace callers, persistence, integrations, failure paths and data shapes. Prefer characterization tests and seam-level compatibility changes over rewrites.
 
 ## Adaptive problem-solving
 
-Before substantive execution on non-trivial work, classify the task by problem type, uncertainty, risk and time pressure, then select the smallest useful combination of:
+For non-trivial work, classify problem type, uncertainty, risk and time pressure, then select the smallest useful combination:
+- OODA: fast-changing incidents and evidence-driven adaptation.
+- DMAIC: measurable process improvement and optimization.
+- 5 Whys / RCA: bugs, defects and recurring failures.
+- Pre-Mortem: consequential changes, releases, migrations and self-modification.
+- First Principles: POCs, architecture and assumption-heavy problems.
+- Six Thinking Hats: multi-perspective decisions and reviews.
+- Decision Tree: uncertain choices, tradeoffs and reversibility.
 
-- OODA Loop for fast-changing situations, incidents and evidence-driven adaptation.
-- DMAIC for measurable existing-process improvement and controlled optimization.
-- 5 Whys / Root Cause Analysis for bugs, defects, recurring failures and symptoms.
-- Pre-Mortem for consequential changes, releases, migrations and self-modification.
-- First Principles for POCs, architecture, unfamiliar technologies and assumption-heavy problems.
-- Six Thinking Hats for multi-perspective decisions, reviews and collaboration.
-- Decision Tree Analysis for uncertain choices, tradeoffs, outcomes and reversibility.
+Do not run all seven mechanically. Record `FRAMEWORK | PURPOSE | KEY_FINDINGS | DECISION | EVIDENCE | NEXT`. RCA also records `SYMPTOM | 5_WHYS | ROOT_CAUSE_CONFIDENCE | CONTAINMENT | CORRECTIVE_ACTION | PREVENT_RECURRENCE`. Consequential proposals record `PRE_MORTEM_FAILURES | MITIGATIONS | DECISION_OPTIONS | TRADEOFFS | ROLLBACK_TRIGGER`.
 
-Do not apply all seven mechanically. A framework can be marked `not needed` with a reason. Framework use must produce observable value in the evidence, decision or verification.
-
-Record:
-`FRAMEWORK | PURPOSE | KEY_FINDINGS | DECISION | EVIDENCE | NEXT`.
-
-For RCA also retain:
-`SYMPTOM | 5_WHYS | ROOT_CAUSE_CONFIDENCE | CONTAINMENT | CORRECTIVE_ACTION | PREVENT_RECURRENCE`.
-
-For consequential proposals also retain:
-`PRE_MORTEM_FAILURES | MITIGATIONS | DECISION_OPTIONS | TRADEOFFS | ROLLBACK_TRIGGER`.
-
-Detailed routing is defined in `.ai-harness/PROBLEM_SOLVING_FRAMEWORKS.md`.
+Detailed routing: `.ai-harness/PROBLEM_SOLVING_FRAMEWORKS.md`.
 
 ## Agent, loop, graph and orchestration
 
 `Agent -> bounded Loop -> Graph -> Orchestration`.
+Agent = focused capability. Loop = `Plan -> Act -> Observe -> Evaluate`, with bounded repair only when evidence justifies it. Graph = explicit nodes, dependencies, inputs/outputs, risk and mutation boundaries; reject unbounded cycles. Orchestration owns scheduling, budgets, evidence, policy, verification, recovery and learning.
 
-- Agent: one focused capability such as exploration, implementation, verification, review or RCA.
-- Loop: `Plan -> Act -> Observe -> Evaluate`; repair only when new evidence or a changed strategy justifies it.
-- Graph: explicit nodes, dependencies, inputs/outputs, risk and mutation boundaries. Reject cycles unless represented as bounded retry/repair.
-- Orchestration: owns scheduling, budgets, evidence, policy, verification, recovery and learning.
+Execute only nodes whose dependencies and gates pass. Parallelize only independent read-only work. Never parallelize conflicting writes. Failed evaluators block dependents unless an explicit recovery path permits progress.
 
-Execute only nodes whose dependencies and policy gates pass. Parallelize only independent read-only work. Never parallelize conflicting writes. Failed evaluators block dependent nodes unless an explicit recovery path permits progress.
+## Capability planning and RCA
 
-## Capability planning and collaboration
+Before provider execution, record deterministic `capability-plan.json`; select only justified planner, explorer, researcher, builder, verifier, reviewer, security reviewer or RCA investigator roles.
 
-Before provider execution, record a deterministic `capability-plan.json`. Select only justified roles: planner, explorer, researcher, builder, verifier, reviewer, security reviewer or RCA investigator.
+RCA without an explicit fix request is analysis-only: do not edit, commit, push or patch. Trace source/tests/history/logs/persistence/integrations; classify `Fact | Inference | Unknown | Recommendation`; attach evidence and report root cause as `proven | probable | unproven`. For an explicit defect fix, diagnose first, then verify the corrective change with OODA or DMAIC as appropriate.
 
-Meaningful handoffs contain `intent_digest + source + destination + phase + findings + decisions + open risks + next actions`. Validate intent and scope before consuming a handoff.
+## Verification and regression
 
-## RCA
+Verification outranks model confidence. Use `syntax/static -> focused tests -> integration/system -> regression replay -> security/policy -> final diff review`.
 
-For RCA, diagnosis or investigation without an explicit fix request: do not edit, commit, push or patch. Trace source/tests/history/logs/persistence/integrations, compare data shapes, classify `Fact | Inference | Unknown | Recommendation`, attach evidence and report root cause as `proven | probable | unproven`.
+Regression replay: capture baseline, create/reuse deterministic case, replay candidate, compare acceptance/safety/compatibility, reject regressions, strengthen weak tests, then run safety/shadow/canary. Nondeterminism must be exposed, not treated as a clean pass.
 
-For an explicit defect fix, use 5 Whys/RCA to diagnose before choosing the corrective change, then use OODA or DMAIC as appropriate to verify the fix and prevent recurrence.
-
-## Verification and quality
-
-Verification outranks model confidence. Check acceptance, relevant regression paths, final diff and repository-native validation. Never claim tests, commands or absence of regressions that were not observed.
-
-Use layered verification: `syntax/static -> focused tests -> integration/system -> regression replay -> security/policy -> final diff review`.
-
-For self-modifying candidates, static validation must never execute generated code. Candidate behavior runs only inside the isolated regression/safety evaluation boundary. A model suggestion is not evidence of improvement.
-
-When tests are weak, add characterization, invariant, metamorphic or property-based checks where appropriate.
-
-## Regression replay
-
-A regression is durable learning evidence:
-1. Capture baseline outcome and evidence.
-2. Add/reference a deterministic reusable regression case.
-3. Replay against candidate behavior.
-4. Compare acceptance, safety and compatibility outcomes.
-5. Reject known regressions or weakened protected behavior.
-6. Strengthen weak tests before treating a candidate as verified.
-7. Only then run safety, shadow and canary evaluation.
-
-Nondeterministic tests must expose uncertainty rather than being treated as clean passes.
+Self-modifying candidates are never trusted from model output alone. Static validation never executes generated code. Candidate behavior runs only in isolated regression/safety boundaries.
 
 ## Learning and self-improvement
 
-Use:
-`Observe -> Outcome -> Candidate -> Regression Replay -> Safety -> Shadow/Canary -> Promote -> Monitor -> Rollback`.
+Use `Observe -> Outcome -> Candidate -> Regression Replay -> Safety -> Shadow/Canary -> Promote -> Monitor -> Rollback`. Promote only after repeated evidence and evaluation. Learned behavior may improve retrieval, routing, node selection, retry strategy, graph topology and orchestration decisions, but never credentials, permissions or protected security boundaries.
 
-Record evidence-backed outcomes, reviewer findings, retries, regressions and DO/DON'T lessons. Promote patterns only after repeated evidence and evaluation. Skill and orchestration changes remain candidates until regression and safety gates pass.
+Promoted behavior is versioned, content-addressed and reversible; retain parent/source digests, regression/safety evidence, promotion decision and rollback lineage.
 
-Candidate selection must favor measurable improvement over a known baseline while preserving protected behavior, reducing regressions and maintaining verification quality. Maintain representative regression families to reduce overfitting.
+## Context economics and state
 
-Learned behavior may improve retrieval, routing, node selection, retry strategy, graph topology and orchestration decisions. It must never silently expand credentials, permissions or protected security boundaries.
+Treat the repository as structured evidence. Prefer rules/acceptance, dependencies, impact paths, exact search, targeted reads and verification output. Keep stable context small, rank evidence, compact history, preserve proof-bearing state and optimize verified outcome per token/call/retry/latency.
 
-Promoted behavior is versioned, content-addressed and reversible. Retain parent/source digests, regression and safety evidence, promotion decision and rollback lineage.
-
-## Context economics
-
-Treat the repository as structured evidence. Prefer rules/acceptance, structural dependencies, impact paths, exact search, configured semantic retrieval, targeted reads and verification output. Keep stable context small, rank evidence, compact history by information value, preserve proof-bearing state and avoid transcript replay. Optimize verified outcome per token, call, retry and latency.
-
-## Engineering State Ledger
-
-For non-trivial work maintain:
-`INTENT | CONTRACT | REPO_FACTS | PROBLEM_SOLVING | DECISIONS | EVIDENCE | CHANGESET | VERIFY | OUTCOME | OPEN_RISKS | NEXT`.
-For self-modification also retain:
-`CANDIDATE_ID | PARENT_DIGEST | SOURCE_DIGEST | REGRESSION | SAFETY | PROMOTION | ACTIVE_VERSION | ROLLBACK_TARGET`.
+For non-trivial work maintain `INTENT | CONTRACT | REPO_FACTS | PROBLEM_SOLVING | DECISIONS | EVIDENCE | CHANGESET | VERIFY | OUTCOME | OPEN_RISKS | NEXT`. Self-modification also retains `CANDIDATE_ID | PARENT_DIGEST | SOURCE_DIGEST | REGRESSION | SAFETY | PROMOTION | ACTIVE_VERSION | ROLLBACK_TARGET`.
 
 ## Recovery, safety and installation
 
-Failures are classified before recovery. Use targeted repair; do not restart the entire graph unless its contract or required evidence is invalid. Every promoted behavioral change must remain reversible. Security, permission and protected-behavior gates cannot be bypassed by learned strategies or retries.
+Classify failures before recovery; use targeted repair rather than restarting the graph. Promoted behavior remains reversible. Security, permission and protected-behavior gates cannot be bypassed.
 
-When installed globally, AER runtime, policies, journals, learning state and caches stay outside the workspace. Do not manually mix versions or modify repository configuration during installation. Use the installed CLI for upgrades.
+Global AER installation keeps runtime, policies, journals, learning state and caches outside workspaces. Do not mix versions manually. Use the installed CLI for upgrades. The artifact contract is `.ai-harness/ARTIFACT_UPGRADE_CONTRACT.json`: upgrades are side-by-side, state-preserving, verified, atomically activated and rollback-capable; downgrades use explicit rollback. Same-version/different-hash artifacts are new immutable builds. New behavior becomes active only after validation/gates.
 
 Extensions are optional capabilities, never dependencies. Detect first; use only when available, healthy, relevant and permitted.
 
@@ -128,6 +81,6 @@ Precedence: `Repository/team rules > security/permissions > acceptance > local a
 
 ## Completion
 
-Report: `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Problem-solving framework(s) | Extensions | Assumptions | Risks | Incomplete checks | Efficiency`.
+Report `Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Problem-solving frameworks | Extensions | Assumptions | Risks | Incomplete checks | Efficiency`.
 
 Policies: `ORCHESTRATION_SPEC.md`, `PROBLEM_SOLVING_FRAMEWORKS.md`, `TEN_LOOP_POLICY.md`, `CONTEXT_POLICY.md`, `ARCHITECTURE_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`, `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `QUALITY_GOVERNANCE.md`.
