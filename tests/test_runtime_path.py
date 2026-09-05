@@ -51,7 +51,7 @@ class RuntimePathTests(unittest.TestCase):
 
     def test_learning_replay_shadow_canary_promotion_and_rollback(self):
         with tempfile.TemporaryDirectory() as tmp:
-            registry = PolicyRegistry([Policy("old", 1, "bug", "history_first", "active", .90, promoted_at=1)])
+            registry = PolicyRegistry([Policy("old", 1, "bug", "history_first", "active", .80, promoted_at=1)])
             controller = LearningController(Path(tmp), registry=registry)
             observations = [Observation(str(i), "bug", "targeted_context", True, True, True) for i in range(3)]
             candidate = controller.learn_candidates(observations, min_samples=3)[0]
@@ -63,7 +63,7 @@ class RuntimePathTests(unittest.TestCase):
             self.assertEqual(shadow.pass_rate, 1.0)
             canary = evaluate_canary(candidate, cases, runner)
             self.assertTrue(canary.gate_passed)
-            promoted = controller.promote(candidate, replay_result, canary_report=canary, version=2, now=2)
+            promoted = controller.promote(candidate, replay_result, shadow_report=shadow, canary_report=canary, version=2, now=2)
             self.assertIsNotNone(promoted)
             self.assertEqual(controller.active_strategy("bug"), "targeted_context")
             self.assertTrue(controller.monitor(PolicyHealth(candidate.policy_id, .95, .80, .02, .09), now=3))

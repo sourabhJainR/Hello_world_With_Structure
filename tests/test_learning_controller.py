@@ -16,7 +16,7 @@ from rollback_controller import PolicyHealth
 class LearningControllerTests(unittest.TestCase):
     def test_promotion_changes_context_strategy_and_rollback_restores_previous(self):
         with tempfile.TemporaryDirectory() as tmp:
-            registry = PolicyRegistry([Policy("old", 1, "dotnet_bug", "history_first", "active", .88, .88, promoted_at=1)])
+            registry = PolicyRegistry([Policy("old", 1, "dotnet_bug", "history_first", "active", .80, .80, promoted_at=1)])
             controller = LearningController(Path(tmp), registry=registry)
             candidate = controller.learn_candidates([
                 Observation(str(i), "dotnet_bug", "targeted_context", True, True, True) for i in range(3)
