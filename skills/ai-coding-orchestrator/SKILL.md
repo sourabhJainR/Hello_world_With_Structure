@@ -17,7 +17,7 @@ Task contract:
 Do not preload methodology, policies, frameworks, history, capability catalogs, repository dumps or transcripts. Runtime:
 `DISCOVER -> SCORE -> LEASE -> USE -> COMPRESS -> RELEASE`.
 
-The Context Broker loads only evidence justified by phase, uncertainty, dependency, risk or verification. Prefer targeted files/symbols/tests and structural evidence. Release raw context after use. Detailed methodology lives in `context/`; start with `context/INDEX.md` and load only the needed pack.
+The Context Broker loads only evidence justified by phase, uncertainty, dependency, risk or verification. Prefer targeted files/symbols/tests and structural evidence. Release raw context after use. Detailed methodology lives in `context/`; start with `context/INDEX.md` and load only the needed pack. Optional context and extensions are on-demand and must not be treated as always-active.
 
 ## Repository-first
 Read repository/team instructions, git state, structure, dependencies and tests before editing. Reuse local architecture, naming, configuration, telemetry and test patterns. Make the smallest safe change. Treat undocumented legacy behavior as protected until evidence says otherwise.
@@ -49,6 +49,9 @@ Classify failure before repair, preserve evidence, change strategy and retry onl
 
 Precedence:
 `Repository/team rules > security/permissions > acceptance > local architecture > verification > orchestrator > extension > model preference`.
+
+## Control-plane policies
+Policy files are optional/on-demand context, not startup context. The complete control-plane contract is defined by: `ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md`.
 
 ## Completion
 Report:
