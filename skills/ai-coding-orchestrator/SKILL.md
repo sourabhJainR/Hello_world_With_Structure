@@ -25,7 +25,15 @@ Read repository/team instructions, git state, structure, dependencies and tests 
 ## Execution
 `Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair -> Learn -> Stop`.
 
-Use `Agent -> bounded Loop -> Graph -> Orchestration` only as complexity requires. Every retry has explicit attempt/time/token/risk limits. Parallelize only independent read-only work. Never run an unrestricted autonomous loop.
+## Multi-agent graph is the default
+For any non-trivial task, use the graph agent team whenever the provider supports agent execution. The team is task-scoped and dependency-aware:
+`Planner -> Explorer/Researcher/RCA -> Builder -> Verifier -> Parallel Reviewers -> Synthesizer`.
+
+Every agent receives the latest shared memory for the current `intent_digest` and must publish evidence, findings, decisions and unresolved risks back to that memory. Independent read-only roles may run in parallel. Mutating roles are serialized and must not edit the same surface concurrently. A single-agent phase is the fallback only when the graph team is unavailable, unnecessary for a trivial task, or explicitly disabled.
+
+Do not create disconnected sub-agents that independently rediscover the repository. Downstream agents must consume upstream shared memory and verify important claims against the repository. The synthesizer is responsible for the final team view; model confidence never replaces verification.
+
+Every retry has explicit attempt/time/token/risk limits. Never run an unrestricted autonomous loop.
 
 ## Evidence and verification
 Verification outranks model confidence. Use:
@@ -35,6 +43,8 @@ Retain `intent_digest | graph_digest | environment_fingerprint | trajectory | at
 
 ## Capability and collaboration
 Select only justified roles: planner, explorer, researcher, builder, verifier, reviewer, security reviewer or RCA investigator. Record the capability plan. Provider/MCP permissions are minimum-required per phase. Handoffs contain intent, source, destination, findings, decisions, risks and next actions.
+
+Shared task memory is ephemeral to the active run unless explicitly promoted into durable learning. Memory from another intent must never be injected into the current task without an explicit evidence link and scope check.
 
 ## Learning
 `Observe -> Outcome -> Candidate -> Regression Replay -> Safety -> Shadow/Canary -> Promote -> Monitor -> Rollback`.
@@ -55,6 +65,6 @@ Policy files are optional/on-demand context, not startup context. The complete c
 
 ## Completion
 Report:
-`Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Assumptions | Risks | Incomplete checks | Efficiency`.
+`Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Graph/team execution | Assumptions | Risks | Incomplete checks | Efficiency`.
 
 For benchmark work load `context/benchmarking.md`, which defines independent objective oracles, fingerprints, mutation testing, hidden acceptance, AST/static invariants, deterministic failure injection, recovery ordering, Context Broker telemetry and separate observability scoring.
