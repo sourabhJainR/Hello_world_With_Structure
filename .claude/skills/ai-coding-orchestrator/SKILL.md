@@ -20,15 +20,15 @@ Do not preload full methodology, every policy, framework, history, capability, r
 
 Use the Context Broker to load only evidence justified by the current phase. Prefer targeted files/symbols/tests and structural evidence. Release raw context after use and retain compact proof-bearing state. Optional context packs and extensions are loaded only when justified.
 
-Detailed methodology is split into `.agents/skills/ai-coding-orchestrator/context/`. Start with `context/INDEX.md`; load only the required pack.
-
 ## Repository-first
 Read repository/team instructions, git state, structure, dependencies and tests before editing. Reuse local architecture, naming, configuration, telemetry and test patterns. Make the smallest safe change. Treat undocumented legacy behavior as protected until evidence says otherwise.
 
 ## Bounded execution
-`Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Execute -> Verify -> Review -> Repair if justified -> Learn -> Stop`.
+`Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Execute -> Verify -> Review -> Repair if justified -> Learn -> Stop`.
 
-Every retry has explicit bounds and must add evidence or change strategy. Parallelize only independent read-only work. Never run an unrestricted autonomous loop.
+For non-trivial work, prefer the graph agent team: `Planner -> Explorer/Researcher/RCA -> Builder -> Verifier -> Parallel Reviewers -> Synthesizer`. Each agent must receive and update task-scoped shared memory for the current intent digest. Parallelize independent read-only roles only; serialize mutating roles.
+
+The single-agent path is a fallback for trivial work, unavailable graph execution, or explicit disablement. Never run an unrestricted autonomous loop.
 
 ## Verification and recovery
 Verification outranks model confidence. Use the smallest sufficient ladder:
@@ -57,8 +57,4 @@ Policy files are optional/on-demand context, not startup context. The complete c
 
 ## Completion
 Report:
-`Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Assumptions | Risks | Incomplete checks | Efficiency`.
-
-For problem-solving decisions load `context/frameworks.md`. For provider-specific behavior load `context/providers.md`. For learning load `context/learning.md`. For benchmark work load `context/benchmarking.md`.
-
-Policies remain on-demand; do not read all policies at startup.
+`Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Graph/team execution | Assumptions | Risks | Incomplete checks | Efficiency`.
