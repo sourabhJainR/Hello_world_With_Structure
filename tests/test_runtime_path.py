@@ -51,7 +51,7 @@ class RuntimePathTests(unittest.TestCase):
 
     def test_learning_replay_shadow_canary_promotion_and_rollback(self):
         with tempfile.TemporaryDirectory() as tmp:
-            registry = PolicyRegistry([Policy("old", 1, "bug", "history_first", "active", .90, promoted_at=1)])
+            registry = PolicyRegistry([Policy("old", 1, "bug", "history_first", "active", .80, promoted_at=1)])
             controller = LearningController(Path(tmp), registry=registry)
             observations = [Observation(str(i), "bug", "targeted_context", True, True, True) for i in range(3)]
             candidate = controller.learn_candidates(observations, min_samples=3)[0]
