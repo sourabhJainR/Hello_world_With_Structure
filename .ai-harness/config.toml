@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-orchestrator"
-version = 20
+version = 21
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -24,6 +24,50 @@ mode = "single-adaptive-run"
 looping_enabled = false
 recursive_self_invocation = false
 user_requested_loop_only = true
+
+[sandbox]
+enabled = true
+module = ".ai-harness/runtime/sandbox.py"
+runner = ".ai-harness/runtime/tool_runner.py"
+no_shell = true
+workspace_confinement = true
+network_default = false
+timeout_seconds = 600
+max_memory_mb = 2048
+max_processes = 32
+max_output_chars = 12000
+fail_closed = true
+stronger_os_sandbox_recommended_for_hostile_code = true
+
+[lsp]
+enabled = true
+module = ".ai-harness/runtime/lsp_server.py"
+protocol = "stdio-jsonrpc"
+auto_discovery = true
+prefer_native_language_server = true
+fallback_navigation = true
+workspace_confinement = true
+
+[feedback]
+enabled = true
+module = ".ai-harness/runtime/feedback_loop.py"
+event_file = ".ai-harness/learning/feedback-events.jsonl"
+min_observations_for_candidate = 5
+min_success_rate = 0.80
+min_verification_rate = 0.90
+candidate_only_until_regression = true
+require_safety_gate = true
+require_shadow_and_canary = true
+never_auto_activate_executable_changes = true
+
+[auto_compaction]
+enabled = true
+module = ".ai-harness/runtime/auto_compaction.py"
+budget_chars = 12000
+trigger_when_over_budget = true
+preserve_sections = ["GOAL", "BOUNDARIES", "ACCEPTANCE", "SECURITY/PERMISSIONS", "CURRENT STATE", "TASK CONTRACT", "EVIDENCE", "VERIFY", "RISKS"]
+dedupe_repeated_lines = true
+record_digest = true
 
 [router]
 route_budget = 900
