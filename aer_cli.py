@@ -2,6 +2,7 @@
 """Stable, self-bootstrapping AER command-line entry point."""
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import shutil
@@ -68,15 +69,37 @@ def _load_runtime_from_bundle(bundle: Path):
         raise SystemExit(f"invalid AER bundle: {exc}") from exc
 
 
-def _load_runtime(argv: list[str]):
-    module = _load_runtime_from(_ROOT)
-    if module is not None:
-        return module, None
-    bundle_candidates = [Path(arg).expanduser() for arg in argv if not arg.startswith("-")]
-    for candidate in bundle_candidates:
-        if candidate.is_file() and candidate.suffix.lower() == ".zip":
-            return _load_runtime_from_bundle(candidate.resolve())
-    raise SystemExit("AER runtime not found. Run from the AER source checkout or portable bundle, or provide an AER .zip bundle.")
+def _inject_plugin_payload(bundle: Path, root: Path) -> None:
+    """Add Claude metadata to a runtime-built bundle and cover it in the manifest.
+
+    The distribution runtime owns the generic payload contract. The stable CLI
+    owns provider-specific packaging so older runtimes can still be bootstrapped
+    while newer builds ship a complete Claude integration.
+    """
+    plugin_root = root / ".claude-plugin"
+    if not plugin_root.is_dir():
+        return
+    with zipfile.ZipFile(bundle, "r") as source:
+        entries = {item.filename: source.read(item.filename) for item in source.infolist()}
+    manifest = json.loads(entries["aer-bundle.json"].decode("utf-8"))
+    records = list(manifest.get("files", []))
+    recorded = {item.get("path") for item in records if isinstance(item, dict)}
+    for path in sorted(plugin_root.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(root).as_posix()
+        archive_name = f"payload/{rel}"
+        data = path.read_bytes()
+        entries[archive_name] = data
+        if rel not in recorded:
+            records.append({"path": rel, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)})
+    manifest["files"] = sorted(records, key=lambda item: item["path"])
+    entries["aer-bundle.json"] = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    temp = bundle.with_suffix(".plugin.tmp.zip")
+    with zipfile.ZipFile(temp, "w", compression=zipfile.ZIP_DEFLATED) as target:
+        for name, data in entries.items():
+            target.writestr(name, data)
+    temp.replace(bundle)
 
 
 def _prepare_runtime_for_distribution(runtime) -> None:
@@ -91,6 +114,12 @@ def _prepare_runtime_for_distribution(runtime) -> None:
         if source.is_dir():
             runtime._copy_tree_without_mutable_state(source, version_root / ".claude-plugin")
     runtime._copy_payload = copy_payload
+    original_build = runtime.build
+    def build_with_provider_payload(root: Path, output: Path, source_commit: str | None = None, source_ref: str = runtime.AER_BRANCH) -> Path:
+        result = original_build(root, output, source_commit=source_commit, source_ref=source_ref)
+        _inject_plugin_payload(result, root)
+        return result
+    runtime.build = build_with_provider_payload
 
 
 def _has_flag(args: list[str], flag: str) -> bool:
