@@ -1,0 +1,40 @@
+name: Agent Capability Runtime
+
+on:
+  pull_request:
+    paths:
+      - 'portable/agent_capabilities.py'
+      - 'portable/capability_fabric.py'
+      - 'portable/persistent_memory.py'
+      - 'portable/automation_scheduler.py'
+      - 'portable/output_quality.py'
+      - 'portable/adaptive_runtime.py'
+      - 'portable/__init__.py'
+      - 'tests/test_agent_capabilities.py'
+      - '.ai-harness/config.toml'
+      - '.github/workflows/agent-capability-runtime.yml'
+  push:
+    branches: [feat/hermes-next-runtime]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile
+        run: python -m py_compile portable/agent_capabilities.py portable/capability_fabric.py portable/persistent_memory.py portable/automation_scheduler.py portable/output_quality.py portable/adaptive_runtime.py
+      - name: Capability tests
+        run: python -m pytest tests/test_agent_capabilities.py -q
+      - name: Config and facade checks
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tomllib
+          cfg = tomllib.loads(Path('.ai-harness/config.toml').read_text())
+          assert cfg['harness']['version'] == 21
+          assert cfg['capabilities']['module'] == 'portable.agent_capabilities'
+          print('capability runtime contract valid')
+          PY
