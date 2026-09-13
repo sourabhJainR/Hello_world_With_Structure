@@ -14,6 +14,18 @@ class ValidationResult:
     checks: tuple[str, ...]
 
 
+def _has_external_research_source(evidence: list[Mapping[str, object]]) -> bool:
+    """Require explicit source attribution rather than model-generated claims."""
+    for item in evidence:
+        source = str(item.get("source", "")).strip().lower()
+        locator = str(item.get("locator", "")).strip()
+        if locator:
+            return True
+        if source and source not in {"model", "llm", "assistant", "generated", "self"}:
+            return True
+    return False
+
+
 def validate_result(
     artifact_type: str,
     deliverables: list[str],
@@ -38,7 +50,7 @@ def validate_result(
             findings.append(ReviewFinding("material", "code work lacks explicit test/static/build verification"))
     elif artifact_type == "research":
         checks.extend(("source-backed-claims", "uncertainty-labels"))
-        if not any("source" in str(v).lower() or "citation" in str(v).lower() for v in evidence):
+        if not _has_external_research_source(evidence):
             findings.append(ReviewFinding("material", "research result lacks source-backed evidence"))
     elif artifact_type == "design":
         checks.extend(("requirements", "accessibility", "responsive-or-contextual-verification"))

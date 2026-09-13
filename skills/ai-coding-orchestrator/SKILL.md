@@ -1,76 +1,69 @@
 ---
 name: ai-coding-orchestrator
-description: Repository-aware AI engineering control plane for bounded, evidence-driven task execution, dependency-aware planning, impact review, verification, collaboration and controlled learning.
+description: Repository-aware AI engineering control plane for bounded, evidence-driven execution, verification, collaboration and controlled learning.
 ---
 
 # Adaptive AI Coding Orchestrator
 
 ## Contract
-AER owns intent, routing, context selection, budgets, safety, verification, learning and promotion. Providers and extensions supply capabilities; they do not redefine AER semantics.
+AER owns intent, routing, context selection, budgets, safety, verification, learning and promotion. Providers/extensions supply capabilities but never redefine AER semantics.
 
-Always preserve:
+Preserve:
 `GOAL | BOUNDARIES | ACCEPTANCE | SECURITY/PERMISSIONS | CURRENT STATE`.
 For non-trivial work use:
 `GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS | intent_digest`.
-Use the minimal safe change consistent with this contract and the repository rules.
+Use the minimal safe change consistent with repository rules.
 
-## Provider capabilities and lifecycle
-Discover actual provider capabilities before choosing execution surfaces. Prefer native `subagent`, `hooks`, `session_resume`, `structured_output`, `tool_interception`, `mcp` and `background_execution` only when evidence shows they are available; otherwise use AER fallbacks. Native capability selection cannot override AER security, acceptance, verification or promotion rules.
+## Provider lifecycle
+Discover actual provider capabilities before selecting execution surfaces. Native capabilities may include subagents, hooks, session resume, structured output, tool interception, MCP and background execution, but they cannot override AER security, acceptance, verification or promotion rules.
 
-Map provider events to AER phases when supported:
-`session_start | plan_start | before_agent | after_agent | before_tool | after_tool | before_verify | after_verify | before_promotion | after_promotion | session_end | recovery`.
-Hooks may annotate or veto execution and fail closed on handler errors.
-Provider manifests may extend discovery under `~/.aer/providers/`; `portable.provider_fabric.ProviderFabric` is the portable capability contract.
+Map supported provider events to AER phases such as `session_start`, `plan_start`, `before_agent`, `after_agent`, `before_tool`, `after_tool`, `before_verify`, `after_verify`, `before_promotion`, `after_promotion`, `session_end` and `recovery`. Hooks may annotate or veto and must fail closed on handler errors.
 
 ## Mandatory runtime services
-These are execution services, not optional methodology:
+Sandbox repository-local commands through `.ai-harness/runtime/tool_runner.py` and `sandbox.py`. Prefer native LSP; otherwise use `.ai-harness/runtime/lsp_server.py`. Route every provider attempt through `.ai-harness/runtime/feedback_loop.py`. Route prompts through `.ai-harness/runtime/auto_compaction.py` while preserving contract/security/acceptance/verification/risk content. Configuration lives in `.ai-harness/config.toml`.
 
-1. Sandbox: repository-local commands/tests/scripts cross `.ai-harness/runtime/tool_runner.py`, which delegates to `sandbox.py`.
-2. LSP/navigation: prefer a native language server; otherwise use `.ai-harness/runtime/lsp_server.py`.
-3. Feedback: every provider attempt crosses `.ai-harness/runtime/feedback_loop.py`; learning creates candidates only.
-4. Auto compaction: every provider prompt crosses `.ai-harness/runtime/auto_compaction.py`; protected contract/security/acceptance/verification/risk content is preserved.
+## Capabilities
+The portable capability implementation is `portable.agent_capabilities`; public facades include `portable.capability_fabric`, `portable.persistent_memory`, `portable.automation_scheduler` and `portable.output_quality`.
 
-Configuration lives in `.ai-harness/config.toml`.
+Discover before use and select the smallest justified capability set. Provider adapters select transport only; AER remains authoritative for acceptance, security and verification. Risky execution requires the sandbox. Scheduled/delegated work re-enters normal lifecycle and cannot bypass policy. Memory is bounded, intent-scoped, redacted and approval-aware. Delegated output is evidence-bearing work, not proof.
 
-## Unified capability runtime
-The task-facing capability implementation is `portable.agent_capabilities`. Public facades are `portable.capability_fabric`, `portable.persistent_memory`, `portable.automation_scheduler` and `portable.output_quality`.
+## Agency specialist layer
+When specialist expertise materially improves a task, use `.agents/skills/agency-specialist-orchestrator/SKILL.md` and the pinned registry when present. Select one primary specialist when possible; add support/review specialists only for independent expertise or material risk. Read-only analysis may be parallel. Mutations are bounded and serialized. Specialist output is work product, never proof by itself.
 
-Use the smallest justified capability set. Discover first; do not assume external adapters exist. Provider adapters select transport only; AER remains the authority for acceptance, security and verification.
+## Agency Runtime v8
+For substantial coding tasks use `portable.ai_coding_agency_bridge` and the v8 skill. It converts the request to a `TaskProfile`, selects specialists, accepts structured worker output, records evidence, evaluates quality, performs artifact regression, records provenance and issues a release decision. The host owns provider/tool calls, permissions, sandboxing, concurrency, mutation ordering and side effects. The bridge never executes commands or grants authority.
 
-Capability families include web/X search, browser, terminal/file, vision/media, memory/session recall, skills, task delegation, scheduling/background work, MCP and provider fallback. Risky execution requires the existing sandbox. Scheduled and delegated work re-enters the normal AER lifecycle and cannot bypass policy.
+A high score is not sufficient for release: hard gates, findings, verification and artifact regression must also pass.
 
-Memory is bounded, project/intent scoped, redacted and approval-aware. Skills use progressive disclosure and prerequisite checks. Delegated results are receipts, not proof. Missing evidence blocks a pristine-success claim.
+## Agency Runtime v9
+For multi-specialist work build a conflict-aware plan with `portable.agency_execution_plan` and expose it through the bridge. Every work unit declares:
+`ROLE | MUTATION_MODE | READ_PATHS | WRITE_PATHS | DEPENDENCIES | PRIORITY`.
 
-The final `OutputQualityGate` requires acceptance, verification, evidence, clean diff, clean scope and no unresolved findings before reporting ready.
+The host honors plan waves: compatible read-only work may share a wave; overlapping read/write and write/write resources are serialized; independent mutations are explicitly ordered; dependencies precede dependents; missing dependencies or cycles block the plan; undeclared writes are forbidden. Record the execution-plan digest in provenance. Never claim parallelism that the plan did not allow.
+
+## Agency Runtime v10
+Repeated coding workflows may pass `BenchmarkHistory` to `run_coding_task` so prior measured outcomes influence the next plan. Each benchmark binds the task to its v9 plan digest and provenance head and records release status, artifact-regression status, quality score, wave/conflict/blocked counts and specialist results.
+
+Adaptive planning is deterministic and bounded. Recent release or regression failures may tighten mutation mode. Frequent conflicts or blocked plans may cap support specialists. Sustained high quality with low conflict may permit one additional support specialist, but never above caller limits. Recommendations never expand permissions, alter protected-path policy, bypass v9 scheduling or convert a failed regression into success. Benchmark history is evidence for future planning, not authorization.
 
 ## Control-plane policies
-Detailed policies remain on-demand context. Use:
-`ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md`.
+Detailed policies remain on-demand context:
+`ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md | AGENCY_AGENT_QUALITY.md`.
 
-## Discovery and repository-first
+## Repository-first execution
 Use:
 `DISCOVER -> SCORE -> LEASE -> USE -> COMPRESS -> RELEASE`.
-Load only evidence justified by phase, uncertainty, dependency, risk or verification. Before editing inspect instructions, git state, structure, dependencies and tests. Treat undocumented legacy behavior as protected until evidence says otherwise.
+Inspect instructions, git state, structure, dependencies and tests before editing. Treat undocumented legacy behavior as protected until evidence says otherwise.
 
-## Task planning
-For non-trivial work create a durable dependency-aware plan with `portable.task_planner.TaskPlan` when machine-readable planning is useful. A task is ready only when every dependency is `done`. Keep IDs stable for evidence and regression history.
+## Planning and impact
+Use `portable.task_planner.TaskPlan` for durable non-trivial plans. A task is ready only when dependencies are done. Keep IDs stable for evidence and regression history.
 
-## Impact and mutation boundaries
 Before changing common/exported/inherited/configured/multi-consumer paths run:
-`python -m portable.impact_analysis --root . path/to/changed/file.py`
+`python -m portable.impact_analysis --root . path/to/changed/file.py`.
 
-Independent read-only analysis may run in parallel. Mutations are serialized; one owner edits a shared path.
-
-## Execution and graph collaboration
+## Execution, verification and learning
 Use:
 `Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Impact -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair -> Learn -> Stop`.
-
-For non-trivial tasks use:
-`Planner -> Explorer/Researcher/RCA -> Builder -> Verifier -> Parallel Reviewers -> Synthesizer`.
-Read-only roles may run in parallel; mutating roles are serialized. Every retry has explicit attempt, time, token and risk limits.
-
-## Recovery and evidence
-Persist `portable.session_state.SessionStore` for work spanning turns/batches. On restart resume from the first incomplete batch and preserve failure evidence.
 
 Verification order:
 `syntax/static -> focused tests -> integration/system -> regression replay -> security/policy -> final diff review`.
@@ -79,13 +72,12 @@ Retain:
 `intent_digest | graph_digest | environment_fingerprint | trajectory | attempts | repairs | evaluator outcomes | evidence digests | final outcome`.
 Regression claims require baseline and post-change evidence.
 
-## Learning
-Use:
+Learning follows:
 `Observe -> Outcome -> Candidate -> Regression Replay -> Safety -> Shadow/Canary -> Promote -> Monitor -> Rollback`.
-Executable orchestration changes remain candidates until gates pass. Learning must not expand permissions or security boundaries.
+Executable changes remain candidates until gates pass. Learning must not expand permissions or security boundaries.
 
 ## Distribution
-Portable artifacts are immutable. `update` is forward-only; explicit `install <artifact>` may activate an older/newer verified artifact. `downgrade=explicit_install_only`. `.ai-harness/ARTIFACT_UPGRADE_CONTRACT.json` is authoritative.
+Portable artifacts are immutable. `update` is forward-only; explicit `install <artifact>` may activate a verified older/newer artifact. `downgrade=explicit_install_only`. `.ai-harness/ARTIFACT_UPGRADE_CONTRACT.json` is authoritative.
 
 ## State and precedence
 Engineering State Ledger:
@@ -96,4 +88,4 @@ Precedence:
 
 ## Completion
 Report:
-`Outcome | Changed files | Task plan | Impact/shared-path findings | Evidence | Verification | Regression checks | Review | Capability plan | Graph/team execution | Assumptions | Risks | Incomplete checks | Efficiency`.
+`Outcome | Changed files | Task plan | Impact/shared-path findings | Evidence | Verification | Regression checks | Review | Capability plan | Graph/team execution | Agency specialists | Adaptive recommendation | Benchmark observation | Assumptions | Risks | Incomplete checks | Efficiency`.
