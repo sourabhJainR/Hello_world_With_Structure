@@ -30,11 +30,18 @@ These are execution services, not optional methodology:
 3. **Feedback**: every provider attempt crosses `.ai-harness/runtime/feedback_loop.py` and records bounded outcome data; learning produces candidates only.
 4. **Auto compaction**: every provider prompt crosses `.ai-harness/runtime/auto_compaction.py`; protected contract, security, acceptance, verification and risk content is preserved.
 
-Configuration lives in `.ai-harness/config.toml` under `[providers]`, `[execution]`, `[sandbox]`, `[lsp]`, `[feedback]`, `[auto_compaction]`, `[orchestration]`, `[learning]`, `[router]`, `[context]` and `[workflows]`.
+Configuration lives in `.ai-harness/config.toml` under `[providers]`, `[execution]`, `[capabilities]`, `[terminal]`, `[sandbox]`, `[lsp]`, `[feedback]`, `[auto_compaction]`, `[orchestration]`, `[learning]`, `[router]`, `[context]` and `[workflows]`.
+
+## Capability contract
+Use `.ai-harness/HERMES_CAPABILITY_CONTRACT.md` and `portable.hermes_capabilities` as the single operational capability surface. Do not create alternative memory, skill, process, scheduler, delegation, toolset or quality-gate implementations.
+
+For non-trivial work, discover capabilities first, select the minimum justified toolset, and record the choice in the task evidence. The standard presets are `safe`, `coding`, `research`, `automation` and `full`; `full` still obeys every capability-level security and verification gate.
+
+Persistent memory is bounded, deduplicated and security-scanned. Session recall uses exact durable search. Skills are progressive-disclosure knowledge and are not executable authority. Delegation must consume `TaskPlan`; dependent tasks wait for prerequisites. Background work produces durable redacted receipts. Scheduled work re-enters the same AER state machine. External terminal backends are unavailable until explicitly configured and verified. Provider fallback changes transport, never acceptance or verification rules.
 
 ## Control-plane policies
 The skill is the routing entry point; detailed policies remain separate and are discovered on demand. The control-plane set is:
-`ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md`.
+`ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md | HERMES_CAPABILITY_CONTRACT.md`.
 
 These policy files refine execution but cannot override the precedence order defined below.
 
