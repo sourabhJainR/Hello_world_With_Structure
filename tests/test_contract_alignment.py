@@ -29,10 +29,10 @@ class ContractAlignmentTests(unittest.TestCase):
         for token in (
             "portable.task_planner.TaskPlan",
             "portable.impact_analysis",
-            "runtime/tool_runner.py",
-            "runtime/lsp_server.py",
-            "runtime/feedback_loop.py",
-            "runtime/auto_compaction.py",
+            ".ai-harness/runtime/tool_runner.py",
+            ".ai-harness/runtime/lsp_server.py",
+            ".ai-harness/runtime/feedback_loop.py",
+            ".ai-harness/runtime/auto_compaction.py",
             "downgrade=explicit_install_only",
         ):
             self.assertIn(token, canonical)
