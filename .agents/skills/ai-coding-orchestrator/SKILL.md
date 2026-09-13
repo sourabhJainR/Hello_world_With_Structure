@@ -62,7 +62,7 @@ Delegation consumes `TaskPlan`. Dependents cannot run after failed/blocked prere
 Background processes have stable handles and durable redacted completion receipts. Scheduling stores durable state; scheduled work enters the same AER lifecycle. Long-running work that must survive process/session boundaries uses durable scheduling/background mechanisms, not process-local delegation.
 
 ## Terminal and external tools
-Local execution crosses the sandbox. Alternate backends (Docker, SSH, Singularity/Apptainer, Modal, Daytona, Vercel Sandbox) are explicit adapters; never simulate availability. MCP, web, browser, vision and media require verified adapters.
+Local execution crosses the sandbox. Alternate backends (Docker, SSH, Singularity/Apptainer, Modal, Daytona, Vercel Sandbox) are explicit adapters; never simulate availability. Optional MCP, web, browser, vision and media capabilities require verified adapters.
 
 ## Verification and evidence
 Verification order:
