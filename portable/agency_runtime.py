@@ -76,8 +76,8 @@ def plan_task(task: TaskProfile, registry: Mapping[str, object] | None = None, s
 def evidence_id(item: EvidenceItem) -> str:
     return sha256(f"{item.source}|{item.claim}|{item.locator}".encode()).hexdigest()[:16]
 
-def execute(task: TaskProfile, worker: Callable[[TaskProfile,list[Assignment]], Mapping[str,object]], registry: Mapping[str,object] | None = None, rubric: Mapping[str,object] | None = None) -> ExecutionResult:
-    assignments=plan_task(task,registry=registry); result=ExecutionResult(task,assignments); result.ledger.append(LedgerEntry("planned",f"selected {len(assignments)} specialist(s)"))
+def execute(task: TaskProfile, worker: Callable[[TaskProfile,list[Assignment]], Mapping[str,object]], registry: Mapping[str,object] | None = None, rubric: Mapping[str,object] | None = None, support_limit: int = 2) -> ExecutionResult:
+    assignments=plan_task(task,registry=registry,support_limit=support_limit); result=ExecutionResult(task,assignments); result.ledger.append(LedgerEntry("planned",f"selected {len(assignments)} specialist(s)"))
     raw=dict(worker(task,assignments)); result.deliverables=[str(x) for x in raw.get("deliverables",())]; result.verification=[str(x) for x in raw.get("verification",())]; result.dimensions={str(k):int(v) for k,v in dict(raw.get("dimensions",{})).items()}; result.hard_gates={str(k):bool(v) for k,v in dict(raw.get("hard_gates",{})).items()}; result.findings=list(raw.get("findings",()))
     for item in raw.get("evidence",()):
         evidence=item if isinstance(item,EvidenceItem) else EvidenceItem(**item); result.evidence.append(evidence); result.ledger.append(LedgerEntry("evidence",evidence.claim,(evidence_id(evidence),)))
