@@ -1,6 +1,6 @@
 ---
 name: ai-coding-orchestrator
-description: Repository-aware AI engineering control plane for precise task execution, evidence-based RCA, minimal safe changes, dependency-aware planning, shared-path impact review, verification, collaboration and bounded learning across supported AI coding surfaces.
+description: Repository-aware AI engineering control plane for precise task execution, evidence-based RCA, minimal safe changes, dependency-aware planning, shared-path impact review, verification, collaboration and bounded learning.
 ---
 
 # Adaptive AI Coding Orchestrator
@@ -17,20 +17,19 @@ Discover actual provider capabilities before choosing agent or hook strategies. 
 Provider manifests may extend discovery under `~/.aer/providers/`. Use `portable.provider_fabric.ProviderFabric` as the portable capability contract.
 
 ## Lifecycle hooks
-Map provider events to AER phases where possible: `session_start | plan_start | before_agent | after_agent | before_tool | after_tool | before_verify | after_verify | before_promotion | after_promotion | session_end | recovery`.
+Map provider events to AER phases: `session_start | plan_start | before_agent | after_agent | before_tool | after_tool | before_verify | after_verify | before_promotion | after_promotion | session_end | recovery`.
 Hooks may annotate or veto execution. Hook failures fail closed and cannot weaken security, permissions, verification, regression or self-modification gates.
 
 ## Discovery and repository-first behavior
-Do not preload methodology, policy, history, catalogs, repository dumps or transcripts. Use `DISCOVER -> SCORE -> LEASE -> USE -> COMPRESS -> RELEASE`. Load only evidence justified by phase, uncertainty, dependency, risk or verification. Prefer targeted files, symbols, tests and structural evidence; release raw context after use.
+Do not preload methodology, policy, history, catalogs, repository dumps or transcripts. Use `DISCOVER -> SCORE -> LEASE -> USE -> COMPRESS -> RELEASE`. Load only evidence justified by phase, uncertainty, dependency, risk or verification. Prefer targeted files, symbols, tests and structural evidence.
 
 Before editing, inspect repository/team rules, git state, structure, dependencies and tests. Reuse local architecture, naming, configuration, telemetry and test patterns. Make the smallest safe change. Treat undocumented legacy behavior as protected until evidence says otherwise.
 
 ## Task planning
-For non-trivial work create a durable plan before implementation. A task carries:
+For non-trivial work create a durable plan. A task carries:
 `id | title | description | status | priority | dependencies | subtasks | tags/workstream | acceptance | files`.
 
-Use `portable.task_planner.TaskPlan` when machine-readable planning is useful. Validate the whole dependency graph before execution. A task is ready only when all dependencies are done. Keep IDs stable for evidence and regression history. Use tags/workstreams to isolate independent efforts without duplicating task databases. Prefer:
-`intent -> tasks -> dependency validation -> ready task -> implementation -> verification -> status`.
+Use `portable.task_planner.TaskPlan` when machine-readable planning is useful. Validate the whole dependency graph before execution. A task is ready only when all dependencies are done. Keep IDs stable for evidence and regression history. Use tags/workstreams to isolate independent efforts.
 
 Expand complex work into bounded subtasks. Do not ask one agent to solve an unbounded request.
 
@@ -41,7 +40,7 @@ Before changing a common, exported, inherited, configured or multi-consumer path
 python -m portable.impact_analysis --root . path/to/changed/file.py
 ```
 
-Review the reported direct consumers, outbound dependencies, shared/common surfaces and review level. A `critical` shared-path finding is a human-review gate.
+Review direct consumers, outbound dependencies, shared/common surfaces and review level. A `critical` shared-path finding is a human-review gate.
 
 For shared or contract surfaces review:
 - direct consumers and public interfaces;
