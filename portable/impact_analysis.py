@@ -71,8 +71,13 @@ def _python_edges(path: Path, root: Path) -> set[str]:
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             result.update(alias.name.replace(".", "/") for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            result.add(node.module.replace(".", "/"))
+        elif isinstance(node, ast.ImportFrom):
+            module = (node.module or "").replace(".", "/")
+            if module:
+                result.add(module)
+                for alias in node.names:
+                    if alias.name != "*":
+                        result.add(f"{module}/{alias.name}")
     return result
 
 
@@ -85,33 +90,33 @@ def _text_edges(path: Path) -> set[str]:
     return set(re.findall(pattern, text))
 
 
-def _candidate_matches(reference: str, rel: str) -> bool:
-    """Match an explicit module/path reference without same-filename guesses."""
-    ref = reference.replace("\\", "/").lstrip("./")
-    target = rel.rsplit(".", 1)[0] if "." in rel else rel
-    target = target.replace("\\", "/")
-    if ref == target or ref.endswith("/" + target) or target.endswith("/" + ref):
-        return True
+def _aliases(rel: str) -> set[str]:
+    normalized = rel.replace("\\", "/")
+    stem = normalized[:-3] if normalized.endswith(".py") else normalized
+    aliases = {stem}
+    if stem.endswith("/__init__"):
+        aliases.add(stem[:-9])
+    return {alias.rstrip("/") for alias in aliases if alias}
 
-    # Python relative imports often omit the .py suffix; accept an exact stem
-    # only when it maps uniquely to one repository file.
-    target_name = Path(target).name
-    ref_name = Path(ref).name
-    if ref_name != target_name:
+
+def _candidate_matches(reference: str, rel: str, aliases: set[str]) -> bool:
+    ref = reference.replace("\\", "/").lstrip("./").rstrip("/")
+    if not ref:
         return False
-    return False
+    return any(ref == alias or ref.endswith("/" + alias) or alias.endswith("/" + ref) for alias in aliases)
 
 
 def _reference_index(files: list[Path], root: Path) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
     references: dict[str, set[str]] = {_normal(path, root): set() for path in files}
     reverse: dict[str, set[str]] = {_normal(path, root): set() for path in files}
+    aliases = {rel: _aliases(rel) for rel in references}
     for path in files:
         rel = _normal(path, root)
         refs = _python_edges(path, root) if path.suffix == ".py" else _text_edges(path)
         references[rel] = refs
     for rel, refs in references.items():
-        for candidate in reverse:
-            if candidate != rel and any(_candidate_matches(ref, candidate) for ref in refs):
+        for candidate, candidate_aliases in aliases.items():
+            if candidate != rel and any(_candidate_matches(ref, candidate, candidate_aliases) for ref in refs):
                 reverse[candidate].add(rel)
     return references, reverse
 
