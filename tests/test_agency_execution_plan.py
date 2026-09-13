@@ -31,14 +31,15 @@ class ExecutionPlanTests(unittest.TestCase):
             SpecialistWork("builder", "primary", "bounded", write_paths=("src/a.py",)),
             SpecialistWork("reviewer", "reviewer", read_paths=("src/a.py",)),
         ]
-        self.assertTrue(build_plan(work).has_conflicts)
-        self.assertEqual(len(build_plan(work).waves), 2)
+        plan = build_plan(work)
+        self.assertTrue(plan.has_conflicts)
+        self.assertEqual(len(plan.waves), 2)
 
-    def test_dependency_orders_work(self):
+    def test_dependency_orders_work_even_when_dependency_has_lower_priority(self):
         plan = build_plan(
             [
-                SpecialistWork("builder", "primary", "bounded", write_paths=("src/a.py",)),
-                SpecialistWork("reviewer", "reviewer", read_paths=("src/a.py",), depends_on=("builder",)),
+                SpecialistWork("reviewer", "reviewer", read_paths=("src/a.py",), depends_on=("builder",), priority=100),
+                SpecialistWork("builder", "primary", "bounded", write_paths=("src/a.py",), priority=1),
             ]
         )
         positions = {name: i for i, wave in enumerate(plan.waves) for name in wave.specialists}
@@ -47,6 +48,26 @@ class ExecutionPlanTests(unittest.TestCase):
     def test_missing_dependency_is_blocked(self):
         plan = build_plan([SpecialistWork("builder", "primary", "bounded", write_paths=("src/a.py",), depends_on=("missing",))])
         self.assertTrue(plan.blocked)
+        self.assertEqual(plan.waves, ())
+
+    def test_dependency_cycle_is_blocked(self):
+        plan = build_plan(
+            [
+                SpecialistWork("a", "primary", "bounded", write_paths=("a.py",), depends_on=("b",)),
+                SpecialistWork("b", "support", "bounded", write_paths=("b.py",), depends_on=("a",)),
+            ]
+        )
+        self.assertTrue(any("dependency cycle" in item for item in plan.blocked))
+        self.assertEqual(plan.waves, ())
+
+    def test_duplicate_specialist_ids_are_rejected(self):
+        with self.assertRaises(ValueError):
+            build_plan(
+                [
+                    SpecialistWork("dup", "primary"),
+                    SpecialistWork("dup", "support"),
+                ]
+            )
 
     def test_invalid_read_only_write_declaration_is_rejected(self):
         with self.assertRaises(ValueError):
