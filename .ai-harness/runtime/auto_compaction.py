@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Deterministic context compaction with protected evidence."""
 """Deterministic context compaction with protected evidence.
 
 Compaction happens at the harness boundary, before provider invocation. The
@@ -11,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
-
 
 PROTECTED_HEADINGS = (
     "GOAL", "BOUNDARIES", "ACCEPTANCE", "SECURITY/PERMISSIONS",
@@ -65,20 +63,18 @@ def compact(text: str, *, budget_chars: int = 12000) -> CompactionResult:
     source = text.strip()
     budget = max(1000, int(budget_chars))
     if len(source) <= budget:
-        return CompactionResult(source, len(source), len(source), 0, hashlib.sha256(source.encode()).hexdigest()[:16], False)
+        return CompactionResult(
+            source,
+            len(source),
+            len(source),
+            0,
+            hashlib.sha256(source.encode("utf-8")).hexdigest()[:16],
+            False,
+        )
+
     protected: list[tuple[str, str]] = []
     ordinary: list[tuple[str, str]] = []
     for name, body in _sections(source):
-        (protected if any(token in name for token in PROTECTED_HEADINGS) else ordinary).append((name, body))
-    selected: list[str] = []
-    used = 0
-    for name, body in protected + list(reversed(ordinary)):
-        block = f"## {name}\n{_dedupe_lines(body)}".strip()
-
-    sections = _sections(source)
-    protected: list[tuple[str, str]] = []
-    ordinary: list[tuple[str, str]] = []
-    for name, body in sections:
         (protected if any(token in name for token in PROTECTED_HEADINGS) else ordinary).append((name, body))
 
     selected: list[str] = []
@@ -99,4 +95,11 @@ def compact(text: str, *, budget_chars: int = 12000) -> CompactionResult:
 
     result = "\n\n".join(selected).strip()
     digest = hashlib.sha256(result.encode("utf-8")).hexdigest()[:16]
-    return CompactionResult(result, len(source), len(result), max(0, len(source) - len(result)), digest, True)
+    return CompactionResult(
+        result,
+        len(source),
+        len(result),
+        max(0, len(source) - len(result)),
+        digest,
+        True,
+    )
