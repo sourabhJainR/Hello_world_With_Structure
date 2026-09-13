@@ -43,9 +43,17 @@ Memory is bounded, project/intent scoped, redacted and approval-aware. Skills us
 
 The final `OutputQualityGate` requires acceptance, verification, evidence, clean diff, clean scope and no unresolved findings before reporting ready.
 
+## Agency specialist layer
+
+When specialist expertise improves the result, use `.agents/skills/agency-specialist-orchestrator/SKILL.md` and the pinned registry under `agency/registry.json` when present. The upstream agency-agents model contributes specialist identity, mission, critical rules, concrete deliverables, workflow, communication style, learning and success metrics. AER adds repository evidence, bounded execution, impact analysis, deterministic verification, independent review and promotion controls.
+
+Select one primary specialist whenever possible. Add supporting specialists only for independent expertise or a material risk. Read-only specialists may work in parallel; conflicting mutations remain serialized. Specialist output is evidence-bearing work product, never proof by itself.
+
+For substantial outputs require: objective/audience, facts vs assumptions, concrete deliverable, evidence traceability, edge cases/failure modes, verification, review disposition and open risks. Reject generic, unsupported, internally inconsistent, out-of-scope or unverified output.
+
 ## Control-plane policies
 Detailed policies remain on-demand context. Use:
-`ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md`.
+`ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md | AGENCY_AGENT_QUALITY.md`.
 
 ## Discovery and repository-first
 Use:
@@ -96,4 +104,4 @@ Precedence:
 
 ## Completion
 Report:
-`Outcome | Changed files | Task plan | Impact/shared-path findings | Evidence | Verification | Regression checks | Review | Capability plan | Graph/team execution | Assumptions | Risks | Incomplete checks | Efficiency`.
+`Outcome | Changed files | Task plan | Impact/shared-path findings | Evidence | Verification | Regression checks | Review | Capability plan | Graph/team execution | Agency specialists | Assumptions | Risks | Incomplete checks | Efficiency`.
