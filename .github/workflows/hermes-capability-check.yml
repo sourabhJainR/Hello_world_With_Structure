@@ -1,0 +1,47 @@
+name: Hermes Capability Check
+
+on:
+  pull_request:
+    paths:
+      - 'portable/hermes_capabilities.py'
+      - 'portable/provider_fabric.py'
+      - 'portable/adaptive_runtime.py'
+      - 'portable/__init__.py'
+      - 'portable/task_planner.py'
+      - 'tests/test_hermes_capabilities.py'
+      - '.ai-harness/HERMES_CAPABILITY_CONTRACT.md'
+      - '.ai-harness/config.toml'
+      - '.github/workflows/hermes-capability-check.yml'
+  push:
+    branches:
+      - hermes-capability-integration
+
+jobs:
+  capability-runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile capability runtime
+        run: python -m py_compile portable/hermes_capabilities.py portable/provider_fabric.py portable/adaptive_runtime.py portable/task_planner.py
+      - name: Run capability regression tests
+        run: python -m unittest tests.test_hermes_capabilities -v
+      - name: Validate canonical capability contract
+        run: |
+          python - <<'PY'
+          import tomllib
+          from pathlib import Path
+          from portable.hermes_capabilities import CAPABILITY_NAMES, TOOLSET_PRESETS
+          config = tomllib.loads(Path('.ai-harness/config.toml').read_text(encoding='utf-8'))
+          caps = config['capabilities']
+          assert caps['module'] == 'portable.hermes_capabilities'
+          assert set(TOOLSET_PRESETS['safe']).issubset(CAPABILITY_NAMES)
+          assert set(TOOLSET_PRESETS['coding']).issuperset({'terminal', 'file', 'skills', 'delegation'})
+          assert caps['memory_limit'] == 2200
+          assert caps['user_memory_limit'] == 1375
+          assert caps['max_concurrent_children'] >= 1
+          assert caps['max_delegation_depth'] >= 1
+          print('Capability contract validated')
+          PY
