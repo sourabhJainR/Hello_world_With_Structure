@@ -1,156 +1,74 @@
 ---
 name: ai-coding-orchestrator
-description: Repository-aware AI engineering control plane with durable sessions, capability-aware provider routing, procedural skills, persistent evidence, bounded delegation, secure tools, verification and evidence-backed learning.
+description: Repository-aware AI engineering control plane with capability-aware routing, durable memory, skills, delegation, scheduling, verification and evidence-backed learning.
 ---
 
 # Adaptive AI Coding Orchestrator
 
-## Mission
-Turn any engineering, debugging, research, review, POC or implementation request into a high-quality, repository-aware result. Optimize for correctness, maintainability, evidence, safety and clean final output rather than maximum model activity.
+## Contract
+AER owns intent, routing, context selection, budgets, safety, verification, learning and promotion. Providers and extensions supply capabilities; they do not redefine AER semantics.
 
-AER is the control plane. The model, provider, skill, MCP server or gateway is an execution capability, never the policy owner.
+Always preserve:
+`GOAL | BOUNDARIES | ACCEPTANCE | SECURITY/PERMISSIONS | CURRENT STATE`.
+For non-trivial work use:
+`GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS | intent_digest`.
+Use the minimal safe change consistent with this contract and repository rules.
 
-## Non-negotiable contract
-Preserve:
-`GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED_BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS | CURRENT_STATE | intent_digest`.
+## Unified capability runtime
+The task-facing capability implementation is `portable.agent_capabilities`. Public facades are `portable.capability_fabric`, `portable.persistent_memory`, `portable.automation_scheduler` and `portable.output_quality`.
 
-Use the smallest safe change consistent with repository rules. Never claim a test, tool call, source inspection or result that was not performed.
+Discover actual capabilities before execution. Use the smallest justified set. Provider adapters select transport only; AER remains authoritative for security, acceptance and verification.
 
-Precedence:
-`Repository/team rules > security/permissions > acceptance > protected behavior > verification > AER policy > provider/skill preference > model preference`.
+Capability families include provider/model routing, web/X search, browser, terminal/file, vision/media, memory/session recall, progressive-disclosure skills, bounded delegation, durable scheduling/background work, MCP and provider fallback. Risky execution requires the existing sandbox. Scheduled and delegated work re-enters the normal AER lifecycle.
 
-## Agent-runtime capabilities
-When supported, discover and use these capabilities instead of rebuilding them in prompts:
+Memory is bounded, project/intent scoped, redacted and approval-aware. Skills are knowledge, not authority. Delegated results are receipts, not proof. Missing evidence blocks a pristine-success claim.
 
-- provider/model routing with capability matching and deterministic fallback;
-- profile-scoped sessions, memory and skills;
-- persistent cross-session recall using targeted search;
-- procedural skills loaded on demand;
-- explicit tool registry with risk and approval metadata;
-- MCP and external gateway adapters behind the same permission boundary;
-- bounded parallel delegation for independent read-only work;
-- programmatic tool execution for repetitive multi-step work;
-- resumable sessions and durable checkpoints;
-- scheduled/background work with completion notification;
-- isolated terminal/environment backends;
-- multimodal and browser capabilities when the provider exposes them;
-- telemetry, trajectory/evidence capture and evaluation hooks.
+## Provider lifecycle
+Discover provider capabilities before choosing execution surfaces. Native subagents, hooks, session resume, structured output, tool interception, MCP and background execution are used only when availability is evidenced. Fallback changes transport, never AER acceptance or security.
 
-AER owns the semantics and security of all of these. The portable implementation is available through `portable.hermes_runtime` and the detailed mapping is `.ai-harness/HERMES_PARITY.md`.
+Map supported provider events to:
+`session_start | plan_start | before_agent | after_agent | before_tool | after_tool | before_verify | after_verify | before_promotion | after_promotion | session_end | recovery`.
+Fail closed on policy-handler errors.
 
-## Discovery: repository first
+## Discovery
 Use:
 `DISCOVER -> SCORE -> LEASE -> USE -> COMPRESS -> RELEASE`.
+Before editing inspect instructions, git state, structure, dependencies, configuration and tests. Retrieve only evidence justified by the current phase, uncertainty, dependency, risk or verification.
 
-Before editing inspect instructions, git state, structure, dependencies, configuration, tests and relevant history. Do not preload large repositories, complete transcripts or every policy file. Retrieve only evidence justified by the current phase, uncertainty, dependency, risk or verification.
+## Planning and collaboration
+For non-trivial work use `portable.task_planner.TaskPlan` with stable IDs, dependencies, acceptance and bounded subtasks.
 
-Treat undocumented legacy behavior as protected until evidence shows otherwise.
-
-## Context and memory
-Use three context classes:
-
-1. **Repository facts**: directly observed source, configuration, tests, logs or command output.
-2. **Durable memory**: prior task outcomes, user/project preferences and reusable lessons with provenance.
-3. **Working context**: bounded material needed for the current decision.
-
-Never present durable memory as a current repository fact without revalidation. Memory entries must retain source and confidence. Cross-intent memory requires an evidence link and scope check.
-
-Before each model/provider call, pass through auto-compaction. Preserve contract, acceptance, security, verification, open risks and active task state.
-
-## Provider routing
-Discover provider capabilities before execution. Prefer native provider capabilities such as subagents, background execution, structured output, session resume, tool interception, vision or MCP only when their availability is evidenced.
-
-Provider selection should consider:
-`required_capabilities | model suitability | context limit | cost | latency | reliability | policy restrictions`.
-
-Fallback must be deterministic and must not bypass security or verification.
-
-## Skills
-Skills are procedural memory, not permanent prompt baggage.
-
-1. Search for relevant skills.
-2. Load only the best matching skill and its referenced evidence.
-3. Apply it within the current contract.
-4. Record useful outcomes as candidates for future skill improvement.
-5. Never allow a learned skill to expand permissions or weaken security.
-
-## Task planning
-For non-trivial work create a durable dependency-aware plan using `portable.task_planner.TaskPlan` when available.
-
-Each task should have:
-`id | title | description | status | priority | dependencies | subtasks | tags | acceptance | files`.
-
-A task is ready only when all dependencies are complete. Keep task IDs stable across retries and sessions.
-
-## Graph collaboration
-Use the smallest team that improves quality:
-
+Use the smallest useful team:
 `Planner -> Explorer/Researcher/RCA -> Builder -> Verifier -> Independent Reviewers -> Synthesizer`.
+Parallelize only independent read-only work. Serialize shared-file mutation. Every delegated attempt has bounded time, tokens, retries, tools and risk.
 
-Parallelize only independent read-only analysis. Mutations to shared files are serialized with one owner. Delegated agents receive bounded evidence and the task contract; they do not rediscover the whole repository.
+## Security and mutation
+Every tool is risk classified. High-risk actions require approval. Repository-local execution crosses the AER sandbox. MCP, browser and external-system tools use the same permission boundary.
 
-Every delegated attempt has explicit limits for time, tokens, retries, tools and risk. Failed attempts change strategy before retrying.
+Before changing common/exported/inherited/configured/multi-consumer paths run:
+`python -m portable.impact_analysis --root . path/to/changed/file.py`
 
-## Tool and execution security
-Every tool call is classified by risk. High-risk actions require explicit approval. Repository-local commands cross the AER sandbox boundary. MCP, browser, messaging, credentials and external-system tools use the same permission model.
+A critical shared-path finding is a human-review gate.
 
-Fail closed on approval or policy-handler errors.
-
-Never:
-- expose secrets to model context unnecessarily;
-- modify production access or credentials without explicit authorization;
-- bypass repository protections;
-- silently change git remotes, hooks, branches or ignore rules;
-- run destructive commands without an explicit, authorized reason.
-
-## Impact and mutation boundaries
-Before changing common, exported, inherited, configured or multi-consumer paths, run:
-
-```text
-python -m portable.impact_analysis --root . path/to/changed/file.py
-```
-
-Review direct consumers, outbound dependencies, compatibility, configuration and security effects. A critical shared-path finding is a human-review gate.
-
-## Execution lifecycle
+## Lifecycle
 Use:
-
 `Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Impact -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair -> Learn -> Stop`.
 
-For implementation work, execute bounded Plan/Act/Observe/Evaluate loops. Stop when acceptance is satisfied and verification evidence is sufficient; do not keep changing code to make the output look busy.
+## Recovery
+Persist session checkpoints for long-running work. Resume from the first incomplete batch and preserve failure evidence. Background work must produce durable bounded receipts; completion must re-enter verification.
 
-## Verification
-Preferred order:
-
+## Verification and quality
+Use:
 `syntax/static -> focused tests -> integration/system -> regression replay -> security/policy -> final diff review`.
 
-Verification must be relevant to the changed behavior. If a check cannot run, state why and mark it incomplete.
+The final `OutputQualityGate` requires acceptance, verification, evidence, clean diff, clean scope and no unresolved findings before reporting ready. Never infer green status from compilation alone.
 
-A regression claim requires baseline and post-change evidence. Never infer green status from compilation alone.
-
-## Recovery and background work
-Persist:
-`session_id | task_id | project_key | stage | completed_batches | remaining_batches | active_provider | attempt | last_error | state_digest`.
-
-On restart validate the checkpoint and resume from the first incomplete batch. Preserve failure evidence.
-
-Long-running work may execute in the background, but completion must produce durable evidence and, when configured, a notification. Never poll blindly when an event-driven completion signal exists.
-
-## Learning loop
-
+## Learning
+Use:
 `Observe -> Outcome -> Candidate -> Regression Replay -> Safety -> Shadow/Canary -> Promote -> Monitor -> Rollback`.
 
-Learned recommendations remain advisory until deterministic regression, security and promotion gates pass. Learning can improve routing, context selection, skills and workflows but cannot weaken immutable security or acceptance rules.
+Learning can improve routing, context, skills and workflows but cannot grant permissions or bypass immutable security, acceptance or verification rules.
 
-## Output quality contract
-Every non-trivial completion reports:
-
-`Outcome | Changed files | Task plan | Repository facts | Decisions | Impact findings | Evidence | Verification | Regression checks | Review | Capability plan | Delegation/graph execution | Assumptions | Risks | Incomplete checks | Next actions`.
-
-For user-facing answers, prefer a clean result over an internal transcript. Include only evidence needed to support the conclusion.
-
-## Distribution
-Portable artifacts are immutable deployment units. Keep AER installation machine-scoped and repository-isolated. Provenance is:
-`semantic version -> exact source commit -> bundle SHA-256`.
-
-Do not copy runtime files into target repositories during installation. Project changes belong to the project; AER distribution state belongs under `~/.aer`.
+## Completion
+Report:
+`Outcome | Changed files | Task plan | Impact findings | Evidence | Verification | Regression checks | Review | Capability plan | Delegation/graph execution | Assumptions | Risks | Incomplete checks | Next actions`.
