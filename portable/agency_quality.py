@@ -1,7 +1,7 @@
 """Deterministic quality contracts for specialist-agent work.
 
-This module deliberately does not call an LLM. It evaluates structured evidence and
-review findings so an agent cannot self-certify completion merely by producing text.
+This module does not call an LLM. It evaluates structured evidence and review
+findings so an agent cannot self-certify completion merely by producing text.
 """
 from __future__ import annotations
 
@@ -9,6 +9,19 @@ from dataclasses import dataclass, field
 from typing import Iterable, Mapping
 
 SEVERITIES = ("blocker", "material", "minor", "observation")
+DEFAULT_RUBRIC: dict[str, object] = {
+    "release_threshold": 90,
+    "dimensions": {
+        "correctness": 25,
+        "completeness": 15,
+        "evidence": 15,
+        "verification": 15,
+        "scope_discipline": 10,
+        "security_and_safety": 10,
+        "clarity": 5,
+        "maintainability": 5,
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -81,7 +94,7 @@ def evaluate(
     rubric: Mapping[str, object] | None = None,
 ) -> QualityReceipt:
     """Produce a machine-readable quality receipt for a completed work unit."""
-    rubric = rubric or {"release_threshold": 90, "dimensions": {}}
+    rubric = rubric or DEFAULT_RUBRIC
     score = score_dimensions(dimensions, rubric)
     threshold = int(rubric.get("release_threshold", 90))
     normalized_findings = list(findings)
