@@ -26,11 +26,16 @@ def decide_release(
     hard_gates: Mapping[str, bool],
     findings: Iterable[ReviewFinding] = (),
     unresolved_risks: Iterable[str] = (),
+    regression_status: str | None = None,
 ) -> ReleaseDecision:
     """Never infer success from score alone; distinguish blocked from failed work."""
     reasons: list[str] = []
     if not hard_gates:
         return ReleaseDecision("blocked", ("no hard gates were supplied",))
+    if regression_status not in {None, "passed", "failed"}:
+        raise ValueError("regression_status must be passed, failed, or omitted")
+    if regression_status == "failed":
+        reasons.append("artifact regression detected")
     missing = sorted(k for k, value in hard_gates.items() if not value)
     if missing:
         reasons.append("failed hard gates: " + ", ".join(missing))
@@ -40,7 +45,7 @@ def decide_release(
     risks = [str(x).strip() for x in unresolved_risks if str(x).strip()]
     if risks:
         reasons.extend("unresolved risk: " + x for x in risks)
-    if missing or material or risks:
+    if missing or material or risks or regression_status == "failed":
         return ReleaseDecision("failed", tuple(reasons))
     if score < threshold:
         return ReleaseDecision("failed", (f"score {score} is below threshold {threshold}",))
