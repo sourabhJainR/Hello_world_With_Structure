@@ -1,22 +1,26 @@
 # AER Capability Contract
 
-This is the single contract for the operational capabilities added from the Hermes Agent design review. The implementation is AER-native: the existing orchestrator, sandbox, hooks, context policy, task planner, provider fabric, session store and learning gates remain authoritative.
+This is the single contract for the operational capabilities adopted from the Hermes Agent design review. The implementation is AER-native; existing AER orchestration, sandbox, hooks, context, TaskPlan, provider fabric, session store and learning gates remain authoritative.
 
 ## Capability map
 
 | Capability | AER implementation | Authority | Fallback |
 |---|---|---|---|
-| Toolsets | `portable.hermes_capabilities.CapabilityRegistry` | AER registry | `safe` / `coding` / `research` / `automation` presets |
-| Persistent memory | `MemoryStore` | AER state root | disabled only by explicit config |
-| Session recall | `MemoryStore.index_session/search_session` | current session + FTS5 | no model call required |
+| Toolsets | `portable.hermes_capabilities.CapabilityRegistry` | AER registry | `safe` / `coding` / `research` / `automation` |
+| Web + X search | registry + verified adapters | provider evidence | general search |
+| Terminal + files | `ProcessManager` + `TerminalBackends` + AER sandbox | sandbox/policy | local sandbox |
+| Browser / vision / image generation / TTS | registry/native adapters | provider evidence | unavailable until verified |
+| Persistent memory | `MemoryStore` | AER state root | explicit disable only |
+| Session recall | `MemoryStore.index_session/search_session` | session + FTS5 | no model call |
 | Progressive skills | `SkillRegistry` | skill roots + metadata | no activation when prerequisites fail |
-| Background work | `ProcessManager` | process receipts | synchronous execution |
-| Delegation | `DelegationManager` + `TaskPlan` | `TaskPlan` dependency graph | single-agent execution |
+| Todo/planning | `TaskPlan` | AER task contract | single task execution |
+| Background work | `ProcessManager` | process receipts | foreground execution |
+| Delegation | `DelegationManager` + `TaskPlan` | TaskPlan dependency graph | single-agent execution |
 | Scheduling | `CronStore` | AER durable job state | manual run |
-| Terminal backends | `TerminalBackends` | configured backend + sandbox | local AER sandbox |
-| Provider fallback | `ProviderFabric` | discovered provider evidence | AER fallback |
-| Completion quality | `OutputQualityGate` | verification/evidence | BLOCKED, never fabricated success |
-| MCP/browser/vision/media | registry/adapters | provider/native evidence | unavailable until verified adapter exists |
+| Code execution / clarify | AER runtime capability registry | runtime/security gates | unavailable/fallback |
+| MCP | provider/native adapter registry | verified provider evidence | unavailable |
+| Provider/model fallback | `ProviderFabric` | discovered capability evidence | AER fallback |
+| Completion quality | `OutputQualityGate` | evidence + verification | BLOCKED, never fabricated success |
 
 ## Runtime flow
 
@@ -36,57 +40,54 @@ INTENT
   -> LEARN (candidate only)
 ```
 
-No capability may bypass the state machine, security gate, approval gate, verification gate or learning promotion rules.
+No capability may bypass state, security, approval, verification or learning gates.
 
 ## Toolset policy
 
-`safe` is the default least-privilege read-oriented set. `coding` adds terminal, files, skills and delegation. `research` adds web/browser capability. `automation` adds scheduler support. `full` does not mean unrestricted; each capability still passes its own safety and availability checks.
+`safe` is least privilege. `coding` adds terminal/files/skills/delegation/code execution. `research` adds web/X search/browser surfaces. `automation` adds scheduling. `full` means all registered capabilities, not unrestricted authority; every capability remains subject to its own policy.
 
 ## Memory policy
 
-Memory is compact and explicit. Future-facing memory is bounded by character capacity, rejects duplicates, rejects credential/injection patterns, and supports staged approval. Session recall stores exact messages in SQLite FTS5 and does not spend an LLM call to search history.
+Memory is bounded, explicit and deduplicated. Secret/injection/bidi scans run before persistence. Approval staging is available for future-facing mutations. Session recall uses SQLite FTS5 and stores exact session messages without replaying whole transcripts.
 
-Memory is not a replacement for repository instructions, task acceptance, verification evidence or the current context lease.
+Memory never overrides repository rules, task acceptance, verification evidence or the current context lease.
 
 ## Skills policy
 
-Skills are progressive-disclosure knowledge, not executable authority. Discovery returns metadata; `view` loads full content or a reference only when needed. Platform/tool prerequisites can suppress activation. Learned skills must follow the same security scan and repository verification rules as manually authored skills.
+Skills are progressive-disclosure knowledge, not executable authority. Metadata is inspected before full content; references are loaded on demand. Platform/tool prerequisites can suppress activation. Learned skills are scanned and remain subject to repository verification.
 
-## Delegation policy
+## Delegation and background policy
 
-Delegation is dependency-aware. The parent creates a `TaskPlan`; independent tasks may run concurrently, but dependent tasks cannot begin until prerequisites pass. Child work returns bounded receipts rather than flooding the parent context. Shared mutable resources remain governed by the existing impact-analysis and serialized-mutation rules.
-
-## Background process policy
-
-Long-running processes expose stable handles plus completion receipts. Receipts retain bounded redacted output and expire. A process result may be read by the owning session; absence of a receipt is not evidence that the process succeeded.
+Delegation consumes `TaskPlan`. Independent tasks may run concurrently. Failed or blocked prerequisites prevent dependents from running. Child results are bounded receipts. Long-running work that must survive process/session boundaries uses scheduled/background mechanisms rather than process-local delegation.
 
 ## Terminal policy
 
-Backends are selected explicitly: local, Docker, SSH, Singularity/Apptainer, Modal, Daytona or Vercel Sandbox. An external backend is never simulated as available. The backend selection does not bypass AER's sandbox, permission or approval controls.
+Backends are explicit: local, Docker, SSH, Singularity/Apptainer, Modal, Daytona and Vercel Sandbox. External adapters are never simulated. Backend selection never bypasses AER sandbox, permission or approval controls.
 
 ## Provider policy
 
-Provider selection is evidence-driven. The provider fabric can rank discovered providers and return a deterministic fallback chain. Fallback changes the transport/provider, not the engineering contract, task acceptance or verification requirements.
+Provider/model selection is evidence-driven. Deterministic fallback may change transport/provider, but never changes task acceptance, security or verification requirements.
 
 ## Scheduling policy
 
-Cron stores durable schedule state but does not acquire hidden authority. Scheduled runs enter the same AER state machine as interactive work and must leave evidence and verification receipts.
+Cron stores durable schedule state. Each due job re-enters the same AER lifecycle and must leave evidence and verification receipts.
 
 ## Output-quality policy
 
-A successful-looking model response is not completion. A task is accepted only with explicit outcome, changed-path, verification and evidence fields. Missing proof produces `BLOCKED`/failure evidence instead of a polished but unsupported answer.
+A polished model response is not completion. Acceptance requires explicit outcome, changed paths, verification and evidence. Missing proof becomes incomplete/blocked state.
 
-## Compatibility rules
+## Canonical authority rules
 
-1. `portable/hermes_capabilities.py` is the implementation surface.
+1. `portable/hermes_capabilities.py` is the stable import surface; `portable/hermes_capabilities_core.py` is the sole implementation.
 2. `.ai-harness/config.toml` is the runtime configuration source.
-3. `portable/AdaptiveRuntime` is the public composition point.
-4. `TaskPlan` owns dependency scheduling; no second scheduler is allowed.
-5. `ProviderFabric` owns provider capability/fallback routing; no capability-specific provider tables are authoritative elsewhere.
-6. `.ai-harness/CONTEXT_POLICY.md` owns context selection; skills and memory are inputs to the broker, not competing prompt assemblers.
+3. `portable/adaptive_runtime.py` is the public composition point.
+4. `TaskPlan` owns dependency scheduling; no second scheduler is authoritative.
+5. `ProviderFabric` owns provider capability/fallback routing; no capability-specific provider table is authoritative elsewhere.
+6. `.ai-harness/CONTEXT_POLICY.md` owns context selection; memory/skills are inputs, not competing prompt assemblers.
 7. `.ai-harness/ORCHESTRATION_SPEC.md` owns execution state and evidence precedence.
 8. `.ai-harness/ARTIFACT_UPGRADE_CONTRACT.json` owns deployment compatibility.
+9. The three agent-facing skill entrypoints must remain byte-for-byte identical.
 
 ## Non-goals
 
-The project does not copy Hermes' UI, gateway platform adapters, third-party service implementations or provider-specific business logic. Those remain optional adapters behind the capability contract. The goal is a stronger engineering control plane, not a second chat application.
+Do not copy Hermes UI, gateway adapters, provider-specific business logic or third-party service implementations into AER. Optional integrations are adapters behind the same capability contract. The aim is a stronger engineering control plane, not a second chat application.
