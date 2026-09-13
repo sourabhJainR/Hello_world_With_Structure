@@ -1,24 +1,19 @@
 """Unified, provider-neutral agent capabilities for AER.
 
-The module is deliberately stdlib-only and owns task-facing capability semantics:
-provider adapters, bounded memory, session recall, skills, delegation receipts,
-background jobs, scheduling, and final output-quality checks. AER policy,
-sandboxing, verification and promotion remain authoritative elsewhere.
+The module is stdlib-only and owns task-facing capability semantics. AER remains
+the authority for policy, sandboxing, verification and promotion.
 """
 from __future__ import annotations
 
-import hashlib
-import json
 import re
 import sqlite3
 import threading
 import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
-
 
 CAPABILITIES = (
     "web_search", "x_search", "terminal", "browser", "file", "vision",
@@ -121,7 +116,6 @@ class ProviderAdapter:
 
 
 class ProviderAdapterRegistry:
-    """Deterministic provider selection without owning provider execution."""
     def __init__(self, adapters: Sequence[ProviderAdapter] = ()) -> None:
         self._adapters = list(adapters)
 
@@ -151,30 +145,37 @@ class MemoryRecord:
 
 
 class PersistentMemory:
-    """SQLite WAL + FTS5 memory with redaction, scoping and approval gates."""
-    def __init__(self, path: Path | str, *, max_chars: int = 100_000, require_approval: bool = True) -> None:
+    """Durable SQLite memory with WAL, FTS5 recall, scoping and redaction."""
+    def __init__(self, path: Path | str, *, max_chars: int = 100_000,
+                 require_approval: bool = True, require_write_approval: bool | None = None) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.max_chars = max_chars
+        if require_write_approval is not None:
+            require_approval = require_write_approval
         self.require_approval = require_approval
         self._lock = threading.RLock()
+        self._fts_available = True
         with self._connect() as db:
-            db.executescript("""
-            PRAGMA journal_mode=WAL;
-            CREATE TABLE IF NOT EXISTS memory(
-              id TEXT PRIMARY KEY, project TEXT NOT NULL, category TEXT NOT NULL,
-              text TEXT NOT NULL, intent_digest TEXT, confidence REAL NOT NULL,
-              verified INTEGER NOT NULL, created_at TEXT NOT NULL
-            );
-            CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(id UNINDEXED, text, category, project, content='');
-            CREATE INDEX IF NOT EXISTS idx_memory_scope ON memory(project, intent_digest, created_at);
-            """)
+            db.execute("PRAGMA journal_mode=WAL")
+            db.execute("""CREATE TABLE IF NOT EXISTS memory(
+                id TEXT PRIMARY KEY, project TEXT NOT NULL, category TEXT NOT NULL,
+                text TEXT NOT NULL, intent_digest TEXT, confidence REAL NOT NULL,
+                verified INTEGER NOT NULL, created_at TEXT NOT NULL)""")
+            try:
+                db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(id UNINDEXED, text, category, project)")
+            except sqlite3.OperationalError:
+                self._fts_available = False
+            db.execute("CREATE INDEX IF NOT EXISTS idx_memory_scope ON memory(project, intent_digest, created_at)")
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path, timeout=10)
 
-    def remember(self, project: str, category: str, text: str, *, intent_digest: str | None = None,
-                 confidence: float = 0.0, verified: bool = False, approved: bool = False) -> MemoryRecord | None:
+    def remember(self, project: str, category: str, text: str | None = None, *,
+                 intent_digest: str | None = None, confidence: float = 0.0,
+                 verified: bool = False, approved: bool = False) -> MemoryRecord | None:
+        if text is None:
+            text, category, project = category, project, "default"
         if self.require_approval and not approved:
             return None
         if not 0 <= confidence <= 1:
@@ -184,28 +185,50 @@ class PersistentMemory:
             used = db.execute("SELECT COALESCE(SUM(length(text)),0) FROM memory WHERE project=?", (project,)).fetchone()[0]
             if used + len(clean) > self.max_chars:
                 raise ValueError("memory budget exceeded; consolidate or remove stale memories")
-            duplicate = db.execute("SELECT id,project,category,text,intent_digest,confidence,verified,created_at FROM memory WHERE project=? AND category=? AND text=? AND COALESCE(intent_digest,'')=COALESCE(?, '')", (project, category, clean, intent_digest)).fetchone()
+            duplicate = db.execute(
+                "SELECT id,project,category,text,intent_digest,confidence,verified,created_at FROM memory "
+                "WHERE project=? AND category=? AND text=? AND COALESCE(intent_digest,'')=COALESCE(?, '')",
+                (project, category, clean, intent_digest),
+            ).fetchone()
             if duplicate:
                 return self._record(duplicate)
             record = MemoryRecord(uuid.uuid4().hex, project, category, clean, intent_digest, confidence, verified, _utc().isoformat())
             db.execute("INSERT INTO memory VALUES(?,?,?,?,?,?,?,?)", (record.id, record.project, record.category, record.text, record.intent_digest, record.confidence, int(record.verified), record.created_at))
-            db.execute("INSERT INTO memory_fts(rowid,id,text,category,project) VALUES((SELECT rowid FROM memory WHERE id=?),?,?,?,?)", (record.id, record.id, record.text, record.category, record.project))
+            if self._fts_available:
+                db.execute("INSERT INTO memory_fts(id,text,category,project) VALUES(?,?,?,?)", (record.id, record.text, record.category, record.project))
             return record
 
     @staticmethod
     def _record(row: Sequence[Any]) -> MemoryRecord:
         return MemoryRecord(row[0], row[1], row[2], row[3], row[4], float(row[5]), bool(row[6]), row[7])
 
-    def search(self, project: str, query: str, *, intent_digest: str | None = None, limit: int = 20) -> list[MemoryRecord]:
+    def search(self, project: str, query: str | None = None, *, intent_digest: str | None = None,
+               limit: int = 20) -> list[MemoryRecord]:
+        if query is None:
+            query, project = project, "default"
         if not query.strip():
             return []
         terms = " ".join(re.findall(r"[A-Za-z0-9_]+", query))
+        if not terms:
+            return []
         with self._lock, self._connect() as db:
-            rows = db.execute("""SELECT m.id,m.project,m.category,m.text,m.intent_digest,m.confidence,m.verified,m.created_at
-                FROM memory m JOIN memory_fts f ON f.id=m.id
-                WHERE m.project=? AND f MATCH ? AND (? IS NULL OR m.intent_digest=?)
-                ORDER BY m.verified DESC,m.confidence DESC,m.created_at DESC LIMIT ?""", (project, terms, intent_digest, intent_digest, limit)).fetchall()
+            params: tuple[Any, ...]
+            if self._fts_available:
+                rows = db.execute("""SELECT m.id,m.project,m.category,m.text,m.intent_digest,m.confidence,m.verified,m.created_at
+                    FROM memory AS m JOIN memory_fts AS f ON f.id=m.id
+                    WHERE m.project=? AND memory_fts MATCH ? AND (? IS NULL OR m.intent_digest=?)
+                    ORDER BY m.verified DESC,m.confidence DESC,m.created_at DESC LIMIT ?""",
+                    (project, terms, intent_digest, intent_digest, limit)).fetchall()
+            else:
+                like = "%" + terms.replace(" ", "%") + "%"
+                params = (project, like, intent_digest, intent_digest, limit)
+                rows = db.execute("""SELECT id,project,category,text,intent_digest,confidence,verified,created_at
+                    FROM memory WHERE project=? AND text LIKE ? AND (? IS NULL OR intent_digest=?)
+                    ORDER BY verified DESC,confidence DESC,created_at DESC LIMIT ?""", params).fetchall()
         return [self._record(r) for r in rows]
+
+    def close(self) -> None:
+        return None
 
 
 @dataclass(frozen=True)
@@ -227,9 +250,7 @@ class DelegationPool:
 
     def submit(self, task_id: str, fn: Callable[[], Any]) -> tuple[DelegationReceipt, Future[Any]]:
         receipt = DelegationReceipt(uuid.uuid4().hex, task_id, "running", _utc().isoformat(), None, None, None)
-        def wrapped() -> Any:
-            return fn()
-        return receipt, self._pool.submit(wrapped)
+        return receipt, self._pool.submit(fn)
 
     def close(self) -> None:
         self._pool.shutdown(wait=True, cancel_futures=True)
@@ -247,29 +268,30 @@ class Schedule:
 
 
 class AutomationScheduler:
-    """Claim-before-run scheduler. Execution is always handed back to AER."""
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path); self.path.parent.mkdir(parents=True, exist_ok=True); self._lock = threading.RLock()
         with sqlite3.connect(self.path) as db:
             db.execute("PRAGMA journal_mode=WAL")
-            db.executescript("""
-              CREATE TABLE IF NOT EXISTS schedules(id TEXT PRIMARY KEY,task TEXT NOT NULL,interval_seconds INTEGER NOT NULL,max_attempts INTEGER NOT NULL,next_run TEXT NOT NULL,enabled INTEGER NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,claim TEXT);
-              CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,schedule_id TEXT NOT NULL,started_at TEXT NOT NULL,finished_at TEXT,status TEXT,detail TEXT);
-            """)
+            db.executescript("""CREATE TABLE IF NOT EXISTS schedules(
+              id TEXT PRIMARY KEY,task TEXT NOT NULL,interval_seconds INTEGER NOT NULL,
+              max_attempts INTEGER NOT NULL,next_run TEXT NOT NULL,enabled INTEGER NOT NULL,
+              attempts INTEGER NOT NULL DEFAULT 0,claim TEXT);
+              CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,schedule_id TEXT NOT NULL,
+              started_at TEXT NOT NULL,finished_at TEXT,status TEXT,detail TEXT);""")
 
     def add(self, task: str, interval_seconds: int, *, max_attempts: int = 3, start: datetime | None = None) -> Schedule:
         if interval_seconds < 1 or max_attempts < 1:
             raise ValueError("interval_seconds and max_attempts must be positive")
-        when = start or _utc(); sid = uuid.uuid4().hex
+        when = start or _utc(); sid = uuid.uuid4().hex; clean = sanitize_untrusted(task)
         with self._lock, sqlite3.connect(self.path) as db:
-            db.execute("INSERT INTO schedules VALUES(?,?,?,?,?,?,?,NULL)", (sid, sanitize_untrusted(task), interval_seconds, max_attempts, when.isoformat(), 1, 0))
+            db.execute("INSERT INTO schedules VALUES(?,?,?,?,?,?,?,NULL)", (sid, clean, interval_seconds, max_attempts, when.isoformat(), 1, 0))
         return Schedule(sid, task, interval_seconds, max_attempts, when.isoformat(), True, 0)
 
     def due(self, now: datetime | None = None) -> list[Schedule]:
         now = now or _utc()
         with sqlite3.connect(self.path) as db:
             rows = db.execute("SELECT id,task,interval_seconds,max_attempts,next_run,enabled,attempts FROM schedules WHERE enabled=1 AND claim IS NULL AND next_run<=? ORDER BY next_run,id", (now.isoformat(),)).fetchall()
-        return [Schedule(r[0],r[1],int(r[2]),int(r[3]),r[4],bool(r[5]),int(r[6])) for r in rows]
+        return [Schedule(r[0], r[1], int(r[2]), int(r[3]), r[4], bool(r[5]), int(r[6])) for r in rows]
 
     def claim(self, schedule_id: str, *, now: datetime | None = None) -> str | None:
         now = now or _utc(); claim = uuid.uuid4().hex
@@ -277,7 +299,7 @@ class AutomationScheduler:
             row = db.execute("SELECT next_run,enabled,attempts,max_attempts,claim FROM schedules WHERE id=?", (schedule_id,)).fetchone()
             if not row or not row[1] or row[4] or datetime.fromisoformat(row[0]) > now or int(row[2]) >= int(row[3]):
                 return None
-            updated = db.execute("UPDATE schedules SET attempts=attempts+1,claim=? WHERE id=? AND claim IS NULL AND enabled=1", (claim,schedule_id)).rowcount
+            updated = db.execute("UPDATE schedules SET attempts=attempts+1,claim=? WHERE id=? AND claim IS NULL AND enabled=1", (claim, schedule_id)).rowcount
             return claim if updated == 1 else None
 
     def finish(self, schedule_id: str, claim: str, status: str, detail: str = "", *, now: datetime | None = None) -> None:
@@ -285,14 +307,22 @@ class AutomationScheduler:
             raise ValueError("invalid run status")
         now = now or _utc()
         with self._lock, sqlite3.connect(self.path) as db:
-            row = db.execute("SELECT interval_seconds,max_attempts,attempts FROM schedules WHERE id=? AND claim=?", (schedule_id,claim)).fetchone()
+            row = db.execute("SELECT interval_seconds,max_attempts,attempts FROM schedules WHERE id=? AND claim=?", (schedule_id, claim)).fetchone()
             if not row:
                 raise KeyError("invalid scheduler claim")
             exhausted = int(row[2]) >= int(row[1])
             enabled = int(status == "success" or (status == "retryable" and not exhausted))
             next_run = now + timedelta(seconds=int(row[0]))
-            db.execute("UPDATE schedules SET claim=NULL,enabled=?,next_run=?,attempts=? WHERE id=?", (enabled,next_run.isoformat(),0 if status == "success" else int(row[2]),schedule_id))
-            db.execute("INSERT INTO runs VALUES(?,?,?,?,?,?)", (uuid.uuid4().hex,schedule_id,now.isoformat(),now.isoformat(),status,redact(detail)))
+            db.execute("UPDATE schedules SET claim=NULL,enabled=?,next_run=?,attempts=? WHERE id=?", (enabled, next_run.isoformat(), 0 if status == "success" else int(row[2]), schedule_id))
+            db.execute("INSERT INTO runs VALUES(?,?,?,?,?,?)", (uuid.uuid4().hex, schedule_id, now.isoformat(), now.isoformat(), status, redact(detail)))
+
+    def recent_runs(self, schedule_id: str, limit: int = 20) -> list[dict[str, str | None]]:
+        with sqlite3.connect(self.path) as db:
+            rows = db.execute("SELECT id,schedule_id,started_at,finished_at,status,detail FROM runs WHERE schedule_id=? ORDER BY finished_at DESC LIMIT ?", (schedule_id, limit)).fetchall()
+        return [dict(id=r[0], schedule_id=r[1], started_at=r[2], finished_at=r[3], status=r[4], detail=r[5]) for r in rows]
+
+    def close(self) -> None:
+        return None
 
 
 @dataclass(frozen=True)
@@ -335,12 +365,20 @@ class QualityResult:
 
 
 class OutputQualityGate:
-    def evaluate(self, *, acceptance_met: bool, verification_passed: bool, evidence_count: int,
-                 diff_clean: bool, scope_clean: bool, unresolved: int = 0) -> QualityResult:
+    def evaluate(self, report: dict[str, Any] | None = None, *, acceptance_met: bool,
+                 verification_passed: bool, evidence_count: int, diff_clean: bool,
+                 scope_clean: bool, unresolved: int = 0) -> QualityResult:
+        _ = report
         findings: list[str] = []; score = 100
-        checks = ((acceptance_met,35,"acceptance criteria not satisfied"),(verification_passed,35,"verification did not pass"),(evidence_count > 0,15,"no evidence supplied"),(diff_clean,10,"diff is not clean"),(scope_clean,5,"scope is not clean"),(unresolved == 0,5,"unresolved findings remain"))
+        checks = ((acceptance_met, 35, "acceptance criteria not satisfied"),
+                  (verification_passed, 35, "verification did not pass"),
+                  (evidence_count > 0, 15, "no evidence supplied"),
+                  (diff_clean, 10, "diff is not clean"),
+                  (scope_clean, 5, "scope is not clean"),
+                  (unresolved == 0, 5, "unresolved findings remain"))
         for ok, penalty, finding in checks:
-            if not ok: findings.append(finding); score -= penalty
+            if not ok:
+                findings.append(finding); score -= penalty
         return QualityResult("ready" if not findings else "blocked", max(0, score), tuple(findings))
 
 
