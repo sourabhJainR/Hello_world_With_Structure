@@ -63,7 +63,7 @@ jobs:
               if missing:
                   raise SystemExit('missing Claude integration payload: ' + ', '.join(missing))
               plugin = json.loads(z.read('payload/.claude-plugin/plugin.json'))
-              assert plugin['version'] == '20.2.0', plugin
+              assert plugin['version'] == '21.0.0', plugin
               assert 'UserPromptSubmit' in plugin['hooks'], plugin
               contract = json.loads(z.read('payload/.ai-harness/ARTIFACT_UPGRADE_CONTRACT.json'))
               assert contract['downgrade'] == 'explicit_install_only', contract
