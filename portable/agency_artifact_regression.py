@@ -24,8 +24,7 @@ def snapshot_artifact(path: str | Path) -> ArtifactSnapshot:
 
 
 def fingerprint_paths(paths: Iterable[str | Path]) -> tuple[ArtifactSnapshot, ...]:
-    snapshots = [snapshot_artifact(path) for path in paths]
-    return tuple(sorted(snapshots, key=lambda x: x.path))
+    return tuple(sorted((snapshot_artifact(path) for path in paths), key=lambda x: x.path))
 
 
 def manifest(snapshots: Iterable[ArtifactSnapshot]) -> str:
