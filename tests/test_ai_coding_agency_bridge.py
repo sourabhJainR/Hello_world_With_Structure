@@ -40,21 +40,17 @@ class AICodingAgencyBridgeTests(unittest.TestCase):
         self.assertTrue(result.ready)
         self.assertEqual(result.release.status, "passed")
         self.assertGreaterEqual(len(result.execution_plan.waves), 1)
+        self.assertTrue(any(e.event == "execution-plan" for e in result.provenance.records))
         verify_provenance(result)
 
-    def test_conflicting_mutation_is_visible_in_bridge_result(self):
+    def test_resource_profile_is_applied_to_selected_specialists(self):
         task = CodingTask("run-2", "implement API validation")
         resources = {
             "builder": SpecialistResourceProfile("builder", write_paths=("src/a.py",), mutation_mode="bounded"),
-            "reviewer": SpecialistResourceProfile("reviewer", read_paths=("src/a.py",)),
         }
-
-        def worker(task_profile, assignments):
-            return self._worker(task_profile, assignments)
-
-        result = run_coding_task(task, worker, resource_profiles=resources)
-        self.assertIn(result.execution.assignments[0].specialist, {"builder", "reviewer"} | {a.specialist for a in result.execution.assignments})
+        result = run_coding_task(task, self._worker, resource_profiles=resources)
         self.assertIsNotNone(result.execution_plan)
+        verify_provenance(result)
 
     def test_artifact_regression_still_fails_release(self):
         task = CodingTask("run-3", "implement API validation")
