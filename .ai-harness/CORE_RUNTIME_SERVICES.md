@@ -1,6 +1,6 @@
 # AER Core Runtime Services
 
-AER v21 treats sandboxing, LSP/navigation, feedback and auto compaction as runtime services.
+AER 20.x treats sandboxing, LSP/navigation, feedback and auto compaction as runtime services. The portable/plugin release authority is `.claude-plugin/plugin.json`.
 
 ## Sandbox
 
