@@ -133,8 +133,7 @@ class QualityReport:
     findings: tuple[QualityFinding, ...]
 
 class CapabilityRegistry:
-    _BUILTIN = {"search", "terminal", "file", "skills", "todo", "memory", "session_search", "cronjob", "code_execution", "delegation", "clarify"}
-    SPECS = {name: CapabilitySpec(name, name.replace("_", " "), builtin=name in _BUILTIN) for name in CAPABILITY_NAMES}
+    SPECS = {name: CapabilitySpec(name, name.replace("_", " "), builtin=name in {"search", "terminal", "file", "skills", "todo", "memory", "session_search", "cronjob", "code_execution", "delegation", "clarify"}) for name in CAPABILITY_NAMES}
     SPECS["web"] = CapabilitySpec("web", "web retrieval and extraction", fallback="search")
     SPECS["x_search"] = CapabilitySpec("x_search", "social/web search", fallback="search")
     SPECS["mcp"] = CapabilitySpec("mcp", "external tool interoperability", risk="high")
