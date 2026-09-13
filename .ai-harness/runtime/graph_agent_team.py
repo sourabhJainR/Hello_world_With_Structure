@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from portable.task_planner import Task, TaskPlan
+
 
 @dataclass(frozen=True)
 class AgentSpec:
@@ -100,6 +102,9 @@ class GraphAgentTeam:
     and only start after their declared dependencies have completed. Every
     agent receives the latest shared task memory and publishes its output back
     into that memory for downstream agents.
+
+    Dependency validation and readiness use the canonical ``TaskPlan`` contract
+    so agent graphs and durable work plans cannot drift into separate schedulers.
     """
 
     def __init__(self, agents: list[AgentSpec], *, max_parallel_read_only: int = 4,
@@ -110,43 +115,42 @@ class GraphAgentTeam:
         if len(self.agents) > max_agents:
             raise ValueError("graph agent team exceeds agent budget")
         self.max_parallel_read_only = max(1, int(max_parallel_read_only))
-        self._validate()
+        self._plan = self._build_task_plan()
+
+    def _build_task_plan(self) -> TaskPlan:
+        tasks = [
+            Task(
+                id=agent.name,
+                title=agent.role,
+                description=agent.focus,
+                dependencies=list(agent.depends_on),
+                tags=["graph-agent"],
+                acceptance=["agent execution completes successfully"],
+                metadata={"read_only": agent.read_only, "critical": agent.critical},
+            )
+            for agent in self.agents.values()
+        ]
+        return TaskPlan(tasks)
 
     def _validate(self) -> None:
-        for agent in self.agents.values():
-            missing = set(agent.depends_on) - self.agents.keys()
-            if missing:
-                raise ValueError(f"agent {agent.name} depends on missing agents: {sorted(missing)}")
-        visiting: set[str] = set()
-        visited: set[str] = set()
-
-        def visit(name: str) -> None:
-            if name in visiting:
-                raise ValueError("agent graph contains a dependency cycle")
-            if name in visited:
-                return
-            visiting.add(name)
-            for dependency in self.agents[name].depends_on:
-                visit(dependency)
-            visiting.remove(name)
-            visited.add(name)
-
-        for name in self.agents:
-            visit(name)
+        self._plan.validate()
 
     def levels(self) -> list[list[AgentSpec]]:
-        remaining = set(self.agents)
-        done: set[str] = set()
-        result: list[list[AgentSpec]] = []
-        while remaining:
-            ready = sorted(name for name in remaining if set(self.agents[name].depends_on) <= done)
+        """Produce deterministic ready-levels through the canonical TaskPlan scheduler."""
+        plan = self._build_task_plan()
+        levels: list[list[AgentSpec]] = []
+        while True:
+            ready = plan.ready(tag="graph-agent")
             if not ready:
-                raise ValueError("agent graph could not be scheduled")
-            level = [self.agents[name] for name in ready]
-            result.append(level)
-            done.update(ready)
-            remaining.difference_update(ready)
-        return result
+                pending = [task for task in plan.tasks.values() if task.status == "pending"]
+                if pending:
+                    raise ValueError("agent graph could not be scheduled")
+                break
+            level = [self.agents[task.id] for task in ready]
+            levels.append(level)
+            for task in ready:
+                task.status = "done"
+        return levels
 
     def digest(self) -> str:
         payload = [
