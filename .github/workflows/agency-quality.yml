@@ -1,0 +1,38 @@
+name: Agency quality
+
+on:
+  pull_request:
+    paths:
+      - 'agency/**'
+      - 'portable/agency_registry.py'
+      - 'scripts/sync_agency_agents.py'
+      - 'scripts/check_agency_agents.py'
+      - '.agents/skills/agency-specialist-orchestrator/**'
+      - '.ai-harness/AGENCY_AGENT_QUALITY.md'
+  push:
+    branches: [main]
+    paths:
+      - 'agency/**'
+      - 'portable/agency_registry.py'
+      - 'scripts/sync_agency_agents.py'
+      - 'scripts/check_agency_agents.py'
+      - '.agents/skills/agency-specialist-orchestrator/**'
+      - '.ai-harness/AGENCY_AGENT_QUALITY.md'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Compile agency runtime
+        run: python -m py_compile portable/agency_registry.py scripts/sync_agency_agents.py scripts/check_agency_agents.py
+      - name: Validate vendored agency snapshot when present
+        run: |
+          if [ -f agency/registry.json ]; then
+            python scripts/check_agency_agents.py
+          else
+            echo 'No vendored agency snapshot; pinned source manifest remains the contract.'
+          fi

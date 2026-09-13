@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "source": {
+    "repository": "msitarzewski/agency-agents",
+    "ref": "ad9264e309bd5e5422c04784372d7841b1e5d604",
+    "license": "MIT"
+  },
+  "purpose": "Provider-neutral specialist agency layer for AER. Source agents remain upstream-owned; sync_agency_agents.py vendors an exact pinned snapshot when needed.",
+  "quality_contract": {
+    "minimum_sections": ["Identity & Memory", "Core Mission", "Critical Rules", "Technical Deliverables", "Workflow Process", "Communication Style", "Success Metrics"],
+    "required_behavior": ["evidence before claims", "explicit assumptions", "concrete deliverables", "verification before success", "scope discipline", "review and repair when needed"]
+  },
+  "divisions": {
+    "academic": {"label":"Academic","focus":"research, scholarly analysis and evidence"},
+    "design": {"label":"Design","focus":"UX, UI, visual systems and finish quality"},
+    "engineering": {"label":"Engineering","focus":"software, architecture, data, AI, infrastructure and developer tooling"},
+    "finance": {"label":"Finance","focus":"financial analysis, modeling and decision support"},
+    "game-development": {"label":"Game Development","focus":"game systems, production and technical implementation"},
+    "gis": {"label":"GIS","focus":"geospatial analysis, mapping and spatial data"},
+    "healthcare": {"label":"Healthcare","focus":"healthcare workflows, interoperability and domain analysis"},
+    "marketing": {"label":"Marketing","focus":"content, SEO, brand and growth"},
+    "paid-media": {"label":"Paid Media","focus":"performance advertising and campaign optimization"},
+    "product": {"label":"Product","focus":"product strategy, discovery, requirements and prioritization"},
+    "project-management": {"label":"Project Management","focus":"planning, delivery, risk and coordination"},
+    "research": {"label":"Research","focus":"investigation, synthesis, evidence and analysis"},
+    "sales": {"label":"Sales","focus":"prospecting, qualification, proposals and account strategy"},
+    "security": {"label":"Security","focus":"application, cloud, identity, threat and defensive security"},
+    "spatial-computing": {"label":"Spatial Computing","focus":"XR, 3D interaction and spatial applications"},
+    "specialized": {"label":"Specialized","focus":"niche expert capabilities"},
+    "support": {"label":"Support","focus":"customer support, operations and service workflows"},
+    "testing": {"label":"Testing","focus":"QA, validation, automation and quality engineering"}
+  }
+}
