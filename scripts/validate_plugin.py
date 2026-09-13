@@ -19,7 +19,6 @@ SHARED_CONTRACT_MARKERS = (
     "minimal safe change",
     "regression",
     "evidence",
-    "optional",
 )
 HARNESS_VERSION_COMPARISON = re.compile(
     r"(?:harness(?:\s*['\"]?\s*\]\s*\[\s*['\"]?version['\"]?|\s*\.\s*version)|['\"]?version['\"]?\s*\]\s*\)?)\s*==\s*\d+",
