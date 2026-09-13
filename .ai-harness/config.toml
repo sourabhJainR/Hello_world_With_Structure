@@ -80,6 +80,26 @@ min_observations_for_promotion = 3
 min_success_rate_for_promotion = 0.80
 max_memory_items = 200
 
+[capabilities]
+module = "portable.agent_capabilities"
+fabric = "portable.capability_fabric.CapabilityFabric"
+memory = "portable.persistent_memory.PersistentMemory"
+scheduler = "portable.automation_scheduler.AutomationScheduler"
+quality_gate = "portable.output_quality.OutputQualityGate"
+toolsets = ["safe", "coding", "research", "automation", "full"]
+default_toolset = "coding"
+require_explicit_external_adapters = true
+memory_write_approval_required = true
+memory_max_chars = 32000
+session_search = true
+skill_progressive_disclosure = true
+background_receipts = true
+delegation_requires_task_plan = true
+max_concurrent_delegates = 8
+max_delegation_depth = 1
+scheduled_runs_reenter_state_machine = true
+quality_gate_required_before_complete = true
+
 [sandbox]
 enabled = true
 module = ".ai-harness/runtime/sandbox.py"
