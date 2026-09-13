@@ -80,6 +80,36 @@ min_observations_for_promotion = 3
 min_success_rate_for_promotion = 0.80
 max_memory_items = 200
 
+[capabilities]
+module = "portable.hermes_capabilities"
+registry = "CapabilityRegistry"
+default_toolset = "coding"
+safe_toolset = "safe"
+research_toolset = "research"
+automation_toolset = "automation"
+full_toolset = "full"
+state_root = "~/.aer"
+memory_limit = 2200
+user_memory_limit = 1375
+memory_approval_required = false
+session_search_enabled = true
+skills_enabled = true
+skill_roots = ["~/.aer/skills", ".aer/skills"]
+background_processes_enabled = true
+process_receipts = 64
+process_receipt_days = 7
+process_output_tail = 200000
+delegation_enabled = true
+max_concurrent_children = 10
+max_delegation_depth = 1
+cron_enabled = true
+quality_gate_enabled = true
+
+[terminal]
+backend = "local"
+workspace = "."
+timeout_seconds = 600
+
 [sandbox]
 enabled = true
 module = ".ai-harness/runtime/sandbox.py"
