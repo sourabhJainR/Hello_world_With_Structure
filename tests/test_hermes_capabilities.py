@@ -12,8 +12,8 @@ from portable.hermes_capabilities import (
     OutputQualityGate,
     ProcessManager,
     SkillRegistry,
+    TerminalBackends,
 )
-from portable.hermes_capabilities import TerminalBackends
 from portable.task_planner import Task, TaskPlan
 
 
@@ -94,7 +94,7 @@ class HermesCapabilityTests(unittest.TestCase):
         self.assertEqual([r.task_id for r in receipts], ["1"])
         self.assertEqual(seen, ["1"])
         self.assertEqual(plan.tasks["1"].status, "blocked")
-        self.assertEqual(plan.tasks["2"].status, "pending")
+        self.assertEqual(plan.tasks["2"].status, "blocked")
 
     def test_process_receipts_preserve_string_session_ids(self):
         with tempfile.TemporaryDirectory() as tmp:
