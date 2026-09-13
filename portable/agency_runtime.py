@@ -1,9 +1,4 @@
-"""Capability-aware, deterministic execution runtime for specialist agents.
-
-The runtime is provider-neutral: model calls and file mutations remain outside this
-module. It creates a bounded execution plan, records evidence, runs validation, and
-returns a release decision without allowing a specialist to self-certify success.
-"""
+"""Capability-aware, deterministic execution runtime for specialist agents."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -12,6 +7,7 @@ from typing import Callable, Iterable, Mapping
 
 from .agency_registry import rank
 from .agency_quality import ReviewFinding, QualityReceipt, evaluate
+from .agency_provenance import ProvenanceLedger
 
 
 @dataclass(frozen=True)
@@ -86,6 +82,13 @@ class ExecutionResult:
             "ledger": [{"event_id": e.event_id, "event": e.event, "detail": e.detail, "evidence_ids": e.evidence_ids} for e in self.ledger],
             "receipt": self.receipt.as_dict() if self.receipt else None,
         }
+
+    def provenance(self) -> ProvenanceLedger:
+        """Convert the execution trace into a persistent, hash-chained ledger."""
+        ledger = ProvenanceLedger()
+        for entry in self.ledger:
+            ledger.append(self.task.task_id, entry.event, entry.detail, entry.evidence_ids)
+        return ledger
 
 
 def plan_task(task: TaskProfile, registry: Mapping[str, object] | None = None, support_limit: int = 2) -> list[Assignment]:
