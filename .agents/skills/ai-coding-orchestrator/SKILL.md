@@ -51,6 +51,16 @@ Select one primary specialist whenever possible. Add supporting specialists only
 
 For substantial outputs require: objective/audience, facts vs assumptions, concrete deliverable, evidence traceability, edge cases/failure modes, verification, review disposition and open risks. Reject generic, unsupported, internally inconsistent, out-of-scope or unverified output.
 
+## Agency Runtime v8 integration
+
+For substantial coding tasks route through `portable.ai_coding_agency_bridge` and `.agents/skills/agency-runtime-v8/SKILL.md`.
+
+The bridge converts the coding request into a `TaskProfile`, obtains deterministic specialist assignments, accepts only structured worker output, records evidence, evaluates the quality receipt, compares baseline/current artifacts through the v7 regression layer, appends persistent provenance, and produces the final release decision.
+
+The host orchestrator remains authoritative for actual provider/tool calls, sandboxing, permissions, concurrency, mutation ordering and external side effects. The bridge must never execute commands or grant permissions.
+
+A coding task is not ready when its score is merely high. It must also satisfy hard gates, have no blocker/material findings, pass artifact regression when a baseline is supplied, and produce a `passed` release decision.
+
 ## Control-plane policies
 Detailed policies remain on-demand context. Use:
 `ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md | AGENCY_AGENT_QUALITY.md`.
