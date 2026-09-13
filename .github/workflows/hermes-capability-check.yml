@@ -4,11 +4,15 @@ on:
   pull_request:
     paths:
       - 'portable/hermes_capabilities.py'
+      - 'portable/hermes_capabilities_core.py'
       - 'portable/provider_fabric.py'
       - 'portable/adaptive_runtime.py'
       - 'portable/__init__.py'
       - 'portable/task_planner.py'
       - 'tests/test_hermes_capabilities.py'
+      - 'skills/ai-coding-orchestrator/SKILL.md'
+      - '.agents/skills/ai-coding-orchestrator/SKILL.md'
+      - '.claude/skills/ai-coding-orchestrator/SKILL.md'
       - '.ai-harness/HERMES_CAPABILITY_CONTRACT.md'
       - '.ai-harness/config.toml'
       - '.github/workflows/hermes-capability-check.yml'
@@ -25,7 +29,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Compile capability runtime
-        run: python -m py_compile portable/hermes_capabilities.py portable/provider_fabric.py portable/adaptive_runtime.py portable/task_planner.py
+        run: python -m py_compile portable/hermes_capabilities.py portable/hermes_capabilities_core.py portable/provider_fabric.py portable/adaptive_runtime.py portable/task_planner.py
       - name: Run capability regression tests
         run: python -m unittest tests.test_hermes_capabilities -v
       - name: Validate canonical capability contract
@@ -43,5 +47,14 @@ jobs:
           assert caps['user_memory_limit'] == 1375
           assert caps['max_concurrent_children'] >= 1
           assert caps['max_delegation_depth'] >= 1
+          skill_paths = [
+              Path('skills/ai-coding-orchestrator/SKILL.md'),
+              Path('.agents/skills/ai-coding-orchestrator/SKILL.md'),
+              Path('.claude/skills/ai-coding-orchestrator/SKILL.md'),
+          ]
+          contents = [p.read_text(encoding='utf-8') for p in skill_paths]
+          assert len(set(contents)) == 1
+          assert len(contents[0]) <= 9000
+          assert Path('.ai-harness/HERMES_CAPABILITY_CONTRACT.md').is_file()
           print('Capability contract validated')
           PY
