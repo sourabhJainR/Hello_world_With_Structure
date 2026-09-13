@@ -78,6 +78,16 @@ The host must honor the returned execution waves:
 
 Record the execution-plan digest in provenance and report any conflicts as scheduling facts. Do not claim parallel execution when the plan serialized the work.
 
+## Agency Runtime v10 integration
+
+For repeated coding workflows, pass prior `BenchmarkHistory` into `portable.ai_coding_agency_bridge.run_coding_task` so the next run is planned from measured outcomes rather than static heuristics.
+
+v10 binds every completed run to its v9 execution-plan digest and provenance head, then records release status, artifact-regression status, quality score, wave count, conflict count, blocked work and specialist results. These are the benchmark facts used for adaptation.
+
+The adaptive planner may tighten mutation mode after recent release/regression failures, cap support specialists after frequent conflicts/blocked work, or permit one extra support specialist after sustained high quality and low conflict. Recommendations remain within the caller's requested support ceiling and allowed mutation modes.
+
+The adaptive loop must never expand permissions, change protected-path policy, bypass v9 conflict/dependency scheduling, or convert a failed regression into success. Benchmark history is evidence for future planning, not authorization.
+
 ## Control-plane policies
 Detailed policies remain on-demand context. Use:
 `ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md | AGENCY_AGENT_QUALITY.md`.
@@ -131,4 +141,4 @@ Precedence:
 
 ## Completion
 Report:
-`Outcome | Changed files | Task plan | Impact/shared-path findings | Evidence | Verification | Regression checks | Review | Capability plan | Graph/team execution | Agency specialists | Assumptions | Risks | Incomplete checks | Efficiency`.
+`Outcome | Changed files | Task plan | Impact/shared-path findings | Evidence | Verification | Regression checks | Review | Capability plan | Graph/team execution | Agency specialists | Adaptive recommendation | Benchmark observation | Assumptions | Risks | Incomplete checks | Efficiency`.
