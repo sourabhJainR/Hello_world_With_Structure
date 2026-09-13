@@ -85,7 +85,7 @@ Use:
 Executable orchestration changes remain candidates until gates pass. Learning must not expand permissions or security boundaries.
 
 ## Distribution
-Portable artifacts are immutable. `update` is forward-only; explicit `install <artifact>` may activate an older/newer verified artifact. `.ai-harness/ARTIFACT_UPGRADE_CONTRACT.json` is authoritative.
+Portable artifacts are immutable. `update` is forward-only; explicit `install <artifact>` may activate an older/newer verified artifact. `downgrade=explicit_install_only`. `.ai-harness/ARTIFACT_UPGRADE_CONTRACT.json` is authoritative.
 
 ## State and precedence
 Engineering State Ledger:
