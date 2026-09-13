@@ -44,7 +44,7 @@ class CapabilityFabric:
     @classmethod
     def default(cls) -> "CapabilityFabric":
         return cls({
-            "web_search": Capability("web_search", "web retrieval", requires_network=True, fallback=None),
+            "web_search": Capability("web_search", "web retrieval", requires_network=True),
             "x_search": Capability("x_search", "social/web search", requires_network=True, fallback="web_search"),
             "terminal": Capability("terminal", "repository command execution", requires_sandbox=True, risk="medium"),
             "browser": Capability("browser", "interactive browser automation", requires_network=True, risk="medium", fallback="web_search"),
@@ -77,18 +77,15 @@ class CapabilityFabric:
                 raise KeyError(f"unknown capability: {name}")
             if cap.requires_network and not network_allowed:
                 if cap.fallback:
-                    fallback = self._capabilities[cap.fallback]
-                    if fallback.requires_network and not network_allowed:
-                        planned.append(Capability("offline_search", "safe offline fallback"))
-                    else:
-                        planned.append(fallback)
-                elif name == "web_search" or name == "x_search":
+                    planned.append(self._capabilities[cap.fallback])
+                else:
                     planned.append(Capability("offline_search", "safe offline fallback"))
                 continue
             if cap.requires_sandbox and not sandbox_available:
                 raise RuntimeError(f"capability requires sandbox: {name}")
             if cap.name not in seen:
-                planned.append(cap); seen.add(cap.name)
+                planned.append(cap)
+                seen.add(cap.name)
         return planned
 
 
@@ -259,6 +256,5 @@ class OutputQualityGate:
         if not scope_clean: findings.append("change scope is not clean"); score -= 10
         status = "ready" if not findings and score >= 90 else "blocked"
         return QualityResult(status, max(0, score), tuple(findings))
-
 
 __all__ = ["CAPABILITIES", "Capability", "CapabilityFabric", "PersistentMemory", "MemoryRecord", "AutomationScheduler", "Schedule", "RunClaim", "OutputQualityGate", "QualityResult"]
