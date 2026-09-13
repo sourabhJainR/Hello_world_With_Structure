@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Iterable
 
+
 @dataclass(frozen=True)
 class ProvenanceRecord:
     sequence: int
@@ -23,6 +24,7 @@ class ProvenanceRecord:
 
     def as_dict(self) -> dict[str, object]:
         return {"sequence": self.sequence, "run_id": self.run_id, "event": self.event, "detail": self.detail, "artifact_ids": list(self.artifact_ids), "parent_hash": self.parent_hash, "record_hash": self.record_hash}
+
 
 @dataclass
 class ProvenanceLedger:
@@ -57,8 +59,13 @@ class ProvenanceLedger:
             if not line.strip():
                 continue
             data = json.loads(line)
+            required = {"sequence", "run_id", "event", "detail", "artifact_ids", "parent_hash", "record_hash"}
+            if set(data) != required:
+                raise ValueError("invalid provenance record schema")
+            if not isinstance(data["artifact_ids"], list):
+                raise ValueError("artifact_ids must be a list")
             record = ProvenanceRecord(int(data["sequence"]), str(data["run_id"]), str(data["event"]), str(data["detail"]), tuple(str(x) for x in data["artifact_ids"]), str(data["parent_hash"]))
-            if record.record_hash != data.get("record_hash"):
+            if record.record_hash != data["record_hash"]:
                 raise ValueError(f"provenance record hash mismatch at sequence {record.sequence}")
             ledger.records.append(record)
         ledger.verify()
