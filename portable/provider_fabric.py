@@ -1,10 +1,9 @@
-"""Provider-native capability discovery and routing for AER.
+"""Provider-native capability discovery and deterministic routing for AER.
 
-The fabric keeps AER provider-neutral while preferring capabilities that a
-local coding agent already exposes. It never assumes a provider has a feature:
-capabilities are discovered from explicit environment/command evidence and can
-be overridden by a provider manifest. The result is a small routing contract
-that works across repositories and survives new sessions.
+Provider support is evidence-driven. AER chooses a native provider when its
+capability is available, otherwise uses a governed fallback. Model/provider
+fallback chains are explicit and deterministic so a transient provider failure
+does not silently change the engineering contract.
 """
 from __future__ import annotations
 
@@ -12,9 +11,9 @@ import json
 import os
 import shutil
 import subprocess
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 
 CAPABILITIES = (
@@ -36,6 +35,8 @@ class ProviderCapability:
     version: str | None
     capabilities: tuple[str, ...] = ()
     evidence: tuple[str, ...] = ()
+    models: tuple[str, ...] = ()
+    priority: int = 100
 
     def supports(self, capability: str) -> bool:
         return capability in self.capabilities
@@ -46,6 +47,7 @@ class CapabilityRequest:
     capability: str
     preferred_providers: tuple[str, ...] = ()
     allow_fallback: bool = True
+    required_capabilities: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -55,6 +57,14 @@ class RoutingDecision:
     native: bool
     reason: str
     command: str | None = None
+    fallback_chain: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class FallbackPolicy:
+    providers: tuple[str, ...]
+    max_attempts: int = 3
+    fail_closed: bool = True
 
 
 DEFAULT_PROVIDERS: dict[str, tuple[str, ...]] = {
@@ -66,7 +76,7 @@ DEFAULT_PROVIDERS: dict[str, tuple[str, ...]] = {
 
 
 class ProviderFabric:
-    """Discover provider capabilities and select native execution when possible."""
+    """Discover providers and produce stable native/fallback routing decisions."""
 
     def __init__(self, manifest_dir: Path | str | None = None) -> None:
         self.manifest_dir = Path(manifest_dir or (Path.home() / ".aer" / "providers")).expanduser()
@@ -77,15 +87,18 @@ class ProviderFabric:
             command = shutil.which(provider)
             version = self._version(command) if command else None
             evidence: list[str] = []
+            priority = 100
+            models: tuple[str, ...] = ()
             if command:
-                evidence.append(f"command:{command}")
-                evidence.append(f"version:{version or 'unknown'}")
+                evidence.extend((f"command:{command}", f"version:{version or 'unknown'}"))
             manifest = self._manifest(provider)
             if manifest:
                 capabilities = tuple(sorted(set(capabilities) | set(manifest.get("capabilities", []))))
+                models = tuple(str(v) for v in manifest.get("models", []) if isinstance(v, str))
+                priority = int(manifest.get("priority", 100))
                 evidence.append("manifest")
             if command or manifest:
-                discovered[provider] = ProviderCapability(provider, command, version, tuple(sorted(capabilities)), tuple(evidence))
+                discovered[provider] = ProviderCapability(provider, command, version, tuple(sorted(capabilities)), tuple(evidence), models, priority)
         if refresh:
             self.persist(discovered)
         return discovered
@@ -94,14 +107,31 @@ class ProviderFabric:
         if request.capability not in CAPABILITIES:
             raise ValueError(f"unsupported capability: {request.capability}")
         available = providers or self.discover()
-        candidates = request.preferred_providers or tuple(available.keys())
+        candidates = self._candidate_order(request.preferred_providers, available)
         for name in candidates:
             capability = available.get(name)
-            if capability and capability.supports(request.capability):
-                return RoutingDecision(name, request.capability, True, "native provider capability discovered", capability.command)
+            if capability and capability.supports(request.capability) and all(capability.supports(item) for item in request.required_capabilities):
+                return RoutingDecision(name, request.capability, True, "native provider capability discovered", capability.command, tuple(candidates))
         if request.allow_fallback:
-            return RoutingDecision("aer", request.capability, False, "no native capability discovered; use AER fallback")
+            return RoutingDecision("aer", request.capability, False, "no native capability discovered; use AER fallback", None, tuple(candidates))
         raise RuntimeError(f"no provider supports capability: {request.capability}")
+
+    def fallback_policy(self, preferred: Sequence[str] = ()) -> FallbackPolicy:
+        available = self.discover()
+        ordered = self._candidate_order(tuple(preferred), available)
+        return FallbackPolicy(tuple(ordered), max_attempts=max(1, min(5, len(ordered))), fail_closed=True)
+
+    def route_model(self, model: str | None = None, *, preferred_providers: Sequence[str] = (), required_capabilities: Sequence[str] = ()) -> RoutingDecision:
+        available = self.discover()
+        ordered = self._candidate_order(tuple(preferred_providers), available)
+        needle = (model or "").lower().strip()
+        for name in ordered:
+            capability = available[name]
+            if required_capabilities and not all(capability.supports(item) for item in required_capabilities):
+                continue
+            if not needle or not capability.models or any(needle in candidate.lower() for candidate in capability.models):
+                return RoutingDecision(name, "agent", True, "model/provider selected from discovered routing matrix", capability.command, tuple(ordered))
+        return RoutingDecision("aer", "agent", False, "no matching provider/model evidence; use AER fallback", None, tuple(ordered))
 
     def persist(self, providers: Mapping[str, ProviderCapability]) -> Path:
         self.manifest_dir.mkdir(parents=True, exist_ok=True)
@@ -111,6 +141,16 @@ class ProviderFabric:
         temp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         os.replace(temp, target)
         return target
+
+    def _candidate_order(self, preferred: tuple[str, ...], available: Mapping[str, ProviderCapability]) -> list[str]:
+        ordered: list[str] = []
+        for name in preferred:
+            if name in available and name not in ordered:
+                ordered.append(name)
+        for name, spec in sorted(available.items(), key=lambda item: (item[1].priority, item[0])):
+            if name not in ordered:
+                ordered.append(name)
+        return ordered
 
     def _manifest(self, provider: str) -> dict[str, Any] | None:
         path = self.manifest_dir / f"{provider}.json"
@@ -134,4 +174,4 @@ class ProviderFabric:
         return text[0][:200] if text else None
 
 
-__all__ = ["CAPABILITIES", "CapabilityRequest", "ProviderCapability", "ProviderFabric", "RoutingDecision"]
+__all__ = ["CAPABILITIES", "CapabilityRequest", "ProviderCapability", "ProviderFabric", "RoutingDecision", "FallbackPolicy"]
