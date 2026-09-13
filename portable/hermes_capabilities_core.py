@@ -268,7 +268,7 @@ class MemoryStore:
 
     def _insert(self, target: str, content: str, source: str, intent_digest: str | None) -> MemoryEntry:
         entry = self._entry(target, content, source, intent_digest)
-        with sqlite3.connect(self.db) as conn: conn.execute("INSERT OR IGNORE INTO memory VALUES(?,?,?,?,?,?,?)", asdict(entry).values())
+        with sqlite3.connect(self.db) as conn: conn.execute("INSERT OR IGNORE INTO memory VALUES(?,?,?,?,?,?,?)", tuple(asdict(entry).values()))
         return entry
 
     def _stage(self, action: str, target: str, content: str | None, old_text: str | None, source: str) -> MemoryMutation:
@@ -335,7 +335,7 @@ class ProcessManager:
     def __init__(self,root:Path|str|None=None,*,max_receipts:int=64,receipt_days:int=7,output_tail:int=200_000)->None:
         self.root=Path(root or Path.home()/".aer"/"processes").expanduser(); self.root.mkdir(parents=True,exist_ok=True); self.max_receipts,self.receipt_days,self.output_tail=max_receipts,receipt_days,output_tail; self._processes={}; self._meta={}; self._lock=threading.RLock()
     def start(self,command:Sequence[str],*,cwd:Path|str|None=None,env:Mapping[str,str]|None=None)->str:
-        sid=hashlib.sha256(f"{time.time_ns()}|{command}".encode()).hexdigest()[:16]; proc=subprocess.Popen(list(command),cwd=str(cwd) if cwd else None,env=dict(env) if env else None,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+        sid=hashlib.sha256(f"{time.time_ns()}|{command}".encode()).hexdigest()[:16]; proc=subprocess.Popen(list(command),cwd=str(cwd) if cwd else None,env=dict(env) if env else None,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
         with self._lock:self._processes[sid]=proc; self._meta[sid]={"command":tuple(command),"started_at":time.time()}
         return sid
     def poll(self,session_id:str)->ProcessReceipt:
