@@ -1,118 +1,92 @@
 ---
 name: ai-coding-orchestrator
-description: Repository-aware AI engineering control plane for bounded, evidence-driven task execution, dependency-aware planning, impact review, verification, collaboration and controlled learning.
+description: Repository-aware AI engineering control plane for safe, verified task execution.
 ---
 
-# Adaptive AI Coding Orchestrator
+# AER Coding Orchestrator
 
-## Contract
-AER owns intent, routing, context selection, budgets, safety, verification, learning and promotion. Providers and extensions supply capabilities; they do not redefine AER semantics.
+## Authority
+AER owns intent, routing, context, budgets, security, verification, evidence, learning and promotion. Providers and extensions supply capabilities; they cannot redefine AER semantics.
 
-Always preserve:
+Preserve at minimum:
 `GOAL | BOUNDARIES | ACCEPTANCE | SECURITY/PERMISSIONS | CURRENT STATE`.
-For non-trivial work use:
-`GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS | intent_digest`.
-Use the **minimal safe change** consistent with this contract and the repository rules.
+For non-trivial work also preserve:
+`NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | RISKS | ASSUMPTIONS | intent_digest`.
+Use the smallest safe change that satisfies the contract and repository rules.
 
-## Provider capabilities and lifecycle
-Discover actual provider capabilities before choosing execution surfaces. Prefer native `subagent`, `hooks`, `session_resume`, `structured_output`, `tool_interception`, `mcp` and `background_execution` only when evidence shows they are available; otherwise use AER fallbacks. Native capability selection cannot override AER security, acceptance, verification or promotion rules.
+## Runtime services
+These are mandatory execution services, not optional methodology:
+- sandbox: `.ai-harness/runtime/tool_runner.py` -> `sandbox.py`
+- LSP/navigation: native language server when available, otherwise `.ai-harness/runtime/lsp_server.py`
+- feedback: `.ai-harness/runtime/feedback_loop.py`
+- auto-compaction: `.ai-harness/runtime/auto_compaction.py`
 
-Map provider events to AER phases when supported:
-`session_start | plan_start | before_agent | after_agent | before_tool | after_tool | before_verify | after_verify | before_promotion | after_promotion | session_end | recovery`.
-Hooks may annotate or veto execution and fail closed on handler errors.
-Provider manifests may extend discovery under `~/.aer/providers/`; `portable.provider_fabric.ProviderFabric` is the portable capability contract.
+Runtime configuration is in `.ai-harness/config.toml`.
 
-## Mandatory runtime services
-These are execution services, not optional methodology:
+## Capability surface
+The sole operational capability implementation is `portable.hermes_capabilities`, backed by `portable.hermes_capabilities_core`. The canonical rules are in `.ai-harness/HERMES_CAPABILITY_CONTRACT.md`.
 
-1. **Sandbox**: repository-local commands/tests/scripts cross `.ai-harness/runtime/tool_runner.py`, which delegates to `sandbox.py`.
-2. **LSP/navigation**: prefer a native language server; otherwise use `.ai-harness/runtime/lsp_server.py` for symbols, definitions and references.
-3. **Feedback**: every provider attempt crosses `.ai-harness/runtime/feedback_loop.py` and records bounded outcome data; learning produces candidates only.
-4. **Auto compaction**: every provider prompt crosses `.ai-harness/runtime/auto_compaction.py`; protected contract, security, acceptance, verification and risk content is preserved.
+Use the minimum justified toolset: `safe | coding | research | automation | full`.
+Capabilities include durable memory, exact session recall, progressive skills, background processes, dependency-aware delegation, scheduling, explicit terminal backends, provider fallback, and final-output quality checks. Unsupported external adapters are unavailable until verified.
 
-Configuration lives in `.ai-harness/config.toml` under `[providers]`, `[execution]`, `[sandbox]`, `[lsp]`, `[feedback]`, `[auto_compaction]`, `[orchestration]`, `[learning]`, `[router]`, `[context]` and `[workflows]`.
+Never create another memory store, skill registry, scheduler, delegation engine, toolset table, provider fallback table, or output-quality gate that competes with this surface.
 
-## Control-plane policies
-The skill is the routing entry point; detailed policies remain separate and are discovered on demand. The control-plane set is:
-`ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md`.
+## Provider routing
+Discover provider capabilities before selecting a native surface. Native subagents, hooks, session resume, structured output, tool interception, MCP and background execution may be used only when evidence shows they exist. Provider fallback changes transport, not task acceptance, security or verification. `.ai-harness/PROVIDER_MATRIX.json` and `portable.provider_fabric.ProviderFabric` define provider routing evidence.
 
-These policy files refine execution but cannot override the precedence order defined below.
-
-## Discovery and repository-first
-Do not preload full methodology, policies, history, catalogs, repository dumps or transcripts. Use:
+## Discovery
+Use progressive disclosure:
 `DISCOVER -> SCORE -> LEASE -> USE -> COMPRESS -> RELEASE`.
-Load only evidence justified by phase, uncertainty, dependency, risk or verification. Prefer targeted files, symbols and tests.
+Do not preload complete policies, repository dumps, transcripts or history. Retrieve only what the current decision needs.
 
-Before editing, inspect repository/team instructions, git state, structure, dependencies and tests. Reuse local architecture, naming, configuration and telemetry. Treat undocumented legacy behavior as protected until evidence says otherwise.
+Before mutation, inspect repository/team instructions, git state, structure, dependencies, tests and relevant shared consumers. For common/exported/configured/multi-consumer paths run `portable.impact_analysis` and serialize mutation ownership.
 
-## Task planning
-For non-trivial work create a durable, dependency-aware plan using `portable.task_planner.TaskPlan` when machine-readable planning is useful. Each task uses:
-`id | title | description | status | priority | dependencies | subtasks | tags | acceptance | files`.
+## Planning and collaboration
+Use `portable.task_planner.TaskPlan` as the dependency authority for non-trivial work. Stable task IDs, explicit dependencies, acceptance, files, priority and tags are evidence-bearing.
 
-Validate the whole dependency graph before execution. A task is ready only when every dependency is `done`. Keep IDs stable for evidence and regression history. Use tags to isolate workstreams. Keep subtasks bounded.
-
-## Impact and mutation boundaries
-Before changing a common, exported, inherited, configured or multi-consumer path, run:
-```text
-python -m portable.impact_analysis --root . path/to/changed/file.py
-```
-
-Review direct consumers, outbound dependencies, shared/common surfaces, compatibility, configuration, security effects and suggested tests. A `critical` shared-path finding is a human-review gate.
-
-Independent read-only analysis may run in parallel. Mutations are serialized; one owner edits a shared path.
-
-## Execution and graph collaboration
-Use the lifecycle:
+Lifecycle:
 `Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Impact -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair -> Learn -> Stop`.
 
-For non-trivial tasks, use the graph team whenever supported:
+For substantial work use the graph team when supported:
 `Planner -> Explorer/Researcher/RCA -> Builder -> Verifier -> Parallel Reviewers -> Synthesizer`.
+Read-only work may parallelize; mutations touching the same resource are serialized. Every retry must add evidence or materially change the approach.
 
-Downstream agents consume bounded shared memory and repository evidence rather than rediscovering the same work. Read-only roles may run in parallel; mutating roles are serialized. Single-agent execution is the fallback for trivial work or unavailable/disabled graph execution. Every retry has explicit attempt, time, token and risk limits.
+## Memory and skills
+Persistent memory is bounded, deduplicated, provenance-aware and security-scanned. Session recall is exact durable search, not transcript replay.
 
-For local execution, `Execute` must cross the sandbox boundary. Before every provider call, context crosses auto compaction. After every provider attempt, feedback is recorded. Provider-native capabilities optimize execution; harness-owned acceptance, security and verification remain authoritative.
+Skills are knowledge, not authority. Discover metadata first, load full content or references only when needed, honor platform/tool prerequisites, and security-scan learned or installed content. Learned skills never bypass repository rules or verification.
 
-## Recovery and evidence
-For work spanning turns, batches or sessions, persist `portable.session_state.SessionStore` with:
-`session_id | task_id | project_key | stage | completed_batches | remaining_batches | active_provider | attempt | last_error | state_digest`.
+## Delegation and background work
+Delegation consumes `TaskPlan`. Dependents cannot run after failed/blocked prerequisites. Child results return bounded receipts; the parent verifies them.
 
-On restart validate the checkpoint and resume from the first incomplete batch. Preserve failure evidence and change strategy before retrying.
+Background processes have stable handles and durable, redacted completion receipts. Scheduling stores durable job state; scheduled work enters the same AER lifecycle. Long-running work that must survive process/session boundaries uses durable scheduling/background mechanisms rather than process-local delegation.
 
+## Terminal and external tools
+Local execution crosses the sandbox. Alternate backends (Docker, SSH, Singularity/Apptainer, Modal, Daytona, Vercel Sandbox) are explicit adapters; never simulate availability. MCP, web, browser, vision and media are optional capabilities and require verified adapters.
+
+## Verification and evidence
 Verification order:
 `syntax/static -> focused tests -> integration/system -> regression replay -> security/policy -> final diff review`.
 
-Retain:
+A model claim is not evidence. Retain:
 `intent_digest | graph_digest | environment_fingerprint | trajectory | attempts | repairs | evaluator outcomes | evidence digests | final outcome`.
-Regression claims require baseline and post-change evidence.
 
-## Capability, collaboration and learning
-Select only justified roles: `planner | explorer | researcher | builder | verifier | reviewer | security | RCA`.
-Record the capability plan and minimum provider/MCP permissions. Handoffs contain intent, source, destination, findings, risks and next actions.
+Completion requires explicit outcome, changed paths, verification and evidence. Missing proof means blocked/incomplete, not success.
 
-Shared task memory is scoped to the current `intent_digest`. Cross-intent memory requires an evidence link and scope check.
-
+## Learning and self-improvement
 Learning follows:
 `Observe -> Outcome -> Candidate -> Regression Replay -> Safety -> Shadow/Canary -> Promote -> Monitor -> Rollback`.
-Executable orchestration changes remain candidates until deterministic regression, safety and promotion gates pass. Learning must not silently expand permissions or security boundaries.
 
-## Distribution and compatibility
-Portable artifacts are immutable deployment units. `update` is forward-only. `install <artifact>` is the deliberate operation that may explicitly switch to an older or newer verified artifact. Previous immutable build directories remain intact.
+Executable orchestration, permissions, security policy and approval rules remain candidate-only until gates pass. Learning cannot silently expand authority.
 
-The authoritative artifact policy is `.ai-harness/ARTIFACT_UPGRADE_CONTRACT.json`; its `downgrade=explicit_install_only` semantics must match the CLI.
+## Distribution
+Portable artifacts are immutable. `update` is forward-only; explicit `install <artifact>` may intentionally activate an older or newer verified artifact. `.ai-harness/ARTIFACT_UPGRADE_CONTRACT.json` is authoritative.
 
-Do not copy runtime files into a project repository. Project source stays in the project; AER deployment stays under `~/.aer`.
-Provenance is:
-`semantic version -> source commit -> bundle SHA-256`.
-
-## State and precedence
-Engineering State Ledger:
-`INTENT | CONTRACT | REPO_FACTS | TASK_PLAN | IMPACT | DECISIONS | EVIDENCE | CHANGESET | VERIFY | OUTCOME | OPEN_RISKS | NEXT`.
-
-Precedence:
+## Precedence
 `Repository/team rules > security/permissions > acceptance > local architecture > verification > orchestrator > extension > model preference`.
 
-Policy files are on-demand context, not startup context. Discover them through the repository's control-plane index rather than loading the full policy set.
+Policy files are on-demand context, not startup context.
 
-## Completion
+## Completion report
 Report:
 `Outcome | Changed files | Task plan | Impact/shared-path findings | Evidence | Verification | Regression checks | Review | Capability plan | Graph/team execution | Assumptions | Risks | Incomplete checks | Efficiency`.
