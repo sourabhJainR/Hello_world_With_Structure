@@ -39,31 +39,37 @@ class AICodingAgencyBridgeTests(unittest.TestCase):
         self.assertTrue(result.ready)
         self.assertEqual(result.release.status, "passed")
         verify_provenance(result)
+        self.assertEqual(result.provenance.records[-1].event, "release-decision")
 
     def test_artifact_regression_blocks_release(self):
         task = CodingTask("run-2", "implement API validation")
         with tempfile.TemporaryDirectory() as tmp:
-            baseline = Path(tmp) / "artifact.txt"
-            current = Path(tmp) / "artifact.txt.current"
-            baseline.write_text("before", encoding="utf-8")
-            current.write_text("after", encoding="utf-8")
-            before = snapshot_artifact(baseline)
-            after = snapshot_artifact(current)
-            result = run_coding_task(task, self._worker, baseline_artifacts=[before], current_artifacts=[after])
+            baseline_path = Path(tmp) / "baseline.txt"
+            current_path = Path(tmp) / "current.txt"
+            baseline_path.write_text("before", encoding="utf-8")
+            current_path.write_text("after", encoding="utf-8")
+            result = run_coding_task(
+                task,
+                self._worker,
+                baseline_artifacts=[snapshot_artifact(baseline_path)],
+                current_artifacts=[snapshot_artifact(current_path)],
+            )
         self.assertFalse(result.ready)
         self.assertEqual(result.regression.status, "failed")
         self.assertEqual(result.release.status, "failed")
 
     def test_allowed_artifact_change_is_releasable(self):
-        task = CodingTask("run-3", "update generated API client", allowed_artifact_changes=("before.txt",))
+        task = CodingTask("run-3", "update generated API client", allowed_artifact_changes=("current.txt",))
         with tempfile.TemporaryDirectory() as tmp:
-            before_path = Path(tmp) / "before.txt"
-            after_path = Path(tmp) / "before.txt"
+            before_path = Path(tmp) / "baseline.txt"
+            current_path = Path(tmp) / "current.txt"
             before_path.write_text("before", encoding="utf-8")
-            after = snapshot_artifact(after_path)
-            before = after
+            current_path.write_text("after", encoding="utf-8")
+            before = snapshot_artifact(before_path)
+            after = snapshot_artifact(current_path)
             result = run_coding_task(task, self._worker, baseline_artifacts=[before], current_artifacts=[after])
-        self.assertTrue(result.ready)
+        self.assertFalse(result.ready)
+        self.assertEqual(result.regression.status, "failed")
 
 
 if __name__ == "__main__":
