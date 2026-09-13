@@ -1,0 +1,52 @@
+name: Hermes Capability Integration
+
+on:
+  pull_request:
+    paths:
+      - 'portable/agent_capabilities.py'
+      - 'portable/capability_fabric.py'
+      - 'portable/persistent_memory.py'
+      - 'portable/automation_scheduler.py'
+      - 'portable/output_quality.py'
+      - 'portable/__init__.py'
+      - 'tests/test_hermes_capability_integration.py'
+      - 'skills/ai-coding-orchestrator/SKILL.md'
+      - '.agents/skills/ai-coding-orchestrator/SKILL.md'
+      - '.claude/skills/ai-coding-orchestrator/SKILL.md'
+      - '.ai-harness/config.toml'
+      - '.ai-harness/HERMES_CAPABILITY_CONTRACT.md'
+      - '.github/workflows/hermes-capability-integration.yml'
+  push:
+    branches:
+      - hermes-agent-enhancement-v2
+
+jobs:
+  hermes-capabilities:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile capability implementation
+        run: python -m py_compile portable/agent_capabilities.py portable/capability_fabric.py portable/persistent_memory.py portable/automation_scheduler.py portable/output_quality.py
+      - name: Run integration tests
+        run: python -m unittest tests.test_hermes_capability_integration -v
+      - name: Validate single implementation surface
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tomllib
+          config = tomllib.loads(Path('.ai-harness/config.toml').read_text())
+          assert config['capabilities']['module'] == 'portable.agent_capabilities'
+          skill_paths = [
+              Path('skills/ai-coding-orchestrator/SKILL.md'),
+              Path('.agents/skills/ai-coding-orchestrator/SKILL.md'),
+              Path('.claude/skills/ai-coding-orchestrator/SKILL.md'),
+          ]
+          contents = [p.read_text(encoding='utf-8') for p in skill_paths]
+          assert len(set(contents)) == 1
+          assert len(contents[0]) <= 9000
+          assert Path('.ai-harness/HERMES_CAPABILITY_CONTRACT.md').is_file()
+          print('Unified capability contract validated')
+          PY
