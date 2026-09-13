@@ -2,9 +2,11 @@
 
 from .adaptive_runtime import AdaptiveRuntime
 from .aer_runtime import main
+from .impact_analysis import ImpactRecord, ImpactReport, analyze
 from .lifecycle_hooks import HookBus, HookDecision, HookEvent, HookPhase, HookedExecution
 from .provider_fabric import CapabilityRequest, ProviderCapability, ProviderFabric, RoutingDecision
 from .session_state import SessionCheckpoint, SessionStore
+from .task_planner import PRIORITIES, STATUSES, Task, TaskPlan
 
 __all__ = [
     "main",
@@ -20,4 +22,11 @@ __all__ = [
     "RoutingDecision",
     "SessionCheckpoint",
     "SessionStore",
+    "ImpactRecord",
+    "ImpactReport",
+    "analyze",
+    "Task",
+    "TaskPlan",
+    "STATUSES",
+    "PRIORITIES",
 ]
