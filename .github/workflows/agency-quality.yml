@@ -11,6 +11,7 @@ on:
       - 'tests/test_agency_*.py'
       - 'tests/test_ai_coding_agency_bridge.py'
       - '.agents/skills/agency-*/**'
+      - '.agents/skills/ai-coding-orchestrator/SKILL.md'
       - '.ai-harness/AGENCY_AGENT_QUALITY.md'
   push:
     branches: [main]
@@ -23,6 +24,7 @@ on:
       - 'tests/test_agency_*.py'
       - 'tests/test_ai_coding_agency_bridge.py'
       - '.agents/skills/agency-*/**'
+      - '.agents/skills/ai-coding-orchestrator/SKILL.md'
       - '.ai-harness/AGENCY_AGENT_QUALITY.md'
 
 jobs:
@@ -50,3 +52,5 @@ jobs:
         run: python -m unittest tests/test_ai_coding_agency_bridge.py -v
       - name: Run v9 planner tests
         run: python -m unittest tests/test_agency_execution_plan.py tests/test_agency_multi_specialist.py -v
+      - name: Run v10 adaptive feedback tests
+        run: python -m unittest tests/test_agency_adaptive_planning.py -v
