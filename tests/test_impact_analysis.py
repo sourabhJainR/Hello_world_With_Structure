@@ -41,7 +41,6 @@ class ImpactAnalysisTests(unittest.TestCase):
             report = analyze(root, ["one/service.py"])
             records = {item.path: item for item in report.impacted}
             self.assertIn("consumer.py", records["one/service.py"].inbound_references)
-            self.assertNotIn("consumer.py", records["two/service.py"].inbound_references)
             self.assertNotIn("two/service.py", records)
 
     def test_package_import_resolves_to_imported_module(self) -> None:
