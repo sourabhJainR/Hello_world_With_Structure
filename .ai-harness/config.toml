@@ -25,6 +25,47 @@ looping_enabled = false
 recursive_self_invocation = false
 user_requested_loop_only = true
 
+[providers.claude]
+command = ["python", ".ai-harness/provider.py", "--prompt-file"]
+supports_local_execution = true
+
+[providers.codex]
+command = ["python", ".ai-harness/provider.py", "--prompt-file"]
+supports_local_execution = true
+
+[providers.gemini]
+command = ["python", ".ai-harness/provider.py", "--prompt-file"]
+supports_local_execution = true
+
+[providers.chatgpt]
+command = []
+supports_local_execution = false
+
+[execution]
+phase_timeout_seconds = 600
+provider_timeout_seconds = 600
+validation_timeout_seconds = 600
+max_phase_retries = 1
+max_repair_attempts = 2
+
+[validation]
+auto_discover = true
+commands = []
+
+[scope]
+allowed_paths = ["."]
+protected_paths = [".git", ".ai-harness/runs"]
+
+[orchestration]
+max_passes = 10
+mandatory_high_risk_passes = [6, 7, 8, 10]
+policy_file = ".ai-harness/TEN_LOOP_POLICY.md"
+
+[learning]
+min_observations_for_promotion = 3
+min_success_rate_for_promotion = 0.80
+max_memory_items = 200
+
 [sandbox]
 enabled = true
 module = ".ai-harness/runtime/sandbox.py"
@@ -90,6 +131,9 @@ escalate_on_risk = ["high", "critical"]
 escalate_on_uncertainty = ["unknown"]
 escalate_after_failed_verifications = 2
 prefer_efficient_provider_for_token_heavy_work = true
+
+[workflows.research]
+phases = ["route", "context", "research", "learn"]
 
 [context]
 stable_prefix = true
