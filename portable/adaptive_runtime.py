@@ -1,22 +1,21 @@
-"""Reusable facade that composes AER orchestration, provider routing, hooks and recovery."""
+"""Reusable facade that composes AER orchestration and agent capabilities."""
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
+from .automation_scheduler import AutomationScheduler
+from .capability_fabric import Capability, CapabilityFabric, ProviderAdapter, ProviderAdapterRegistry
 from .lifecycle_hooks import HookBus, HookPhase, HookedExecution
 from .orchestration import Graph, OrchestrationRun, Orchestrator
+from .output_quality import OutputQualityGate, QualityResult
+from .persistent_memory import PersistentMemory
 from .provider_fabric import CapabilityRequest, ProviderFabric, RoutingDecision
 from .session_state import SessionCheckpoint, SessionStore
 
 
 class AdaptiveRuntime:
-    """Project-neutral execution facade for long-running AI coding work.
-
-    The facade deliberately composes existing AER primitives rather than
-    replacing the graph engine. It gives every caller the same provider,
-    lifecycle and durable-session contract across projects and sessions.
-    """
+    """Single AER composition point for provider, capability and durable state."""
 
     def __init__(
         self,
@@ -25,15 +24,51 @@ class AdaptiveRuntime:
         session_store: SessionStore | None = None,
         provider_fabric: ProviderFabric | None = None,
         hooks: HookBus | None = None,
+        capability_fabric: CapabilityFabric | None = None,
+        persistent_memory: PersistentMemory | None = None,
+        automation_scheduler: AutomationScheduler | None = None,
+        output_quality: OutputQualityGate | None = None,
+        provider_adapters: ProviderAdapterRegistry | None = None,
         max_total_attempts: int = 32,
     ) -> None:
         self.orchestrator = Orchestrator(graph, max_total_attempts=max_total_attempts)
         self.session_store = session_store or SessionStore()
         self.provider_fabric = provider_fabric or ProviderFabric()
         self.hooks = hooks or HookBus()
+        self.capability_fabric = capability_fabric or CapabilityFabric()
+        aer_state = Path.home() / ".aer"
+        self.persistent_memory = persistent_memory or PersistentMemory(aer_state / "memory" / "memory.db")
+        self.automation_scheduler = automation_scheduler or AutomationScheduler(aer_state / "automation" / "automation.db")
+        self.output_quality = output_quality or OutputQualityGate()
+        self.provider_adapters = provider_adapters or ProviderAdapterRegistry()
 
     def capability(self, name: str, preferred: tuple[str, ...] = ()) -> RoutingDecision:
         return self.provider_fabric.route(CapabilityRequest(name, preferred))
+
+    def plan_capabilities(self, requested: Iterable[str], *, network_allowed: bool,
+                          sandbox_available: bool = True, max_risk: str = "high") -> list[Capability]:
+        return self.capability_fabric.plan(
+            requested, network_allowed=network_allowed,
+            sandbox_available=sandbox_available, max_risk=max_risk,
+        )
+
+    def register_provider_adapter(self, name: str, capabilities: Iterable[str], *, priority: int = 0) -> None:
+        self.provider_adapters.register(ProviderAdapter(name, frozenset(capabilities), priority=priority))
+
+    def resolve_provider_adapter(self, required: Iterable[str], preferred: tuple[str, ...] = ()) -> ProviderAdapter:
+        return self.provider_adapters.resolve(required, preferred)
+
+    def quality_check(self, *, acceptance_met: bool, verification_passed: bool,
+                      evidence_count: int, diff_clean: bool, scope_clean: bool,
+                      unresolved: int = 0) -> QualityResult:
+        return self.output_quality.evaluate(
+            acceptance_met=acceptance_met,
+            verification_passed=verification_passed,
+            evidence_count=evidence_count,
+            diff_clean=diff_clean,
+            scope_clean=scope_clean,
+            unresolved=unresolved,
+        )
 
     def run(
         self,
@@ -51,13 +86,9 @@ class AdaptiveRuntime:
         start = execution.gate(HookPhase.SESSION_START, task_id=task_id, payload={"project_key": project_key})
         if not start.allow:
             raise RuntimeError(f"session_start vetoed: {start.reason}")
-
         checkpoint = SessionCheckpoint(
-            session_id=session_id,
-            task_id=task_id,
-            project_key=project_key,
-            stage="execute",
-            remaining_batches=["verify", "review", "learn"],
+            session_id=session_id, task_id=task_id, project_key=project_key,
+            stage="execute", remaining_batches=["verify", "review", "learn"],
             active_provider=provider_name,
         )
         self.session_store.save(checkpoint)
