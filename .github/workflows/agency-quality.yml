@@ -4,23 +4,21 @@ on:
   pull_request:
     paths:
       - 'agency/**'
-      - 'portable/agency_registry.py'
-      - 'portable/agency_quality.py'
+      - 'portable/agency_*.py'
       - 'scripts/sync_agency_agents.py'
       - 'scripts/check_agency_agents.py'
-      - 'tests/test_agency_quality.py'
-      - '.agents/skills/agency-specialist-orchestrator/**'
+      - 'tests/test_agency_*.py'
+      - '.agents/skills/agency-*/**'
       - '.ai-harness/AGENCY_AGENT_QUALITY.md'
   push:
     branches: [main]
     paths:
       - 'agency/**'
-      - 'portable/agency_registry.py'
-      - 'portable/agency_quality.py'
+      - 'portable/agency_*.py'
       - 'scripts/sync_agency_agents.py'
       - 'scripts/check_agency_agents.py'
-      - 'tests/test_agency_quality.py'
-      - '.agents/skills/agency-specialist-orchestrator/**'
+      - 'tests/test_agency_*.py'
+      - '.agents/skills/agency-*/**'
       - '.ai-harness/AGENCY_AGENT_QUALITY.md'
 
 jobs:
@@ -32,7 +30,7 @@ jobs:
         with:
           python-version: '3.x'
       - name: Compile agency runtime
-        run: python -m py_compile portable/agency_registry.py portable/agency_quality.py scripts/sync_agency_agents.py scripts/check_agency_agents.py
+        run: python -m py_compile portable/agency_*.py scripts/sync_agency_agents.py scripts/check_agency_agents.py
       - name: Validate rubric
         run: python -m json.tool agency/AGENCY_QUALITY_RUBRIC.json >/dev/null
       - name: Validate vendored agency snapshot when present
@@ -42,5 +40,5 @@ jobs:
           else
             echo 'No vendored agency snapshot; pinned source manifest remains the contract.'
           fi
-      - name: Run agency runtime tests
-        run: python -m pytest -q tests/test_agency_quality.py
+      - name: Run agency tests
+        run: python -m unittest discover -s tests -p 'test_agency_*.py' -v
