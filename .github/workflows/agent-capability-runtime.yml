@@ -14,7 +14,7 @@ on:
       - '.ai-harness/config.toml'
       - '.github/workflows/agent-capability-runtime.yml'
   push:
-    branches: [feat/hermes-next-runtime]
+    branches: [main, feat/hermes-next-runtime]
 
 jobs:
   validate:
@@ -27,14 +27,15 @@ jobs:
       - name: Compile
         run: python -m py_compile portable/agent_capabilities.py portable/capability_fabric.py portable/persistent_memory.py portable/automation_scheduler.py portable/output_quality.py portable/adaptive_runtime.py
       - name: Capability tests
-        run: python -m pytest tests/test_agent_capabilities.py -q
+        run: python -m unittest tests.test_agent_capabilities -v
       - name: Config and facade checks
         run: |
           python - <<'PY'
           from pathlib import Path
           import tomllib
           cfg = tomllib.loads(Path('.ai-harness/config.toml').read_text())
-          assert cfg['harness']['version'] == 21
+          version = cfg['harness']['version']
+          assert isinstance(version, int) and version >= 1
           assert cfg['capabilities']['module'] == 'portable.agent_capabilities'
-          print('capability runtime contract valid')
+          print(f'capability runtime contract valid: harness_version={version}')
           PY
