@@ -1,7 +1,7 @@
 {
   "name": "adaptive-ai-coding-orchestrator",
-  "description": "Adaptive repository-aware engineering control plane for coding, debugging, research, POCs, reviews, and safe changes, with bounded context, deterministic specialist planning, durable execution history, and optional code-intelligence extensions.",
-  "version": "20.2.0",
+  "description": "Adaptive repository-aware engineering control plane for coding, debugging, research, POCs, reviews and safe changes, with capability-aware providers, durable memory, procedural skills, bounded delegation, secure tools, verification and evidence-backed learning.",
+  "version": "21.0.0",
   "author": {
     "name": "Sourabh Jain",
     "url": "https://github.com/sourabhJainR"
@@ -13,10 +13,15 @@
     "ai-coding",
     "software-engineering",
     "agent",
+    "agent-runtime",
     "orchestration",
     "skills",
-    "code-rag",
-    "graph-rag",
+    "persistent-memory",
+    "session-recall",
+    "provider-routing",
+    "tool-registry",
+    "delegation",
+    "mcp",
     "verification",
     "evals",
     "context-engineering",
