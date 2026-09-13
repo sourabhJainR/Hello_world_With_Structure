@@ -69,13 +69,19 @@ def _load_runtime_from_bundle(bundle: Path):
         raise SystemExit(f"invalid AER bundle: {exc}") from exc
 
 
-def _inject_plugin_payload(bundle: Path, root: Path) -> None:
-    """Add Claude metadata to a runtime-built bundle and cover it in the manifest.
+def _load_runtime(argv: list[str]):
+    module = _load_runtime_from(_ROOT)
+    if module is not None:
+        return module, None
+    bundle_candidates = [Path(arg).expanduser() for arg in argv if not arg.startswith("-")]
+    for candidate in bundle_candidates:
+        if candidate.is_file() and candidate.suffix.lower() == ".zip":
+            return _load_runtime_from_bundle(candidate.resolve())
+    raise SystemExit("AER runtime not found. Run from the AER source checkout or portable bundle, or provide an AER .zip bundle.")
 
-    The distribution runtime owns the generic payload contract. The stable CLI
-    owns provider-specific packaging so older runtimes can still be bootstrapped
-    while newer builds ship a complete Claude integration.
-    """
+
+def _inject_plugin_payload(bundle: Path, root: Path) -> None:
+    """Add Claude metadata to a runtime-built bundle and cover it in the manifest."""
     plugin_root = root / ".claude-plugin"
     if not plugin_root.is_dir():
         return
@@ -108,17 +114,21 @@ def _prepare_runtime_for_distribution(runtime) -> None:
     if ".claude-plugin" not in required:
         runtime.REQUIRED_PATHS = (*required, ".claude-plugin")
     original_copy_payload = runtime._copy_payload
+
     def copy_payload(payload: Path, version_root: Path) -> None:
         original_copy_payload(payload, version_root)
         source = payload / ".claude-plugin"
         if source.is_dir():
             runtime._copy_tree_without_mutable_state(source, version_root / ".claude-plugin")
+
     runtime._copy_payload = copy_payload
     original_build = runtime.build
+
     def build_with_provider_payload(root: Path, output: Path, source_commit: str | None = None, source_ref: str = runtime.AER_BRANCH) -> Path:
         result = original_build(root, output, source_commit=source_commit, source_ref=source_ref)
         _inject_plugin_payload(result, root)
         return result
+
     runtime.build = build_with_provider_payload
 
 
@@ -141,8 +151,10 @@ def _claude_plugin_install(current_root: Path) -> None:
     if not marketplace.is_file() or not plugin_manifest.is_file():
         print("AER Claude integration skipped: plugin metadata is missing from the installed bundle.")
         return
+
     def run(*command: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run([claude, *command], text=True, capture_output=True, timeout=60, check=False)
+
     try:
         added = run("plugin", "marketplace", "add", str(current_root), "--scope", "user")
         added_output = (added.stdout + added.stderr).strip()
@@ -222,8 +234,8 @@ def _emit_work_report(args: list[str], result: int, root: Path) -> None:
             implementation=["Structured WorkReport is rendered to a self-contained HTML artifact.", "Mermaid source is embedded so diagrams remain inspectable and reproducible."],
             hld=["CLI -> runtime -> work outcome -> reporting subsystem -> .ai-harness/reports/latest.html"],
             lld=["Reporter is isolated, deterministic, dependency-free, and best-effort.", "The report records scope, assumptions, boundaries, findings, risks, threats, verification, regression areas, evidence, and diagrams."],
-            references=[{"type":"repository", "path":".ai-harness/runtime/work_report.py"}, {"type":"entry-point", "path":"aer_cli.py"}],
-            evidence=[{"type":"command", "argv":args, "exit_code":result}],
+            references=[{"type": "repository", "path": ".ai-harness/runtime/work_report.py"}, {"type": "entry-point", "path": "aer_cli.py"}],
+            evidence=[{"type": "command", "argv": args, "exit_code": result}],
             verification=["Primary CLI result is returned unchanged after report generation.", "Report generation is exception-isolated."],
             regressions=["CLI failure behavior", "portable runtime loading", "Claude plugin activation", "report-write failure isolation"],
             data_flow=["CLI arguments", "Runtime execution", "Exit status", "Structured report model", "HTML artifact"],
