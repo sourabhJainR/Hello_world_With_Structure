@@ -47,6 +47,7 @@ provider_timeout_seconds = 600
 validation_timeout_seconds = 600
 max_phase_retries = 1
 max_repair_attempts = 2
+require_new_evidence_for_retry = true
 
 [validation]
 auto_discover = true
@@ -60,6 +61,19 @@ protected_paths = [".git", ".ai-harness/runs"]
 max_passes = 10
 mandatory_high_risk_passes = [6, 7, 8, 10]
 policy_file = ".ai-harness/TEN_LOOP_POLICY.md"
+
+[durability]
+journal_failure_is_non_fatal = false
+
+[reviewers]
+require_consensus_for_high_risk = true
+
+[knowledge]
+require_fresh_index_for_high_risk = true
+
+[verification]
+require_acceptance_evidence = true
+require_diff_check = true
 
 [learning]
 min_observations_for_promotion = 3
