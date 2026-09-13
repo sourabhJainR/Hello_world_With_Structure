@@ -30,6 +30,31 @@ class ImpactAnalysisTests(unittest.TestCase):
             report = analyze(root, ["a.py"])
             self.assertEqual([item.path for item in report.impacted], ["a.py"])
 
+    def test_same_filename_in_another_directory_is_not_a_false_dependency(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "one").mkdir()
+            (root / "two").mkdir()
+            (root / "one" / "service.py").write_text("VALUE = 1\n", encoding="utf-8")
+            (root / "two" / "service.py").write_text("VALUE = 2\n", encoding="utf-8")
+            (root / "consumer.py").write_text("from one.service import VALUE\n", encoding="utf-8")
+            report = analyze(root, ["one/service.py"])
+            records = {item.path: item for item in report.impacted}
+            self.assertIn("consumer.py", records["one/service.py"].inbound_references)
+            self.assertNotIn("consumer.py", records["two/service.py"].inbound_references)
+            self.assertNotIn("two/service.py", records)
+
+    def test_package_import_resolves_to_imported_module(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "pkg").mkdir()
+            (root / "pkg" / "__init__.py").write_text("\n", encoding="utf-8")
+            (root / "pkg" / "worker.py").write_text("VALUE = 1\n", encoding="utf-8")
+            (root / "consumer.py").write_text("from pkg import worker\nworker.VALUE\n", encoding="utf-8")
+            report = analyze(root, ["pkg/worker.py"])
+            records = {item.path: item for item in report.impacted}
+            self.assertIn("consumer.py", records["pkg/worker.py"].inbound_references)
+
 
 if __name__ == "__main__":
     unittest.main()
