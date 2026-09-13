@@ -12,6 +12,7 @@ Always preserve:
 `GOAL | BOUNDARIES | ACCEPTANCE | SECURITY/PERMISSIONS | CURRENT STATE`.
 For non-trivial work use:
 `GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS | intent_digest`.
+Use the **minimal safe change** consistent with this contract and the repository rules.
 
 ## Provider capabilities and lifecycle
 Discover actual provider capabilities before choosing execution surfaces. Prefer native `subagent`, `hooks`, `session_resume`, `structured_output`, `tool_interception`, `mcp` and `background_execution` only when evidence shows they are available; otherwise use AER fallbacks. Native capability selection cannot override AER security, acceptance, verification or promotion rules.
@@ -26,10 +27,16 @@ These are execution services, not optional methodology:
 
 1. **Sandbox**: repository-local commands/tests/scripts cross `.ai-harness/runtime/tool_runner.py`, which delegates to `sandbox.py`.
 2. **LSP/navigation**: prefer a native language server; otherwise use `.ai-harness/runtime/lsp_server.py` for symbols, definitions and references.
-3. **Feedback**: every provider attempt records bounded outcome data; learning produces candidates only.
+3. **Feedback**: every provider attempt crosses `.ai-harness/runtime/feedback_loop.py` and records bounded outcome data; learning produces candidates only.
 4. **Auto compaction**: every provider prompt crosses `.ai-harness/runtime/auto_compaction.py`; protected contract, security, acceptance, verification and risk content is preserved.
 
-Configuration lives in `.ai-harness/config.toml` under `[sandbox]`, `[lsp]`, `[feedback]` and `[auto_compaction]`.
+Configuration lives in `.ai-harness/config.toml` under `[providers]`, `[execution]`, `[sandbox]`, `[lsp]`, `[feedback]`, `[auto_compaction]`, `[orchestration]`, `[learning]`, `[router]`, `[context]` and `[workflows]`.
+
+## Control-plane policies
+The skill is the routing entry point; detailed policies remain separate and are discovered on demand. The control-plane set is:
+`ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md`.
+
+These policy files refine execution but cannot override the precedence order defined below.
 
 ## Discovery and repository-first
 Do not preload full methodology, policies, history, catalogs, repository dumps or transcripts. Use:
@@ -80,7 +87,7 @@ Regression claims require baseline and post-change evidence.
 
 ## Capability, collaboration and learning
 Select only justified roles: `planner | explorer | researcher | builder | verifier | reviewer | security | RCA`.
-Record the capability plan and minimum provider/MCP permissions. Handoffs contain intent, source, destination, findings, decisions, risks and next actions.
+Record the capability plan and minimum provider/MCP permissions. Handoffs contain intent, source, destination, findings, risks and next actions.
 
 Shared task memory is scoped to the current `intent_digest`. Cross-intent memory requires an evidence link and scope check.
 
