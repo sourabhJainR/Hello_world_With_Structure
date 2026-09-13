@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "release_threshold": 90,
+  "dimensions": {
+    "correctness": 25,
+    "completeness": 15,
+    "evidence": 15,
+    "verification": 15,
+    "scope_discipline": 10,
+    "security_and_safety": 10,
+    "clarity": 5,
+    "maintainability": 5
+  },
+  "hard_gates": [
+    "acceptance criteria satisfied",
+    "no unresolved blocker or material finding",
+    "verification performed for claimed behavior",
+    "material claims have evidence or are explicitly marked uncertain",
+    "no unauthorized scope expansion",
+    "no security or permission bypass",
+    "final artifact is usable by the intended audience"
+  ],
+  "finding_severity": ["blocker", "material", "minor", "observation"]
+}
