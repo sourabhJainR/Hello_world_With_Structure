@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from portable.task_planner import TaskPlan
 from runtime.graph_agent_team import AgentSpec, GraphAgentTeam, SharedTaskMemory, team_for_route
 
 
@@ -26,6 +27,15 @@ class GraphAgentTeamTests(unittest.TestCase):
         self.assertEqual(levels[0], ["planner"])
         self.assertEqual(set(levels[1]), {"explorer", "researcher"})
         self.assertEqual(levels[2], ["builder"])
+
+    def test_graph_plan_is_canonical_task_plan(self):
+        team = GraphAgentTeam([
+            AgentSpec("planner", "planner"),
+            AgentSpec("builder", "builder", depends_on=("planner",), read_only=False),
+        ])
+        self.assertIsInstance(team._plan, TaskPlan)
+        self.assertEqual(team._plan.tasks["builder"].dependencies, ["planner"])
+        self.assertEqual([[agent.name for agent in level] for level in team.levels()], [["planner"], ["builder"]])
 
     def test_team_passes_shared_memory_to_downstream_agent(self):
         with tempfile.TemporaryDirectory() as tmp:
