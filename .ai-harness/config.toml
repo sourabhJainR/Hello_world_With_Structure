@@ -1,6 +1,6 @@
 [harness]
 name = "adaptive-ai-coding-orchestrator"
-version = 20
+version = 21
 default_provider = "claude"
 auto_route = true
 learn_after_run = true
@@ -79,6 +79,21 @@ require_diff_check = true
 min_observations_for_promotion = 3
 min_success_rate_for_promotion = 0.80
 max_memory_items = 200
+
+[capabilities]
+module = "portable.agent_capabilities"
+fabric = "portable.capability_fabric.CapabilityFabric"
+memory = "portable.persistent_memory.PersistentMemory"
+scheduler = "portable.automation_scheduler.AutomationScheduler"
+quality_gate = "portable.output_quality.OutputQualityGate"
+provider_adapters = "portable.capability_fabric.ProviderAdapterRegistry"
+max_delegates = 4
+memory_write_approval_required = true
+memory_max_chars = 100000
+require_explicit_external_adapters = true
+skills_progressive_disclosure = true
+scheduled_work_reenters_aer = true
+quality_gate_required_before_complete = true
 
 [sandbox]
 enabled = true
