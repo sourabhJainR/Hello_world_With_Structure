@@ -1,0 +1,32 @@
+name: Hermes Parity Runtime Check
+
+on:
+  push:
+    paths:
+      - 'portable/hermes_runtime.py'
+      - 'portable/test_hermes_runtime.py'
+      - '.ai-harness/HERMES_PARITY.md'
+      - '.agents/skills/ai-coding-orchestrator/SKILL.md'
+      - '.claude-plugin/plugin.json'
+  pull_request:
+    paths:
+      - 'portable/hermes_runtime.py'
+      - 'portable/test_hermes_runtime.py'
+      - '.ai-harness/HERMES_PARITY.md'
+      - '.agents/skills/ai-coding-orchestrator/SKILL.md'
+      - '.claude-plugin/plugin.json'
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile runtime
+        run: python -m py_compile portable/hermes_runtime.py portable/test_hermes_runtime.py
+      - name: Run runtime tests
+        run: python -m unittest portable.test_hermes_runtime -v
+      - name: Validate parity document
+        run: python -c "from pathlib import Path; p=Path('.ai-harness/HERMES_PARITY.md'); t=p.read_text(encoding='utf-8'); assert 'ProviderRouter' in t and 'DurableStore' in t and 'ApprovalPolicy' in t"
