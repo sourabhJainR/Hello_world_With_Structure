@@ -1,3 +1,4 @@
+import sys
 import tempfile
 import time
 import unittest
@@ -9,9 +10,10 @@ from portable.hermes_capabilities import (
     DelegationManager,
     MemoryStore,
     OutputQualityGate,
+    ProcessManager,
     SkillRegistry,
-    TerminalBackends,
 )
+from portable.hermes_capabilities import TerminalBackends
 from portable.task_planner import Task, TaskPlan
 
 
@@ -20,8 +22,9 @@ class HermesCapabilityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             store = MemoryStore(Path(tmp))
             store.add("memory", "Project uses Python and pytest", source="test")
-            store.add("memory", "Project uses Python and pytest", source="test")
+            duplicate = store.add("memory", "Project uses Python and pytest", source="test")
             self.assertEqual(len(store.list("memory")), 1)
+            self.assertEqual(duplicate.content, "Project uses Python and pytest")
             store.index_session("s1", [("user", "fix the authentication timeout"), ("assistant", "I will inspect the retry path")])
             hits = store.search_session("authentication")
             self.assertEqual(len(hits), 1)
@@ -59,8 +62,8 @@ class HermesCapabilityTests(unittest.TestCase):
     def test_delegation_respects_task_dependencies(self):
         plan = TaskPlan([
             Task(id="1", title="Inspect", description="inspect", priority="high"),
-            Task(id="2", title="Implement", description="implement", dependencies=("1",), priority="high"),
-            Task(id="3", title="Review", description="review", dependencies=("1",), priority="medium"),
+            Task(id="2", title="Implement", description="implement", dependencies=["1"], priority="high"),
+            Task(id="3", title="Review", description="review", dependencies=["1"], priority="medium"),
         ])
         seen = []
         manager = DelegationManager(max_concurrent=2, max_depth=1)
@@ -72,6 +75,37 @@ class HermesCapabilityTests(unittest.TestCase):
         receipts = manager.run(plan, worker)
         self.assertEqual({r.task_id for r in receipts}, {"1", "2", "3"})
         self.assertEqual(seen[0], "1")
+
+    def test_delegation_blocks_dependents_after_failure(self):
+        plan = TaskPlan([
+            Task(id="1", title="Inspect", description="inspect"),
+            Task(id="2", title="Implement", description="implement", dependencies=["1"]),
+        ])
+        seen = []
+        manager = DelegationManager(max_concurrent=2, max_depth=1)
+
+        def worker(task):
+            seen.append(task.id)
+            if task.id == "1":
+                raise RuntimeError("inspection failed")
+            return task.title
+
+        receipts = manager.run(plan, worker)
+        self.assertEqual([r.task_id for r in receipts], ["1"])
+        self.assertEqual(seen, ["1"])
+        self.assertEqual(plan.tasks["1"].status, "blocked")
+        self.assertEqual(plan.tasks["2"].status, "pending")
+
+    def test_process_receipts_preserve_string_session_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manager = ProcessManager(Path(tmp))
+            sid = manager.start([sys.executable, "-c", "print('done')"])
+            receipt = manager.wait(sid, timeout=10)
+            self.assertEqual(receipt.session_id, sid)
+            persisted = manager.receipts(session_id=sid)
+            self.assertEqual(len(persisted), 1)
+            self.assertEqual(persisted[0].session_id, sid)
+            self.assertEqual(persisted[0].status, "completed")
 
     def test_terminal_backend_is_explicit(self):
         self.assertEqual(TerminalBackends("local").prepare(["python", "-V"]).command, ("python", "-V"))
