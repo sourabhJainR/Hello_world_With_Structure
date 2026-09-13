@@ -130,7 +130,7 @@ def run_coding_task(
 
     receipt = execution.receipt
     if receipt is None:
-        release = decide_release(0, 90, {}, {}, regression_status=regression_status)
+        release = decide_release(0, 90, {}, (), regression_status=regression_status)
     else:
         release = decide_release(
             receipt.score,
