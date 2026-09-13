@@ -26,15 +26,15 @@ recursive_self_invocation = false
 user_requested_loop_only = true
 
 [providers.claude]
-command = ["python", ".ai-harness/provider.py", "--prompt-file"]
+command = ["{python}", ".ai-harness/safe_provider.py", "--prompt-file", "{prompt_file}", "--", "claude", "-p"]
 supports_local_execution = true
 
 [providers.codex]
-command = ["python", ".ai-harness/provider.py", "--prompt-file"]
+command = ["{python}", ".ai-harness/safe_provider.py", "--prompt-file", "{prompt_file}", "--", "codex", "exec"]
 supports_local_execution = true
 
 [providers.gemini]
-command = ["python", ".ai-harness/provider.py", "--prompt-file"]
+command = ["{python}", ".ai-harness/safe_provider.py", "--prompt-file", "{prompt_file}", "--", "gemini", "-p"]
 supports_local_execution = true
 
 [providers.chatgpt]
