@@ -5,9 +5,11 @@ on:
     paths:
       - 'agency/**'
       - 'portable/agency_*.py'
+      - 'portable/ai_coding_agency_bridge.py'
       - 'scripts/sync_agency_agents.py'
       - 'scripts/check_agency_agents.py'
       - 'tests/test_agency_*.py'
+      - 'tests/test_ai_coding_agency_bridge.py'
       - '.agents/skills/agency-*/**'
       - '.ai-harness/AGENCY_AGENT_QUALITY.md'
   push:
@@ -15,9 +17,11 @@ on:
     paths:
       - 'agency/**'
       - 'portable/agency_*.py'
+      - 'portable/ai_coding_agency_bridge.py'
       - 'scripts/sync_agency_agents.py'
       - 'scripts/check_agency_agents.py'
       - 'tests/test_agency_*.py'
+      - 'tests/test_ai_coding_agency_bridge.py'
       - '.agents/skills/agency-*/**'
       - '.ai-harness/AGENCY_AGENT_QUALITY.md'
 
@@ -30,7 +34,7 @@ jobs:
         with:
           python-version: '3.x'
       - name: Compile agency runtime
-        run: python -m py_compile portable/agency_*.py scripts/sync_agency_agents.py scripts/check_agency_agents.py
+        run: python -m py_compile portable/agency_*.py portable/ai_coding_agency_bridge.py scripts/sync_agency_agents.py scripts/check_agency_agents.py
       - name: Validate rubric
         run: python -m json.tool agency/AGENCY_QUALITY_RUBRIC.json >/dev/null
       - name: Validate vendored agency snapshot when present
@@ -42,3 +46,5 @@ jobs:
           fi
       - name: Run agency tests
         run: python -m unittest discover -s tests -p 'test_agency_*.py' -v
+      - name: Run AI coding bridge tests
+        run: python -m unittest tests/test_ai_coding_agency_bridge.py -v
