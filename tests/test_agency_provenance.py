@@ -11,14 +11,20 @@ class ProvenanceLedgerTests(unittest.TestCase):
         first = ledger.append("run-1", "started", "task accepted")
         second = ledger.append("run-1", "artifact-verified", artifact_ids=["a2", "a1"])
         self.assertEqual(second.parent_hash, first.record_hash)
-        text = ledger.to_jsonl()
-        restored = ProvenanceLedger.from_jsonl(text)
+        restored = ProvenanceLedger.from_jsonl(ledger.to_jsonl())
         self.assertEqual([r.record_hash for r in restored.records], [r.record_hash for r in ledger.records])
 
     def test_tampering_is_rejected(self):
         ledger = ProvenanceLedger()
         ledger.append("run-1", "started")
         text = ledger.to_jsonl().replace('"detail": ""', '"detail": "tampered"')
+        with self.assertRaises(ValueError):
+            ProvenanceLedger.from_jsonl(text)
+
+    def test_schema_tampering_is_rejected(self):
+        ledger = ProvenanceLedger()
+        ledger.append("run-1", "started")
+        text = ledger.to_jsonl().replace('"artifact_ids": []', '"artifact_ids": {}')
         with self.assertRaises(ValueError):
             ProvenanceLedger.from_jsonl(text)
 
