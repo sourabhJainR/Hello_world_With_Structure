@@ -13,6 +13,8 @@ on:
       - 'portable/**'
       - 'aer_cli.py'
       - 'tests/test_portable_aer.py'
+      - 'tests/test_task_planner.py'
+      - 'tests/test_impact_analysis.py'
       - '.github/workflows/portable-bundle.yml'
       - '.github/actions/publish-ci-artifacts/**'
 
@@ -34,7 +36,7 @@ jobs:
       - name: Run portable bundle tests
         run: |
           set -o pipefail
-          python -m unittest tests.test_portable_aer -v 2>&1 | tee ci-artifacts/portable-tests.log
+          python -m unittest tests.test_portable_aer tests.test_task_planner tests.test_impact_analysis -v 2>&1 | tee ci-artifacts/portable-tests.log
       - name: Build bundle
         run: python aer_cli.py build --output aer-portable.zip
       - name: Verify bundle
@@ -56,9 +58,12 @@ jobs:
               if missing:
                   raise SystemExit('missing Claude integration payload: ' + ', '.join(missing))
               plugin = json.loads(z.read('payload/.claude-plugin/plugin.json'))
-              assert plugin['version'] == '20.1.1', plugin
+              assert plugin['version'] == '20.2.0', plugin
               assert 'UserPromptSubmit' in plugin['hooks'], plugin
-          print('Claude plugin payload verified')
+              manifest = json.loads(z.read('aer-bundle.json'))
+              recorded = {item['path'] for item in manifest['files']}
+              assert '.claude-plugin/plugin.json' in recorded, 'plugin manifest is not integrity-covered'
+          print('Claude plugin payload and manifest coverage verified')
           PY
       - name: Stage portable bundle
         if: always()
