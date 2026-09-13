@@ -2,6 +2,7 @@
 """Stable, self-bootstrapping AER command-line entry point."""
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import shutil
@@ -79,18 +80,56 @@ def _load_runtime(argv: list[str]):
     raise SystemExit("AER runtime not found. Run from the AER source checkout or portable bundle, or provide an AER .zip bundle.")
 
 
+def _inject_plugin_payload(bundle: Path, root: Path) -> None:
+    """Add Claude metadata to a runtime-built bundle and cover it in the manifest."""
+    plugin_root = root / ".claude-plugin"
+    if not plugin_root.is_dir():
+        return
+    with zipfile.ZipFile(bundle, "r") as source:
+        entries = {item.filename: source.read(item.filename) for item in source.infolist()}
+    manifest = json.loads(entries["aer-bundle.json"].decode("utf-8"))
+    records = list(manifest.get("files", []))
+    recorded = {item.get("path") for item in records if isinstance(item, dict)}
+    for path in sorted(plugin_root.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(root).as_posix()
+        archive_name = f"payload/{rel}"
+        data = path.read_bytes()
+        entries[archive_name] = data
+        if rel not in recorded:
+            records.append({"path": rel, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)})
+    manifest["files"] = sorted(records, key=lambda item: item["path"])
+    entries["aer-bundle.json"] = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    temp = bundle.with_suffix(".plugin.tmp.zip")
+    with zipfile.ZipFile(temp, "w", compression=zipfile.ZIP_DEFLATED) as target:
+        for name, data in entries.items():
+            target.writestr(name, data)
+    temp.replace(bundle)
+
+
 def _prepare_runtime_for_distribution(runtime) -> None:
     """Extend the provider-neutral runtime with bundled Claude metadata."""
     required = tuple(runtime.REQUIRED_PATHS)
     if ".claude-plugin" not in required:
         runtime.REQUIRED_PATHS = (*required, ".claude-plugin")
     original_copy_payload = runtime._copy_payload
+
     def copy_payload(payload: Path, version_root: Path) -> None:
         original_copy_payload(payload, version_root)
         source = payload / ".claude-plugin"
         if source.is_dir():
             runtime._copy_tree_without_mutable_state(source, version_root / ".claude-plugin")
+
     runtime._copy_payload = copy_payload
+    original_build = runtime.build
+
+    def build_with_provider_payload(root: Path, output: Path, source_commit: str | None = None, source_ref: str = runtime.AER_BRANCH) -> Path:
+        result = original_build(root, output, source_commit=source_commit, source_ref=source_ref)
+        _inject_plugin_payload(result, root)
+        return result
+
+    runtime.build = build_with_provider_payload
 
 
 def _has_flag(args: list[str], flag: str) -> bool:
@@ -112,8 +151,10 @@ def _claude_plugin_install(current_root: Path) -> None:
     if not marketplace.is_file() or not plugin_manifest.is_file():
         print("AER Claude integration skipped: plugin metadata is missing from the installed bundle.")
         return
+
     def run(*command: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run([claude, *command], text=True, capture_output=True, timeout=60, check=False)
+
     try:
         added = run("plugin", "marketplace", "add", str(current_root), "--scope", "user")
         added_output = (added.stdout + added.stderr).strip()
@@ -193,8 +234,8 @@ def _emit_work_report(args: list[str], result: int, root: Path) -> None:
             implementation=["Structured WorkReport is rendered to a self-contained HTML artifact.", "Mermaid source is embedded so diagrams remain inspectable and reproducible."],
             hld=["CLI -> runtime -> work outcome -> reporting subsystem -> .ai-harness/reports/latest.html"],
             lld=["Reporter is isolated, deterministic, dependency-free, and best-effort.", "The report records scope, assumptions, boundaries, findings, risks, threats, verification, regression areas, evidence, and diagrams."],
-            references=[{"type":"repository", "path":".ai-harness/runtime/work_report.py"}, {"type":"entry-point", "path":"aer_cli.py"}],
-            evidence=[{"type":"command", "argv":args, "exit_code":result}],
+            references=[{"type": "repository", "path": ".ai-harness/runtime/work_report.py"}, {"type": "entry-point", "path": "aer_cli.py"}],
+            evidence=[{"type": "command", "argv": args, "exit_code": result}],
             verification=["Primary CLI result is returned unchanged after report generation.", "Report generation is exception-isolated."],
             regressions=["CLI failure behavior", "portable runtime loading", "Claude plugin activation", "report-write failure isolation"],
             data_flow=["CLI arguments", "Runtime execution", "Exit status", "Structured report model", "HTML artifact"],

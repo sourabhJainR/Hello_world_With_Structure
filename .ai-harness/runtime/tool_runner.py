@@ -5,7 +5,10 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from runtime.sandbox import SandboxPolicy, SandboxViolation, run
+try:
+    from runtime.sandbox import SandboxPolicy, SandboxViolation, run
+except ModuleNotFoundError:  # Direct script execution from .ai-harness/runtime/
+    from sandbox import SandboxPolicy, SandboxViolation, run
 
 
 def main() -> int:
@@ -24,6 +27,8 @@ def main() -> int:
         return 78
     if result.stdout:
         print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="")
     return int(result.returncode)
 
 

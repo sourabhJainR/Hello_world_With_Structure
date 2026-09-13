@@ -11,7 +11,6 @@ import hashlib
 import re
 from dataclasses import dataclass
 
-
 PROTECTED_HEADINGS = (
     "GOAL", "BOUNDARIES", "ACCEPTANCE", "SECURITY/PERMISSIONS",
     "CURRENT STATE", "TASK CONTRACT", "EVIDENCE", "VERIFY", "RISKS",
@@ -64,12 +63,18 @@ def compact(text: str, *, budget_chars: int = 12000) -> CompactionResult:
     source = text.strip()
     budget = max(1000, int(budget_chars))
     if len(source) <= budget:
-        return CompactionResult(source, len(source), len(source), 0, hashlib.sha256(source.encode()).hexdigest()[:16], False)
+        return CompactionResult(
+            source,
+            len(source),
+            len(source),
+            0,
+            hashlib.sha256(source.encode("utf-8")).hexdigest()[:16],
+            False,
+        )
 
-    sections = _sections(source)
     protected: list[tuple[str, str]] = []
     ordinary: list[tuple[str, str]] = []
-    for name, body in sections:
+    for name, body in _sections(source):
         (protected if any(token in name for token in PROTECTED_HEADINGS) else ordinary).append((name, body))
 
     selected: list[str] = []
@@ -86,9 +91,15 @@ def compact(text: str, *, budget_chars: int = 12000) -> CompactionResult:
         remaining = budget - used - 80
         if remaining > 200:
             selected.append(block[:remaining].rstrip() + "\n[section compacted]")
-            used = budget
         break
 
     result = "\n\n".join(selected).strip()
     digest = hashlib.sha256(result.encode("utf-8")).hexdigest()[:16]
-    return CompactionResult(result, len(source), len(result), max(0, len(source) - len(result)), digest, True)
+    return CompactionResult(
+        result,
+        len(source),
+        len(result),
+        max(0, len(source) - len(result)),
+        digest,
+        True,
+    )

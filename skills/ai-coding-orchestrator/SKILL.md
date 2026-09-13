@@ -1,98 +1,118 @@
 ---
 name: ai-coding-orchestrator
-description: Repository-aware AI engineering control plane for precise task execution, evidence-based RCA, minimal safe changes, verification, collaboration and bounded learning across supported AI coding surfaces.
+description: Repository-aware AI engineering control plane for bounded, evidence-driven task execution, dependency-aware planning, impact review, verification, collaboration and controlled learning.
 ---
 
 # Adaptive AI Coding Orchestrator
 
-## Provider-neutral contract
-AER owns intent, routing, context selection, budgets, safety, verification, learning and promotion. Providers supply inference/native tools; they must not redefine AER semantics.
+## Contract
+AER owns intent, routing, context selection, budgets, safety, verification, learning and promotion. Providers and extensions supply capabilities; they do not redefine AER semantics.
 
-Always active:
+Always preserve:
 `GOAL | BOUNDARIES | ACCEPTANCE | SECURITY/PERMISSIONS | CURRENT STATE`.
-Task contract:
+For non-trivial work use:
 `GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS | intent_digest`.
+Use the **minimal safe change** consistent with this contract and the repository rules.
 
-## Core runtime services are mandatory
-The AER runtime includes four first-class services and they are part of the execution contract, not optional methodology:
+## Provider capabilities and lifecycle
+Discover actual provider capabilities before choosing execution surfaces. Prefer native `subagent`, `hooks`, `session_resume`, `structured_output`, `tool_interception`, `mcp` and `background_execution` only when evidence shows they are available; otherwise use AER fallbacks. Native capability selection cannot override AER security, acceptance, verification or promotion rules.
 
-1. **Sandbox**: all repository-local commands/tests/scripts must use `.ai-harness/runtime/tool_runner.py`, which delegates to `sandbox.py`. No shell execution, workspace escape, or unbounded local process is allowed. Hostile code still requires a stronger VM/container boundary.
-2. **LSP/navigation**: prefer a native language server when available; otherwise use `.ai-harness/runtime/lsp_server.py` over stdio JSON-RPC for symbols, definitions and references. Do not rediscover repository structure by repeatedly dumping files when navigation evidence is available.
-3. **Feedback loop**: every provider attempt records an outcome in the bounded feedback store. Learning creates candidates only; executable orchestration changes require regression, safety, shadow, canary and monitoring gates before activation.
-4. **Auto compaction**: every provider prompt crosses `.ai-harness/runtime/auto_compaction.py`. Compaction is deterministic, budgeted and evidence-aware. Contract, security, acceptance, verification and risk sections are protected; repeated material is removed before provider invocation.
-
-These services must remain provider-neutral and dependency-free. Configuration lives in `.ai-harness/config.toml` under `[sandbox]`, `[lsp]`, `[feedback]` and `[auto_compaction]`.
-
-## Provider-native capability routing
-Before selecting an agent team or hook strategy, discover the provider capabilities that are actually available. Prefer native `subagent`, `hooks`, `session_resume`, `structured_output`, `tool_interception`, `mcp` or `background_execution` when evidence says the active provider supports them. If a capability is unavailable, use the AER fallback instead of pretending it exists.
-
-The portable runtime exposes this contract through `portable.provider_fabric.ProviderFabric`. Provider manifests may extend discovery under `~/.aer/providers/`. Native capability selection is an optimization only; AER security, acceptance, verification and promotion rules remain authoritative.
-
-## Lifecycle hooks
-Map provider-native lifecycle events onto AER's hook phases when possible:
+Map provider events to AER phases when supported:
 `session_start | plan_start | before_agent | after_agent | before_tool | after_tool | before_verify | after_verify | before_promotion | after_promotion | session_end | recovery`.
+Hooks may annotate or veto execution and fail closed on handler errors.
+Provider manifests may extend discovery under `~/.aer/providers/`; `portable.provider_fabric.ProviderFabric` is the portable capability contract.
 
-Hooks may annotate or veto execution. Hook failures are fail-closed. A hook must never silently weaken security, permission, verification, regression or self-modification gates.
+## Mandatory runtime services
+These are execution services, not optional methodology:
 
-## Progressive discovery
-Do not preload methodology, policies, frameworks, history, capability catalogs, repository dumps or transcripts. Runtime:
+1. **Sandbox**: repository-local commands/tests/scripts cross `.ai-harness/runtime/tool_runner.py`, which delegates to `sandbox.py`.
+2. **LSP/navigation**: prefer a native language server; otherwise use `.ai-harness/runtime/lsp_server.py` for symbols, definitions and references.
+3. **Feedback**: every provider attempt crosses `.ai-harness/runtime/feedback_loop.py` and records bounded outcome data; learning produces candidates only.
+4. **Auto compaction**: every provider prompt crosses `.ai-harness/runtime/auto_compaction.py`; protected contract, security, acceptance, verification and risk content is preserved.
+
+Configuration lives in `.ai-harness/config.toml` under `[providers]`, `[execution]`, `[sandbox]`, `[lsp]`, `[feedback]`, `[auto_compaction]`, `[orchestration]`, `[learning]`, `[router]`, `[context]` and `[workflows]`.
+
+## Control-plane policies
+The skill is the routing entry point; detailed policies remain separate and are discovered on demand. The control-plane set is:
+`ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md`.
+
+These policy files refine execution but cannot override the precedence order defined below.
+
+## Discovery and repository-first
+Do not preload full methodology, policies, history, catalogs, repository dumps or transcripts. Use:
 `DISCOVER -> SCORE -> LEASE -> USE -> COMPRESS -> RELEASE`.
+Load only evidence justified by phase, uncertainty, dependency, risk or verification. Prefer targeted files, symbols and tests.
 
-The Context Broker loads only evidence justified by phase, uncertainty, dependency, risk or verification. Prefer targeted files/symbols/tests and structural evidence. Release raw context after use. Detailed methodology lives in `context/`; start with `context/INDEX.md` and load only the needed pack. Optional context and extensions are on-demand and must not be treated as always-active.
+Before editing, inspect repository/team instructions, git state, structure, dependencies and tests. Reuse local architecture, naming, configuration and telemetry. Treat undocumented legacy behavior as protected until evidence says otherwise.
 
-## Repository-first
-Read repository/team instructions, git state, structure, dependencies and tests before editing. Reuse local architecture, naming, configuration, telemetry and test patterns. Make the smallest safe change. Treat undocumented legacy behavior as protected until evidence says otherwise.
+## Task planning
+For non-trivial work create a durable, dependency-aware plan using `portable.task_planner.TaskPlan` when machine-readable planning is useful. Each task uses:
+`id | title | description | status | priority | dependencies | subtasks | tags | acceptance | files`.
 
-## Execution
-`Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair -> Learn -> Stop`.
+Validate the whole dependency graph before execution. A task is ready only when every dependency is `done`. Keep IDs stable for evidence and regression history. Use tags to isolate workstreams. Keep subtasks bounded.
 
-For local execution, `Execute` must cross the sandbox boundary. For repository navigation, `Retrieve` should use LSP/navigation evidence where available. Before every provider call, context passes through auto compaction. After every provider attempt, feedback is recorded.
+## Impact and mutation boundaries
+Before changing a common, exported, inherited, configured or multi-consumer path, run:
+```text
+python -m portable.impact_analysis --root . path/to/changed/file.py
+```
 
-## Multi-agent graph is the default
-For any non-trivial task, use the graph agent team whenever the provider supports agent execution. The team is task-scoped and dependency-aware:
+Review direct consumers, outbound dependencies, shared/common surfaces, compatibility, configuration, security effects and suggested tests. A `critical` shared-path finding is a human-review gate.
+
+Independent read-only analysis may run in parallel. Mutations are serialized; one owner edits a shared path.
+
+## Execution and graph collaboration
+Use the lifecycle:
+`Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Impact -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair -> Learn -> Stop`.
+
+For non-trivial tasks, use the graph team whenever supported:
 `Planner -> Explorer/Researcher/RCA -> Builder -> Verifier -> Parallel Reviewers -> Synthesizer`.
 
-When native subagents/background execution are available, prefer them for independent read-only work. Keep shared task memory bounded and evidence-based. Mutating roles are serialized and must not edit the same surface concurrently. A single-agent phase is the fallback only when the graph team is unavailable, unnecessary for a trivial task, or explicitly disabled.
+Downstream agents consume bounded shared memory and repository evidence rather than rediscovering the same work. Read-only roles may run in parallel; mutating roles are serialized. Single-agent execution is the fallback for trivial work or unavailable/disabled graph execution. Every retry has explicit attempt, time, token and risk limits.
 
-Do not create disconnected sub-agents that independently rediscover the repository. Downstream agents must consume upstream shared memory and verify important claims against the repository. The synthesizer is responsible for the final team view; model confidence never replaces verification.
+For local execution, `Execute` must cross the sandbox boundary. Before every provider call, context crosses auto compaction. After every provider attempt, feedback is recorded. Provider-native capabilities optimize execution; harness-owned acceptance, security and verification remain authoritative.
 
-Every retry has explicit attempt/time/token/risk limits. Never run an unrestricted autonomous loop.
+## Recovery and evidence
+For work spanning turns, batches or sessions, persist `portable.session_state.SessionStore` with:
+`session_id | task_id | project_key | stage | completed_batches | remaining_batches | active_provider | attempt | last_error | state_digest`.
 
-## Durable recovery
-For work spanning multiple turns, batches or sessions, persist a checkpoint using `portable.session_state.SessionStore`. The checkpoint must include `session_id | task_id | project_key | stage | completed_batches | remaining_batches | active_provider | attempt | last_error | state_digest`.
+On restart validate the checkpoint and resume from the first incomplete batch. Preserve failure evidence and change strategy before retrying.
 
-On restart, load and validate the checkpoint before doing new work. Resume from the first incomplete batch. After transient provider/network failure, record the error, retry within the bounded policy, and continue from the durable checkpoint rather than reconstructing state from chat history.
-
-## Evidence and verification
-Verification outranks model confidence. Use:
+Verification order:
 `syntax/static -> focused tests -> integration/system -> regression replay -> security/policy -> final diff review`.
 
-Retain `intent_digest | graph_digest | environment_fingerprint | trajectory | attempts | repairs | evaluator outcomes | evidence digests | final outcome`. A regression requires baseline/post evidence. Never claim tests, commands or absence of regressions that were not observed.
+Retain:
+`intent_digest | graph_digest | environment_fingerprint | trajectory | attempts | repairs | evaluator outcomes | evidence digests | final outcome`.
+Regression claims require baseline and post-change evidence.
 
-## Capability and collaboration
-Select only justified roles: planner, explorer, researcher, builder, verifier, reviewer, security reviewer or RCA investigator. Record the capability plan. Provider/MCP permissions are minimum-required per phase. Handoffs contain intent, source, destination, findings, decisions, risks and next actions.
+## Capability, collaboration and learning
+Select only justified roles: `planner | explorer | researcher | builder | verifier | reviewer | security | RCA`.
+Record the capability plan and minimum provider/MCP permissions. Handoffs contain intent, source, destination, findings, risks and next actions.
 
-Shared task memory is ephemeral to the active run unless explicitly promoted into durable learning. Memory from another intent must never be injected into the current task without an explicit evidence link and scope check.
+Shared task memory is scoped to the current `intent_digest`. Cross-intent memory requires an evidence link and scope check.
 
-## Learning
+Learning follows:
 `Observe -> Outcome -> Candidate -> Regression Replay -> Safety -> Shadow/Canary -> Promote -> Monitor -> Rollback`.
+Executable orchestration changes remain candidates until deterministic regression, safety and promotion gates pass. Learning must not silently expand permissions or security boundaries.
 
-Executable orchestration changes remain candidates until deterministic regression and safety gates pass. A learning engine may propose changes to orchestration or provider routing, but it must not silently activate executable changes. Load `context/learning.md` only when learning/self-improvement is relevant.
+## Distribution and compatibility
+Portable artifacts are immutable deployment units. `update` is forward-only. `install <artifact>` is the deliberate operation that may explicitly switch to an older or newer verified artifact. Previous immutable build directories remain intact.
 
-## State, recovery and precedence
+The authoritative artifact policy is `.ai-harness/ARTIFACT_UPGRADE_CONTRACT.json`; its `downgrade=explicit_install_only` semantics must match the CLI.
+
+Do not copy runtime files into a project repository. Project source stays in the project; AER deployment stays under `~/.aer`.
+Provenance is:
+`semantic version -> source commit -> bundle SHA-256`.
+
+## State and precedence
 Engineering State Ledger:
-`INTENT | CONTRACT | REPO_FACTS | DECISIONS | EVIDENCE | CHANGESET | VERIFY | OUTCOME | OPEN_RISKS | NEXT`.
-
-Classify failure before repair, preserve evidence, change strategy and retry only when justified. Security, permissions, acceptance and protected behavior cannot be bypassed.
+`INTENT | CONTRACT | REPO_FACTS | TASK_PLAN | IMPACT | DECISIONS | EVIDENCE | CHANGESET | VERIFY | OUTCOME | OPEN_RISKS | NEXT`.
 
 Precedence:
 `Repository/team rules > security/permissions > acceptance > local architecture > verification > orchestrator > extension > model preference`.
 
-## Control-plane policies
-Policy files are optional/on-demand context, not startup context. The complete control-plane contract is defined by: `ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md`.
+Policy files are on-demand context, not startup context. Discover them through the repository's control-plane index rather than loading the full policy set.
 
 ## Completion
 Report:
-`Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Graph/team execution | Assumptions | Risks | Incomplete checks | Efficiency`.
-
-For benchmark work load `context/benchmarking.md`, which defines independent objective oracles, fingerprints, mutation testing, hidden acceptance, AST/static invariants, deterministic failure injection, recovery ordering, Context Broker telemetry and separate observability scoring.
+`Outcome | Changed files | Task plan | Impact/shared-path findings | Evidence | Verification | Regression checks | Review | Capability plan | Graph/team execution | Assumptions | Risks | Incomplete checks | Efficiency`.
