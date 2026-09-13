@@ -1,19 +1,19 @@
 """Bridge the AI coding orchestrator contract to the Agency Runtime.
 
-This module is intentionally provider-neutral. The host orchestrator owns model/tool
-execution, permissions, concurrency and side effects; this bridge owns task profiling,
-specialist planning, structured evidence, provenance and release gating.
+The host orchestrator owns model/tool execution, permissions, concurrency and side
+effects. Agency Runtime owns task profiling, specialist selection, scheduling,
+evidence, provenance, regression and release gating.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from typing import Callable, Iterable, Mapping
 
 from .agency_artifact_regression import ArtifactSnapshot, RegressionDecision, compare_artifacts
+from .agency_multi_specialist import SpecialistResourceProfile, build_specialist_plan
 from .agency_provenance import ProvenanceLedger
 from .agency_release import ReleaseDecision, decide_release
-from .agency_runtime import Assignment, ExecutionResult, EvidenceItem, TaskProfile, execute
+from .agency_runtime import Assignment, ExecutionResult, TaskProfile, execute
 
 
 @dataclass(frozen=True)
@@ -32,6 +32,7 @@ class CodingTask:
 class OrchestratorRun:
     task: CodingTask
     execution: ExecutionResult
+    execution_plan: object
     regression: RegressionDecision | None
     release: ReleaseDecision
     provenance: ProvenanceLedger
@@ -44,6 +45,7 @@ class OrchestratorRun:
         return {
             "task_id": self.task.task_id,
             "execution": self.execution.as_dict(),
+            "execution_plan": self.execution_plan.as_dict(),
             "regression": self.regression.as_dict() if self.regression else None,
             "release": self.release.as_dict(),
             "provenance": self.provenance.as_dict(),
@@ -61,6 +63,7 @@ def run_coding_task(
     *,
     baseline_artifacts: Iterable[ArtifactSnapshot] = (),
     current_artifacts: Iterable[ArtifactSnapshot] = (),
+    resource_profiles: Mapping[str, SpecialistResourceProfile] | None = None,
     registry: Mapping[str, object] | None = None,
     rubric: Mapping[str, object] | None = None,
 ) -> OrchestratorRun:
@@ -75,9 +78,11 @@ def run_coding_task(
         technologies=task.technologies,
     )
     execution = execute(profile, worker, registry=registry, rubric=rubric)
+    execution_plan = build_specialist_plan(execution.assignments, resource_profiles)
     provenance = ProvenanceLedger()
     provenance.append(task.task_id, "task-profiled", task.goal)
     provenance.append(task.task_id, "specialists-planned", ",".join(a.specialist for a in execution.assignments))
+    provenance.append(task.task_id, "execution-plan", execution_plan.digest())
     for item in execution.evidence:
         provenance.append(task.task_id, "evidence-recorded", item.claim)
     provenance.append(task.task_id, "verification-recorded", ";".join(execution.verification))
@@ -105,7 +110,7 @@ def run_coding_task(
             regression_status=regression_status,
         )
     provenance.append(task.task_id, "release-decision", release.status)
-    return OrchestratorRun(task, execution, regression, release, provenance)
+    return OrchestratorRun(task, execution, execution_plan, regression, release, provenance)
 
 
 def verify_provenance(run: OrchestratorRun) -> None:

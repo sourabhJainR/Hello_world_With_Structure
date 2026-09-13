@@ -61,6 +61,23 @@ The host orchestrator remains authoritative for actual provider/tool calls, sand
 
 A coding task is not ready when its score is merely high. It must also satisfy hard gates, have no blocker/material findings, pass artifact regression when a baseline is supplied, and produce a `passed` release decision.
 
+## Agency Runtime v9 integration
+
+For substantial work involving multiple specialists, build a conflict-aware resource plan with `portable.agency_execution_plan` and expose it through `portable.ai_coding_agency_bridge` before host execution.
+
+Every specialist work unit must declare `ROLE | MUTATION_MODE | READ_PATHS | WRITE_PATHS | DEPENDENCIES | PRIORITY`.
+
+The host must honor the returned execution waves:
+
+- compatible read-only specialists may share a wave;
+- any overlapping read/write or write/write resources are serialized;
+- independent mutations are also serialized so mutation order is explicit;
+- dependencies must be completed before dependents execute;
+- missing dependencies and dependency cycles block the plan;
+- specialists must not invent undeclared resource writes.
+
+Record the execution-plan digest in provenance and report any conflicts as scheduling facts. Do not claim parallel execution when the plan serialized the work.
+
 ## Control-plane policies
 Detailed policies remain on-demand context. Use:
 `ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md | AGENCY_AGENT_QUALITY.md`.
@@ -85,7 +102,7 @@ Use:
 
 For non-trivial tasks use:
 `Planner -> Explorer/Researcher/RCA -> Builder -> Verifier -> Parallel Reviewers -> Synthesizer`.
-Read-only roles may run in parallel; mutating roles are serialized. Every retry has explicit attempt, time, token and risk limits.
+Read-only roles may run in parallel only when the v9 resource plan permits it; mutating roles are serialized according to the plan. Every retry has explicit attempt, time, token and risk limits.
 
 ## Recovery and evidence
 Persist `portable.session_state.SessionStore` for work spanning turns/batches. On restart resume from the first incomplete batch and preserve failure evidence.
