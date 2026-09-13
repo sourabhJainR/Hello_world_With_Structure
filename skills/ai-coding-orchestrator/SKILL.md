@@ -13,6 +13,16 @@ Always active:
 Task contract:
 `GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS | intent_digest`.
 
+## Core runtime services are mandatory
+The AER runtime includes four first-class services and they are part of the execution contract, not optional methodology:
+
+1. **Sandbox**: all repository-local commands/tests/scripts must use `.ai-harness/runtime/tool_runner.py`, which delegates to `sandbox.py`. No shell execution, workspace escape, or unbounded local process is allowed. Hostile code still requires a stronger VM/container boundary.
+2. **LSP/navigation**: prefer a native language server when available; otherwise use `.ai-harness/runtime/lsp_server.py` over stdio JSON-RPC for symbols, definitions and references. Do not rediscover repository structure by repeatedly dumping files when navigation evidence is available.
+3. **Feedback loop**: every provider attempt records an outcome in the bounded feedback store. Learning creates candidates only; executable orchestration changes require regression, safety, shadow, canary and monitoring gates before activation.
+4. **Auto compaction**: every provider prompt crosses `.ai-harness/runtime/auto_compaction.py`. Compaction is deterministic, budgeted and evidence-aware. Contract, security, acceptance, verification and risk sections are protected; repeated material is removed before provider invocation.
+
+These services must remain provider-neutral and dependency-free. Configuration lives in `.ai-harness/config.toml` under `[sandbox]`, `[lsp]`, `[feedback]` and `[auto_compaction]`.
+
 ## Provider-native capability routing
 Before selecting an agent team or hook strategy, discover the provider capabilities that are actually available. Prefer native `subagent`, `hooks`, `session_resume`, `structured_output`, `tool_interception`, `mcp` or `background_execution` when evidence says the active provider supports them. If a capability is unavailable, use the AER fallback instead of pretending it exists.
 
@@ -35,6 +45,8 @@ Read repository/team instructions, git state, structure, dependencies and tests 
 
 ## Execution
 `Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair -> Learn -> Stop`.
+
+For local execution, `Execute` must cross the sandbox boundary. For repository navigation, `Retrieve` should use LSP/navigation evidence where available. Before every provider call, context passes through auto compaction. After every provider attempt, feedback is recorded.
 
 ## Multi-agent graph is the default
 For any non-trivial task, use the graph agent team whenever the provider supports agent execution. The team is task-scoped and dependency-aware:
