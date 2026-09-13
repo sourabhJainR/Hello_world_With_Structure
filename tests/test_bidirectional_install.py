@@ -10,10 +10,10 @@ from portable.aer_runtime import build, install
 
 class BidirectionalInstallTests(unittest.TestCase):
     def _source(self, root: Path, version: str, marker: str) -> None:
-        (root / ".ai-harness").mkdir(parents=True)
-        (root / ".claude-plugin").mkdir(parents=True)
-        (root / "skills" / "ai-coding-orchestrator").mkdir(parents=True)
-        (root / "portable").mkdir(parents=True)
+        (root / ".ai-harness").mkdir(parents=True, exist_ok=True)
+        (root / ".claude-plugin").mkdir(parents=True, exist_ok=True)
+        (root / "skills" / "ai-coding-orchestrator").mkdir(parents=True, exist_ok=True)
+        (root / "portable").mkdir(parents=True, exist_ok=True)
         (root / ".claude-plugin" / "plugin.json").write_text(json.dumps({"version": version}), encoding="utf-8")
         (root / ".ai-harness" / "config.toml").write_text("version = 20\n", encoding="utf-8")
         (root / ".ai-harness" / "marker.txt").write_text(marker, encoding="utf-8")
