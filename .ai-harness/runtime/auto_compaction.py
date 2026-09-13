@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
 """Deterministic context compaction with protected evidence."""
+"""Deterministic context compaction with protected evidence.
+
+Compaction happens at the harness boundary, before provider invocation. The
+algorithm preserves contract/evidence sections, removes repeated material and
+keeps the most recent operational state within a hard character budget.
+"""
 from __future__ import annotations
 
 import hashlib
 import re
 from dataclasses import dataclass
 
+
 PROTECTED_HEADINGS = (
     "GOAL", "BOUNDARIES", "ACCEPTANCE", "SECURITY/PERMISSIONS",
     "CURRENT STATE", "TASK CONTRACT", "EVIDENCE", "VERIFY", "RISKS",
 )
+
 
 @dataclass(frozen=True)
 class CompactionResult:
@@ -19,6 +27,7 @@ class CompactionResult:
     removed_chars: int
     digest: str
     compacted: bool
+
 
 def _sections(text: str) -> list[tuple[str, str]]:
     lines = text.splitlines()
@@ -38,6 +47,7 @@ def _sections(text: str) -> list[tuple[str, str]]:
         sections.append((current, "\n".join(buf).strip()))
     return [(name, body) for name, body in sections if body]
 
+
 def _dedupe_lines(text: str) -> str:
     seen: set[str] = set()
     out: list[str] = []
@@ -49,6 +59,7 @@ def _dedupe_lines(text: str) -> str:
             seen.add(key)
         out.append(line)
     return "\n".join(out).strip()
+
 
 def compact(text: str, *, budget_chars: int = 12000) -> CompactionResult:
     source = text.strip()
@@ -63,6 +74,20 @@ def compact(text: str, *, budget_chars: int = 12000) -> CompactionResult:
     used = 0
     for name, body in protected + list(reversed(ordinary)):
         block = f"## {name}\n{_dedupe_lines(body)}".strip()
+
+    sections = _sections(source)
+    protected: list[tuple[str, str]] = []
+    ordinary: list[tuple[str, str]] = []
+    for name, body in sections:
+        (protected if any(token in name for token in PROTECTED_HEADINGS) else ordinary).append((name, body))
+
+    selected: list[str] = []
+    used = 0
+    for name, body in protected + list(reversed(ordinary)):
+        cleaned = _dedupe_lines(body)
+        block = f"## {name}\n{cleaned}".strip()
+        if not block:
+            continue
         if used + len(block) + 2 <= budget:
             selected.append(block)
             used += len(block) + 2
@@ -71,6 +96,7 @@ def compact(text: str, *, budget_chars: int = 12000) -> CompactionResult:
         if remaining > 200:
             selected.append(block[:remaining].rstrip() + "\n[section compacted]")
         break
+
     result = "\n\n".join(selected).strip()
     digest = hashlib.sha256(result.encode("utf-8")).hexdigest()[:16]
     return CompactionResult(result, len(source), len(result), max(0, len(source) - len(result)), digest, True)
