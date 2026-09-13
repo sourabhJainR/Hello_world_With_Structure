@@ -1,6 +1,6 @@
 ---
 name: ai-coding-orchestrator
-description: Repository-aware AI engineering control plane for precise task execution, evidence-based RCA, minimal safe changes, verification, collaboration and bounded learning across supported AI coding surfaces.
+description: Repository-aware AI engineering control plane for precise task execution, evidence-based RCA, minimal safe changes, dependency-aware planning, shared-path impact review, verification, collaboration and bounded learning across supported AI coding surfaces.
 ---
 
 # Adaptive AI Coding Orchestrator
@@ -33,8 +33,38 @@ The Context Broker loads only evidence justified by phase, uncertainty, dependen
 ## Repository-first
 Read repository/team instructions, git state, structure, dependencies and tests before editing. Reuse local architecture, naming, configuration, telemetry and test patterns. Make the smallest safe change. Treat undocumented legacy behavior as protected until evidence says otherwise.
 
+## Task planning and dependency discipline
+For non-trivial work, create a durable task plan before implementation. A task should carry at least:
+`id | title | description | status | priority | dependencies | subtasks | tags/workstream | acceptance | files`.
+
+Use `portable.task_planner.TaskPlan` when a machine-readable plan is useful. Validate the complete dependency graph before execution. Readiness is deterministic: a task is ready only when every dependency is done. Use tags/workstreams to isolate independent efforts without creating separate copies of the same task database.
+
+Prefer:
+`PRD/intent -> tasks -> dependency validation -> ready task -> implementation -> verification -> status update`.
+
+Complex tasks should be expanded into smaller subtasks rather than asking one agent to solve an unbounded request. Keep task IDs stable so evidence, work reports and regression history remain traceable.
+
+## Shared-path impact review
+Before changing a path that may be common, exported, inherited, configured, or consumed by multiple components, run deterministic impact analysis:
+
+```text
+python -m portable.impact_analysis --root . path/to/changed/file.py
+```
+
+The analyzer identifies direct changes, inbound consumers, outbound dependencies, shared/common surfaces and a review level. Treat `critical` shared-path findings as a human-review gate.
+
+For shared or contract surfaces, review at least:
+- all direct consumers and public interfaces;
+- configuration and schema compatibility;
+- base classes, common utilities and exported types;
+- focused tests plus consumer tests;
+- security and permission effects;
+- migration/backward-compatibility requirements.
+
+Do not parallelize writes to a shared path. Independent read-only analysis may run in parallel, then a single builder owns the mutation. A change that expands into many consumers should be split into reviewable tasks before implementation.
+
 ## Execution
-`Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair -> Learn -> Stop`.
+`Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Impact analysis -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair -> Learn -> Stop`.
 
 ## Multi-agent graph is the default
 For any non-trivial task, use the graph agent team whenever the provider supports agent execution. The team is task-scoped and dependency-aware:
@@ -67,9 +97,22 @@ Shared task memory is ephemeral to the active run unless explicitly promoted int
 
 Executable orchestration changes remain candidates until deterministic regression and safety gates pass. A learning engine may propose changes to orchestration or provider routing, but it must not silently activate executable changes. Load `context/learning.md` only when learning/self-improvement is relevant.
 
+## Distribution, compatibility and rollback
+Portable artifacts are immutable deployment units. A verified artifact may be installed explicitly in either direction: upgrade or downgrade. `update` remains forward-only so an unattended update cannot unexpectedly downgrade a runtime; `install <artifact>` is the deliberate switch operation and may activate an older pinned build.
+
+Use:
+```text
+python ~/.aer/current/aer_cli.py install ./old-aer-portable.zip --skill auto
+```
+
+The active pointer moves atomically to the verified artifact while previous build directories remain intact. The provenance chain remains:
+`semantic version -> source commit -> bundle SHA-256`.
+
+Do not copy runtime files into a project repository. Project source changes belong to the project; AER deployment belongs under `~/.aer`.
+
 ## State, recovery and precedence
 Engineering State Ledger:
-`INTENT | CONTRACT | REPO_FACTS | DECISIONS | EVIDENCE | CHANGESET | VERIFY | OUTCOME | OPEN_RISKS | NEXT`.
+`INTENT | CONTRACT | REPO_FACTS | TASK_PLAN | IMPACT | DECISIONS | EVIDENCE | CHANGESET | VERIFY | OUTCOME | OPEN_RISKS | NEXT`.
 
 Classify failure before repair, preserve evidence, change strategy and retry only when justified. Security, permissions, acceptance and protected behavior cannot be bypassed.
 
@@ -81,6 +124,6 @@ Policy files are optional/on-demand context, not startup context. The complete c
 
 ## Completion
 Report:
-`Outcome | Changed files | Evidence | Verification | Regression checks | Review | Capability plan | Graph/team execution | Assumptions | Risks | Incomplete checks | Efficiency`.
+`Outcome | Changed files | Task plan | Impact/shared-path findings | Evidence | Verification | Regression checks | Review | Capability plan | Graph/team execution | Assumptions | Risks | Incomplete checks | Efficiency`.
 
 For benchmark work load `context/benchmarking.md`, which defines independent objective oracles, fingerprints, mutation testing, hidden acceptance, AST/static invariants, deterministic failure injection, recovery ordering, Context Broker telemetry and separate observability scoring.
