@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from portable.agency_observability import Dataset, DatasetItem, LocalExporter, Tracer, retrieval_scores, run_experiment
+from portable.agency_observability import Dataset, DatasetItem, LocalExporter, PromptRegistry, Tracer, retrieval_scores, run_experiment
 from portable.agency_runtime import EvidenceItem, TaskProfile, execute
 
 
@@ -17,6 +17,15 @@ def test_trace_export_is_local_and_redacts_secrets(tmp_path: Path):
     assert "abc123" not in text
     assert "Bearer abc" not in text
     assert trace.as_dict()["spans"][0]["scores"][0]["value"] == 0.9
+
+
+def test_prompt_registry_versions_and_promotion():
+    registry = PromptRegistry()
+    v1 = registry.register("planner", "1", "plan: {task}")
+    v2 = registry.register("planner", "2", "plan safely: {task}")
+    assert registry.get("planner", "1").digest == v1.digest
+    assert registry.promote("planner", "2") == v2
+    assert registry.get("planner").version == "2"
 
 
 def test_dataset_experiment_is_reproducible():
