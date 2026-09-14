@@ -18,15 +18,19 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
 
-_SECRET = re.compile(r"(?i)(api[_-]?key|token|password|secret|authorization)\s*[:=]\s*[^,\s]+")
+_SECRET = re.compile(r"(?i)(api[_-]?key|token|password|secret|authorization)")
+_SECRET_VALUE = re.compile(r"(?i)(api[_-]?key|token|password|secret|authorization)\s*[:=]\s*[^,\s]+")
 
 
 def _safe(value: Any, limit: int = 4000) -> Any:
     if isinstance(value, str):
-        value = _SECRET.sub(r"\1=[REDACTED]", value)
+        value = _SECRET_VALUE.sub(r"\1=[REDACTED]", value)
         return value if len(value) <= limit else value[:limit] + "…"
     if isinstance(value, Mapping):
-        return {str(k): _safe(v, limit) for k, v in value.items()}
+        return {
+            str(k): "[REDACTED]" if _SECRET.search(str(k)) else _safe(v, limit)
+            for k, v in value.items()
+        }
     if isinstance(value, (list, tuple)):
         return [_safe(v, limit) for v in value[:100]]
     if isinstance(value, (str, int, float, bool)) or value is None:
