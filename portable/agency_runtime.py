@@ -6,6 +6,7 @@ from typing import Callable, Mapping
 from .agency_registry import rank
 from .agency_quality import ReviewFinding, QualityReceipt, evaluate
 from .agency_provenance import ProvenanceLedger
+from .agency_observability import Tracer
 
 
 @dataclass(frozen=True)
@@ -69,6 +70,7 @@ class ExecutionResult:
     hard_gates: dict[str, bool] = field(default_factory=dict)
     ledger: list[LedgerEntry] = field(default_factory=list)
     receipt: QualityReceipt | None = None
+    trace_id: str | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -82,6 +84,7 @@ class ExecutionResult:
             "hard_gates": self.hard_gates,
             "ledger": [{"event_id": e.event_id, "event": e.event, "detail": e.detail, "evidence_ids": e.evidence_ids} for e in self.ledger],
             "receipt": self.receipt.as_dict() if self.receipt else None,
+            "trace_id": self.trace_id,
         }
 
     def provenance(self) -> ProvenanceLedger:
@@ -109,20 +112,54 @@ def evidence_id(item: EvidenceItem) -> str:
     return sha256(f"{item.source}|{item.claim}|{item.locator}".encode()).hexdigest()[:16]
 
 
-def execute(task: TaskProfile, worker: Callable[[TaskProfile, list[Assignment]], Mapping[str, object]], registry: Mapping[str, object] | None = None, rubric: Mapping[str, object] | None = None, support_limit: int | None = None) -> ExecutionResult:
-    assignments = plan_task(task, registry=registry, support_limit=support_limit)
-    result = ExecutionResult(task, assignments)
-    result.ledger.append(LedgerEntry("planned", f"selected {len(assignments)} specialist(s)"))
-    raw = dict(worker(task, assignments))
-    result.deliverables = [str(x) for x in raw.get("deliverables", ())]
-    result.verification = [str(x) for x in raw.get("verification", ())]
-    result.dimensions = {str(k): int(v) for k, v in dict(raw.get("dimensions", {})).items()}
-    result.hard_gates = {str(k): bool(v) for k, v in dict(raw.get("hard_gates", {})).items()}
-    result.findings = list(raw.get("findings", ()))
-    for item in raw.get("evidence", ()):
-        evidence = item if isinstance(item, EvidenceItem) else EvidenceItem(**item)
-        result.evidence.append(evidence)
-        result.ledger.append(LedgerEntry("evidence", evidence.claim, (evidence_id(evidence),)))
-    result.ledger.append(LedgerEntry("verified", "; ".join(result.verification)))
-    result.receipt = evaluate(result.dimensions, result.hard_gates, result.findings, [e.claim for e in result.evidence], rubric=rubric)
-    return result
+def _receipt_score(receipt: QualityReceipt | None) -> float:
+    if receipt is None:
+        return 0.0
+    values = [float(v) for v in getattr(receipt, "dimensions", {}).values() if isinstance(v, (int, float))]
+    return max(0.0, min(1.0, sum(values) / (100 * len(values)))) if values else (1.0 if getattr(receipt, "passed", False) else 0.0)
+
+
+def execute(task: TaskProfile, worker: Callable[[TaskProfile, list[Assignment]], Mapping[str, object]], registry: Mapping[str, object] | None = None, rubric: Mapping[str, object] | None = None, support_limit: int | None = None, tracer: Tracer | None = None) -> ExecutionResult:
+    tracer = tracer or Tracer()
+    trace = tracer.start("aer.coding_task", {"task_id": task.task_id, "risk": task.risk, "mutation_mode": task.mutation_mode})
+    try:
+        plan_span = trace.span("planning", "planner", {"request": task.request, "artifact_type": task.artifact_type})
+        assignments = plan_task(task, registry=registry, support_limit=support_limit)
+        plan_span.finish({"assignments": [a.__dict__ for a in assignments]})
+
+        result = ExecutionResult(task, assignments)
+        result.trace_id = trace.trace_id
+        result.ledger.append(LedgerEntry("planned", f"selected {len(assignments)} specialist(s)"))
+
+        worker_span = trace.span("agent_execution", "agent", {"task_id": task.task_id, "specialists": [a.specialist for a in assignments]})
+        try:
+            raw = dict(worker(task, assignments))
+            worker_span.finish({"deliverable_count": len(raw.get("deliverables", ())), "verification_count": len(raw.get("verification", ()))})
+        except Exception as exc:
+            worker_span.finish({"error": type(exc).__name__}, "error")
+            raise
+
+        result.deliverables = [str(x) for x in raw.get("deliverables", ())]
+        result.verification = [str(x) for x in raw.get("verification", ())]
+        result.dimensions = {str(k): int(v) for k, v in dict(raw.get("dimensions", {})).items()}
+        result.hard_gates = {str(k): bool(v) for k, v in dict(raw.get("hard_gates", {})).items()}
+        result.findings = list(raw.get("findings", ()))
+        evidence_span = trace.span("evidence", "retrieval", {"count": len(raw.get("evidence", ()))})
+        for item in raw.get("evidence", ()):
+            evidence = item if isinstance(item, EvidenceItem) else EvidenceItem(**item)
+            result.evidence.append(evidence)
+            result.ledger.append(LedgerEntry("evidence", evidence.claim, (evidence_id(evidence),)))
+        evidence_span.finish({"evidence_count": len(result.evidence)})
+
+        verify_span = trace.span("verification", "verifier", {"checks": result.verification})
+        result.ledger.append(LedgerEntry("verified", "; ".join(result.verification)))
+        result.receipt = evaluate(result.dimensions, result.hard_gates, result.findings, [e.claim for e in result.evidence], rubric=rubric)
+        score = _receipt_score(result.receipt)
+        verify_span.score("quality", score, "normalized quality receipt", "aer")
+        verify_span.finish({"passed": bool(getattr(result.receipt, "passed", False)), "quality": score})
+        trace.score("task_quality", score, "quality receipt", "aer")
+        tracer.end(trace)
+        return result
+    except Exception:
+        tracer.end(trace, "error")
+        raise
