@@ -1,9 +1,10 @@
-"""Dependency-free tracing, scoring, datasets and experiments for AER.
+"""Dependency-free tracing, scoring, datasets, prompts and experiments for AER.
 
 The design is intentionally compatible with Opik-style concepts without making
 Opik a runtime dependency: traces contain nested spans, spans can carry scores,
-experiments run against datasets, and all telemetry is append-only and local by
-default. Secrets and large payloads are redacted before persistence.
+experiments run against versioned datasets, prompts are immutable by version,
+and telemetry is append-only and local by default. Secrets and large payloads
+are redacted before persistence.
 """
 from __future__ import annotations
 
@@ -141,6 +142,44 @@ class Tracer:
 
 
 @dataclass(frozen=True)
+class PromptVersion:
+    name: str
+    version: str
+    template: str
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    @property
+    def digest(self) -> str:
+        return hashlib.sha256(self.template.encode()).hexdigest()
+
+
+class PromptRegistry:
+    """Immutable-in-use prompt versions with explicit promotion."""
+
+    def __init__(self) -> None:
+        self._versions: dict[str, dict[str, PromptVersion]] = {}
+        self._active: dict[str, str] = {}
+
+    def register(self, name: str, version: str, template: str, metadata: Mapping[str, Any] | None = None) -> PromptVersion:
+        if not name.strip() or not version.strip() or not template.strip():
+            raise ValueError("prompt name, version and template are required")
+        item = PromptVersion(name, version, template, dict(metadata or {}))
+        self._versions.setdefault(name, {})[version] = item
+        return item
+
+    def promote(self, name: str, version: str) -> PromptVersion:
+        item = self.get(name, version)
+        self._active[name] = version
+        return item
+
+    def get(self, name: str, version: str | None = None) -> PromptVersion:
+        selected = version or self._active.get(name)
+        if not selected or selected not in self._versions.get(name, {}):
+            raise KeyError(f"prompt version not found: {name}:{selected or '<active>'}")
+        return self._versions[name][selected]
+
+
+@dataclass(frozen=True)
 class DatasetItem:
     input: Any
     expected: Any = None
@@ -170,14 +209,19 @@ class ExperimentResult:
 
 
 def run_experiment(dataset: Dataset, fn: Callable[[Any], Any], judge: Callable[[DatasetItem, Any], Mapping[str, float]], threshold: float = 0.8) -> ExperimentResult:
+    if not 0 <= threshold <= 1:
+        raise ValueError("threshold must be between 0 and 1")
     totals: dict[str, list[float]] = {}
     failures: list[str] = []
     for index, item in enumerate(dataset.items):
         output = fn(item.input)
         for name, value in judge(item, output).items():
-            totals.setdefault(name, []).append(float(value))
-            if float(value) < threshold:
-                failures.append(f"item[{index}].{name}={float(value):.3f}")
+            value = float(value)
+            if not 0 <= value <= 1:
+                raise ValueError(f"judge score must be between 0 and 1: {name}")
+            totals.setdefault(name, []).append(value)
+            if value < threshold:
+                failures.append(f"item[{index}].{name}={value:.3f}")
     scores = {name: round(sum(values) / len(values), 4) for name, values in totals.items() if values}
     return ExperimentResult(dataset.name, dataset.version, dataset.digest, scores, not failures, tuple(failures))
 
