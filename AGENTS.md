@@ -7,6 +7,8 @@ Generic runtime skill: `.agents/skills/ai-coding-orchestrator/SKILL.md`.
 Claude plugin manifest: `.claude-plugin/plugin.json`.
 Core orchestration contract: `.ai-harness/ORCHESTRATION_SPEC.md`.
 Knowledge fabric: `.ai-harness/KNOWLEDGE_FABRIC_POLICY.md`.
+Engineering design policy: `.ai-harness/ENGINEERING_DESIGN_POLICY.md`.
+Deterministic design gate: `portable/engineering_design_guard.py`.
 Optional extension registry: `.ai-harness/extension_registry.toml`.
 Deployment guide: `docs/DEPLOYMENT.md`.
 
@@ -21,11 +23,29 @@ For every non-trivial software-engineering task:
 5. Detect relevant optional process/context skills such as Superpowers, Ponytail, Caveman, and other Agent Skills when available. Use their best applicable capability without making them mandatory or duplicating their full workflow.
 6. Infer the minimum safe capabilities needed. Research, POC, Debug, Grill, Review, Validation, and Learning are selected automatically when useful.
 7. Select the smallest safe model, tool, context, and reasoning budget and escalate only when risk, uncertainty, scope, or failed verification warrants it.
-8. Implement using the repository's established architecture, naming, coding style, segregation, exception handling, logging, telemetry, dependency, and testing patterns.
-9. Verify using repository-native evidence, inspect the final diff, and use independent review for meaningful or high-risk changes.
-10. Learn only from evidence-backed outcomes. Never silently rewrite harness code, security policy, provider permissions, or permanent engineering rules.
+8. Select the relevant engineering-design dimensions before implementation. Use `.ai-harness/ENGINEERING_DESIGN_POLICY.md` and `portable.engineering_design_guard.EngineeringDesignGuard` to capture only the contracts that matter: complexity, architecture, domain, data, resilience, refactoring, legacy, construction, and compatibility.
+9. Implement using the repository's established architecture, naming, coding style, segregation, exception handling, logging, telemetry, dependency, and testing patterns.
+10. Verify using repository-native evidence, inspect the final diff, and use independent review for meaningful or high-risk changes.
+11. Learn only from evidence-backed outcomes. Never silently rewrite harness code, security policy, provider permissions, or permanent engineering rules.
 
 The normal runtime is a single adaptive run. Recursive or repeated execution is never automatic; it requires an explicit user request.
+
+## Book-derived engineering guardrails
+
+The repository adopts the useful parts of the 14-source engineering collection as one coherent policy, not as 14 competing instruction layers. Use the smallest relevant lens for the task.
+
+- Reduce cognitive load and protect information hiding; every new abstraction must earn its boundary.
+- Keep policy independent from volatile frameworks, persistence, transport, vendors, and deployment details.
+- Prefer precise names, focused routines, explicit mutation, simple control flow, deliberate validation, and behavior-focused tests.
+- Model business language, ownership, invariants, bounded contexts, and aggregate boundaries when domain complexity warrants it; keep simple CRUD simple.
+- Select enterprise patterns from concrete forces and keep transaction, persistence, concurrency, presentation, and integration ownership explicit.
+- For data-intensive work, declare source of truth, durability/visibility, consistency, idempotency, ordering, evolution, replay, and repair semantics.
+- Separate feature/bug/refactor intent. Refactoring is small, behavior-preserving, verifiable structural work.
+- For legacy areas, characterize uncertain behavior and create the smallest useful seam before attempting broad cleanup.
+- For production paths, make timeout, retry, overload, isolation, observability, resource cleanup, authorization, and rollback behavior explicit.
+- Keep one authoritative owner for each system fact, automate repeatable checks, shorten feedback loops, and keep expensive decisions reversible when evidence is weak.
+
+The deterministic guard is a contract check, not a substitute for review. Missing contracts produce warnings by default and block only configured safety-critical dimensions on high-risk work. `not_applicable` must include a reason.
 
 ## Optional extension model
 
@@ -173,7 +193,6 @@ Carry conclusions, decisions, failures, open questions, checkpoints, and evidenc
 Record evidence-backed observations, useful lessons, route quality, verification outcomes, review findings, retries, and available token/tool metrics.
 
 Promote durable patterns only after repeated successful observations. Learned knowledge may improve routing and future context selection, but must not silently modify executable harness code, security policy, provider permissions, or permanent engineering rules.
-
 
 ## Collaboration, handoff, and shared memory
 
