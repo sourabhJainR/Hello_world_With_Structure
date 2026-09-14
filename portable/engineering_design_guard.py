@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Iterable, Mapping
 
@@ -132,6 +132,12 @@ class EngineeringDesignGuard:
         blocking_set = set(blocking_dimensions)
         findings: list[DesignFinding] = []
 
+        def is_not_applicable(dimension: DesignDimension) -> bool:
+            return any(
+                key in declared and declared[key].lower().startswith("not_applicable")
+                for key in cls._DIMENSION_KEYS[dimension]
+            )
+
         for dimension in dimensions:
             keys = cls._DIMENSION_KEYS[dimension]
             matching = next((key for key in keys if key in declared), None)
@@ -148,9 +154,9 @@ class EngineeringDesignGuard:
 
         if DesignDimension.REFACTORING in dimensions and not any(k in declared for k in ("behavior_delta", "safety_net")):
             findings.append(DesignFinding(DesignDimension.REFACTORING, FindingSeverity.WARNING, "Refactoring work should state behavior delta and safety net"))
-        if DesignDimension.DATA in dimensions and not any(k in declared for k in ("source_of_truth", "consistency", "idempotency")):
+        if DesignDimension.DATA in dimensions and not is_not_applicable(DesignDimension.DATA) and not any(k in declared for k in ("source_of_truth", "consistency", "idempotency")):
             findings.append(DesignFinding(DesignDimension.DATA, FindingSeverity.WARNING, "Data changes should state ownership and retry/consistency semantics"))
-        if DesignDimension.RESILIENCE in dimensions and not any(k in declared for k in ("timeout", "retry", "recovery")):
+        if DesignDimension.RESILIENCE in dimensions and not is_not_applicable(DesignDimension.RESILIENCE) and not any(k in declared for k in ("timeout", "retry", "recovery")):
             severity = FindingSeverity.BLOCKING if risk.lower() in cls._HIGH_RISK else FindingSeverity.WARNING
             findings.append(DesignFinding(DesignDimension.RESILIENCE, severity, "External/asynchronous work should state timeout, retry, and recovery behavior"))
 
