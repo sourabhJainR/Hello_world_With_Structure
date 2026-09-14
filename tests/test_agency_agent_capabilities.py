@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from portable.agency_agent_capabilities import (
     AgentEvent,
     AgentNode,
@@ -25,6 +27,25 @@ def test_memory_conflict_prefers_higher_confidence():
     store.upsert(MemoryFact("language", "Python", confidence=0.9))
     store.upsert(MemoryFact("language", "Ruby", confidence=0.4))
     assert store.get("language").value == "Python"
+
+
+def test_memory_can_reload_from_durable_store(tmp_path: Path):
+    path = tmp_path / "memory.jsonl"
+    store = MemoryStore(path)
+    store.upsert(MemoryFact("language", "Python", kind="semantic", confidence=0.9))
+    restored = MemoryStore(path)
+    assert restored.get("language").value == "Python"
+
+
+def test_tool_permissions_are_fail_closed():
+    registry = ToolRegistry([ToolSpec("deploy", "deploy artifact", "execution", permissions=("deploy",), handler=lambda: "ok")])
+    assert registry.execute("deploy", {}, AllowlistedToolPolicy(allowed_permissions=frozenset({"deploy"}))) == "ok"
+    try:
+        registry.execute("deploy", {}, AllowlistedToolPolicy())
+    except PermissionError:
+        pass
+    else:
+        raise AssertionError("tool without required permission must be denied")
 
 
 def test_active_tool_discovery_and_policy():
