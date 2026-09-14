@@ -15,6 +15,24 @@ from .feedback_loop import BoundedLoop, LoopAction, LoopDefinition, LoopPass, Lo
 from .agency_provenance import ProvenanceLedger, ProvenanceRecord
 from .engineering_design_guard import DesignDimension, DesignFinding, DesignReviewReceipt, EngineeringDesignGuard, FindingSeverity
 from .agency_state_graph import Checkpoint, CompiledStateGraph, GraphEvent, GraphInterrupt, GraphRun, InMemoryCheckpointStore, RetryPolicy, StateGraph
+from .agent_patterns import (
+    ConsensusResult,
+    EvidenceItem,
+    MixtureOfAgents,
+    OneChangeOptimizer,
+    OptimizationResult,
+    OptimizationRound,
+    ResearchPlan,
+    ResearchPlanner,
+    ResearchTask,
+    RouteDecision,
+    RouteRequest,
+    ScopeChecker,
+    ScopeFinding,
+    ScopeReport,
+    Specialist,
+    SpecialistRouter,
+)
 
 __all__ = [
     "main", "AdaptiveRuntime", "HookBus", "HookDecision", "HookEvent", "HookPhase", "HookedExecution",
@@ -26,4 +44,7 @@ __all__ = [
     "ProvenanceLedger", "ProvenanceRecord", "DesignDimension", "DesignFinding", "DesignReviewReceipt",
     "EngineeringDesignGuard", "FindingSeverity", "Checkpoint", "CompiledStateGraph", "GraphEvent",
     "GraphInterrupt", "GraphRun", "InMemoryCheckpointStore", "RetryPolicy", "StateGraph",
+    "Specialist", "SpecialistRouter", "RouteRequest", "RouteDecision",
+    "ResearchTask", "ResearchPlan", "ResearchPlanner", "EvidenceItem", "ConsensusResult", "MixtureOfAgents",
+    "OptimizationRound", "OptimizationResult", "OneChangeOptimizer", "ScopeFinding", "ScopeReport", "ScopeChecker",
 ]
