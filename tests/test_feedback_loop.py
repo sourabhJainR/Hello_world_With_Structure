@@ -1,3 +1,4 @@
+from portable.agency_provenance import ProvenanceLedger
 from portable.feedback_loop import (
     BoundedLoop,
     LoopAction,
@@ -38,6 +39,37 @@ def test_success_receipt_is_digest_bound() -> None:
     assert result.receipt_digest
     assert applied == ["change-1", "change-2"]
     assert result.passes[-1].complete is True
+
+
+def test_loop_receipt_is_chained_into_provenance() -> None:
+    ledger = ProvenanceLedger()
+    context_digest = "ctx-123"
+
+    result = make_loop(limit=2).run(
+        observe=lambda n: f"state-{n}",
+        choose=lambda observation, n: LoopAction(f"change-{n}"),
+        act=lambda action, n: None,
+        verify=lambda action, n: VerificationResult(
+            passed=True,
+            complete=n == 1,
+            progress=True,
+            evidence=(f"check-{n}",),
+        ),
+        provenance=ledger,
+        run_id="run-123",
+        context_evidence_digest=context_digest,
+        artifact_ids=("artifact-1",),
+    )
+
+    ledger.verify()
+    assert result.result == "success"
+    assert result.context_evidence_digest == context_digest
+    assert result.provenance_record_hash == ledger.records[-1].record_hash
+    assert [r.event for r in ledger.records] == [
+        "loop.started", "loop.pass.completed", "loop.completed"
+    ]
+    assert all("artifact-1" in record.artifact_ids for record in ledger.records)
+    assert all(context_digest in record.detail for record in ledger.records)
 
 
 def test_clean_no_op_requires_no_action() -> None:
