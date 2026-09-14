@@ -29,7 +29,7 @@ Do not create a second repository index, memory store, capability catalog, or ev
 
 For substantial work, split the request into complete `WorkUnit`s with explicit goals, dependencies, specialist roles, read/write resources, and mutation mode. Use `AgentTeamOrchestrator` with the host's real agent spawner. Independent read-only units may run in bounded parallel waves; mutating units are serialized by resource conflict.
 
-After each unit completes, run verification immediately and then independent review. A failed verification/review blocks that unit and its dependents so later agents do not spend tokens on work that is already invalid. Carry the same `ContextEvidence.evidence_digest` into every spawned unit and gate.
+Do not wait until the end to discover a bad approach. After each unit completes, run verification immediately and then independent review. A failed verification/review blocks that unit and its dependents so later agents do not spend tokens on work that is already invalid. Carry the same `ContextEvidence.evidence_digest` into every spawned unit and gate.
 
 The host remains authoritative for model/provider selection, commands, permissions, sandboxing, credentials, and external side effects.
 
@@ -59,10 +59,20 @@ Keep these established runtime entry points aligned with the orchestration workf
 - `.ai-harness/runtime/auto_compaction.py`
 - `downgrade=explicit_install_only`
 - `ORCHESTRATION_SPEC.md`
+- `TEN_LOOP_POLICY.md`
+- `CONTEXT_POLICY.md`
+- `ARCHITECTURE_POLICY.md`
+- `EXECUTION_POLICY.md`
+- `VERIFICATION_POLICY.md`
+- `REVIEW_POLICY.md`
+- `LEARNING_POLICY.md`
+- `TOKEN_POLICY.md`
+- `PROVIDER_CONTRACT.md`
+- `QUALITY_GOVERNANCE.md`
 
 ## Evidence, verification, and review
 
-Evidence must be traceable to a source, bounded by the context plan, and sufficient for the claim. Verification is independent of generation. Review is a first-class gate: it evaluates the verified artifact against the same evidence and must leave no unresolved material findings before rollout.
+Evidence must be traceable to a source, bounded by the context plan, and sufficient for the claim. Verification is independent of generation. Review is a first-class gate, not a prose-only final check: it must evaluate the verified artifact against the same evidence and leave no unresolved material findings before rollout.
 
 For bugs: reproduce -> isolate -> identify owner -> make minimal fix -> add regression test -> verify -> review adjacent behavior.
 
@@ -70,7 +80,7 @@ For review: inspect contract, data flow, ownership, failure paths, security boun
 
 ## Deployment lifecycle
 
-The same immutable `ContextEvidence` lineage must flow from research through deployment.
+The same immutable `ContextEvidence` lineage must flow from research through deployment. The executable sequence is:
 
 `research -> plan -> implement -> verify -> review -> shadow -> canary -> promote`
 
