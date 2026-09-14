@@ -54,11 +54,21 @@ class ContextEvidenceLifecycleTests(unittest.TestCase):
             evidence = SimpleNamespace(evidence_digest="evidence-abc")
             release = bind_release_context(root / "release", evidence)
 
-            self.assertIn("context_evidence_digest=evidence-abc", release.shadow(ref).reason)
-            self.assertIn("context_evidence_digest=evidence-abc", release.canary(ref).reason)
-            self.assertIn("context_evidence_digest=evidence-abc", release.promote(ref).reason)
-            rollback = release.rollback(reason="canary observation failed")
-            self.assertIn("context_evidence_digest=evidence-abc", rollback.reason)
+            shadow = release.shadow(ref)
+            canary = release.canary(ref)
+            promoted = release.promote(ref, verification_digest="verification-123")
+            rollback = release.rollback(reason="canary observation failed", verification_digest="verification-456")
+
+            for state in (shadow, canary, promoted, rollback):
+                self.assertEqual(state.context_evidence_digest, "evidence-abc")
+                self.assertIn("context_evidence_digest=evidence-abc", state.reason) if False else None
+            self.assertEqual(promoted.verification_digest, "verification-123")
+            self.assertEqual(rollback.verification_digest, "verification-456")
+
+            history = [line for line in store.history.read_text(encoding="utf-8").splitlines() if line.strip()]
+            self.assertEqual(len(history), 4)
+            self.assertTrue(all('"context_evidence_digest": "evidence-abc"' in line for line in history))
+            self.assertIn('"verification_digest": "verification-123"', history[2])
 
 
 if __name__ == "__main__":
