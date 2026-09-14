@@ -7,7 +7,28 @@ description: Repository-aware AI coding workflow for research, POC, investigatio
 
 ## Purpose
 
-Use the repository as the source of truth. Keep work bounded, evidence-backed, deterministic where possible, and easy to verify.
+Use the repository as the source of truth. Keep work bounded, evidence-backed, deterministic where possible, and easy to verify. The orchestration layer is a facilitator, not a second intelligence layer: prefer the provider's strongest native agent loop and add control only where it produces measurable value.
+
+## Single-agent-first execution
+
+Start with one capable agent unless evidence shows that decomposition will improve the result.
+
+The default decision is:
+
+`one agent -> observe -> verify -> stop or continue`
+
+Do not create specialist agents, planning layers, review harnesses, or parallel waves merely because the task can be decomposed. Each extra agent adds context transfer, coordination, merge, and failure cost.
+
+Use multi-agent execution only when at least one of these is supported by evidence:
+
+- the task contains genuinely independent work that can progress without shared mutable state;
+- a previous single-agent attempt failed for a reason that another specialist can address;
+- comparative benchmark history shows multi-agent execution improves completion or quality enough to justify coordination cost;
+- a safety or ownership boundary explicitly requires independent handling.
+
+`portable.agency_adaptive_planning` records this comparison and defaults to `single-agent`. Historical evidence may promote `multi-agent`, but the recommendation never grants permissions or bypasses host policy.
+
+The system must remain provider/model neutral. A stronger future model should be able to replace a weaker model without redesigning the harness. The harness supplies context, evidence, verification, and safe boundaries; it must not become a bottleneck that forces every model through a fixed workflow.
 
 ## Engineering State Ledger
 
@@ -25,7 +46,7 @@ The envelope binds intent, plan, repository snapshot, selected paths, symbols, g
 
 ## Team decomposition and gates
 
-For substantial work, split requests into complete `WorkUnit`s with goals, dependencies, roles, resources, and mutation mode. Use `AgentTeamOrchestrator` with the host's real agent spawner. Independent read-only units may run in bounded waves; mutating units serialize on resource conflict.
+For substantial work, split requests into complete `WorkUnit`s only when the single-agent-first decision says decomposition has expected value. Use `AgentTeamOrchestrator` with the host's real agent spawner. Independent read-only units may run in bounded waves; mutating units serialize on resource conflict.
 
 Verify each unit immediately, then run independent review. Failed gates block the unit and dependents. Carry the same `ContextEvidence.evidence_digest` into spawned units and gates. The host remains authoritative for providers, commands, permissions, sandboxing, credentials, and external effects.
 
@@ -59,7 +80,7 @@ Before substantial implementation, capture a compact contract through `portable.
 - architecture: dependency direction, policy/detail separation, humble adapters;
 - domain: bounded context, local language, invariant ownership, aggregate scope;
 - data: source of truth, consistency, durability, idempotency, ordering, replay, evolution;
-- resilience: timeout, retry, backoff, isolation, overload, observability, recovery;
+- resilience: timeout, retry, backoff, isolation, observability, recovery;
 - refactoring: behavior delta, diagnosed smell, safety net, smallest reversible transformation;
 - legacy: characterization, smallest useful seam, dependency break, cleanup path;
 - construction: validation, control flow, error semantics, types, tests;
@@ -81,6 +102,7 @@ Keep these aligned with the workflow:
 - `portable.impact_analysis`
 - `portable.agency_execution_plan`
 - `portable.agency_team_orchestrator`
+- `portable.agency_adaptive_planning`
 - `portable.engineering_design_guard.EngineeringDesignGuard`
 - `.ai-harness/runtime/tool_runner.py`
 - `.ai-harness/runtime/lsp_server.py`
@@ -127,7 +149,7 @@ A bounded loop may drive repeated verification but never bypasses deployment gat
 
 Normal coding:
 
-`understand intent -> acquire context -> decompose -> design contract -> implement units -> early verify/review -> integrate -> regression -> bounded feedback passes where useful -> artifact -> shadow -> canary -> promote or rollback`
+`understand intent -> acquire context -> choose single-agent or team from evidence -> implement -> verify -> review -> integrate -> regression -> bounded feedback passes where useful -> artifact -> shadow -> canary -> promote or rollback`
 
 Research/POC:
 
