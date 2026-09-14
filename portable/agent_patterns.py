@@ -1,7 +1,7 @@
 """Provider-neutral agent patterns adapted from proven open-source LLM apps.
 
 The module intentionally contains only deterministic orchestration contracts. It
-borrows four useful patterns without importing a second agent framework:
+borrows five useful patterns without importing a second agent framework:
 
 * least-privilege specialist routing (specialist -> bounded tool set)
 * research fan-out followed by evidence-aware synthesis
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Iterable, Mapping, Sequence
 
 
@@ -86,9 +86,12 @@ class SpecialistRouter:
             bounded_tools = set(specialist.tools)
             if allowed:
                 bounded_tools &= allowed
-            # A specialist never receives tools outside its declaration.
             ranked.append(
-                ((coverage_count, len(bounded_tools), specialist.priority, -_RISK_RANK[specialist.risk]), specialist, bounded_tools)
+                (
+                    (coverage_count, specialist.priority, -len(bounded_tools), -_RISK_RANK[specialist.risk]),
+                    specialist,
+                    bounded_tools,
+                )
             )
         if not ranked:
             raise RuntimeError("no specialist satisfies the capability and risk constraints")
@@ -98,7 +101,7 @@ class SpecialistRouter:
             selected.name,
             tuple(sorted(tools)),
             coverage,
-            "specialist selected by capability coverage, risk and bounded tool access",
+            "specialist selected by capability coverage, priority, risk and least-privilege tool access",
         )
 
 
@@ -131,8 +134,6 @@ class ResearchPlanner:
         )
         if not tasks:
             raise ValueError("research questions cannot be empty")
-        # Questions are independent by default. The host can add dependencies
-        # later when evidence shows one question depends on another.
         waves = (tuple(task.id for task in tasks),)
         digest = hashlib.sha256(
             "|".join(f"{task.id}:{task.question}:{','.join(task.capabilities)}" for task in tasks).encode()
@@ -219,13 +220,10 @@ class OneChangeOptimizer:
                 raise ValueError("mutate must return a non-empty artifact")
             candidate_score = self._score(evaluate(candidate))
             kept = candidate_score > score
+            before = current
             if kept:
                 current, score = candidate, candidate_score
-            rounds.append(OptimizationRound(number, candidate_score, kept, diagnosis, self._digest_change(current, candidate)))
-            if not kept:
-                # Rejecting the candidate is the important guardrail: do not
-                # compound a change whose measured result did not improve.
-                continue
+            rounds.append(OptimizationRound(number, candidate_score, kept, diagnosis, self._digest_change(before, candidate)))
         return OptimizationResult(baseline, score, tuple(rounds), current)
 
     @staticmethod
