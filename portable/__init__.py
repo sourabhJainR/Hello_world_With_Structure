@@ -11,6 +11,8 @@ from .capability_fabric import CAPABILITIES, Capability, CapabilityFabric, Provi
 from .persistent_memory import MemoryRecord, PersistentMemory
 from .automation_scheduler import AutomationScheduler, Schedule
 from .output_quality import OutputQualityGate, QualityResult
+from .feedback_loop import BoundedLoop, LoopAction, LoopDefinition, LoopPass, LoopRunReceipt, VerificationResult
+from .agency_provenance import ProvenanceLedger, ProvenanceRecord
 
 __all__ = [
     "main", "AdaptiveRuntime", "HookBus", "HookDecision", "HookEvent", "HookPhase", "HookedExecution",
@@ -18,4 +20,6 @@ __all__ = [
     "ImpactRecord", "ImpactReport", "analyze", "Task", "TaskPlan", "STATUSES", "PRIORITIES",
     "CAPABILITIES", "Capability", "CapabilityFabric", "ProviderAdapter", "ProviderAdapterRegistry",
     "MemoryRecord", "PersistentMemory", "AutomationScheduler", "Schedule", "OutputQualityGate", "QualityResult",
+    "BoundedLoop", "LoopAction", "LoopDefinition", "LoopPass", "LoopRunReceipt", "VerificationResult",
+    "ProvenanceLedger", "ProvenanceRecord",
 ]
