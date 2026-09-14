@@ -20,6 +20,7 @@ def _load_runtime_module(name: str):
     spec = importlib.util.spec_from_file_location(name, RUNTIME / f"{name}.py")
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
+    assert module and spec.loader
     spec.loader.exec_module(module)
     return module
 
@@ -44,6 +45,27 @@ class ContextEvidenceLifecycleTests(unittest.TestCase):
             self.assertIn("service.py::Service", evidence.symbol_refs)
             self.assertEqual(evidence.deployment_binding()["evidence_digest"], evidence.evidence_digest)
 
+    def test_verification_receipt_is_bound_to_artifact_and_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "artifact.txt"
+            source.write_text("v1", encoding="utf-8")
+            store = ArtifactStore(root / "release")
+            ref = store.stage(source, "artifact-v1")
+            release = bind_release_context(root / "release", SimpleNamespace(evidence_digest="evidence-abc"))
+
+            receipt = release.verify(ref, {"unit_tests": True, "policy_check": True})
+            self.assertEqual(receipt.artifact_digest, ref.digest)
+            self.assertEqual(receipt.context_evidence_digest, "evidence-abc")
+            self.assertTrue(receipt.verification_digest)
+
+            promoted = release.promote(ref, verification=receipt)
+            self.assertEqual(promoted.context_evidence_digest, "evidence-abc")
+            self.assertEqual(promoted.verification_digest, receipt.verification_digest)
+
+            with self.assertRaises(ValueError):
+                release.verify(ref, {"unit_tests": False})
+
     def test_same_evidence_digest_reaches_shadow_canary_promote_and_rollback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -51,8 +73,7 @@ class ContextEvidenceLifecycleTests(unittest.TestCase):
             source.write_text("v1", encoding="utf-8")
             store = ArtifactStore(root / "release")
             ref = store.stage(source, "artifact-v1")
-            evidence = SimpleNamespace(evidence_digest="evidence-abc")
-            release = bind_release_context(root / "release", evidence)
+            release = bind_release_context(root / "release", SimpleNamespace(evidence_digest="evidence-abc"))
 
             shadow = release.shadow(ref)
             canary = release.canary(ref)
