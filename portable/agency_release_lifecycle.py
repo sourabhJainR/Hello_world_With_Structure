@@ -32,6 +32,8 @@ class ReleaseState:
     previous_artifact_id: str | None
     timestamp: str
     reason: str
+    context_evidence_digest: str | None = None
+    verification_digest: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return self.__dict__.copy()
@@ -149,13 +151,25 @@ class ArtifactStore:
         current = self._read_channel("current")
         return {"shadow": shadow.as_dict() if shadow else None, "canary": canary.as_dict() if canary else None, "current": current.as_dict() if current else None}
 
-    def transition(self, action: str, ref: ArtifactRef | None, reason: str) -> ReleaseState:
+    def transition(
+        self,
+        action: str,
+        ref: ArtifactRef | None,
+        reason: str,
+        *,
+        context_evidence_digest: str | None = None,
+        verification_digest: str | None = None,
+    ) -> ReleaseState:
         if action not in ACTIONS:
             raise ValueError(f"unsupported release action: {action}")
         if not reason.strip():
             raise ValueError("release reason is required")
         if action != "rollback" and ref is None:
             raise ValueError(f"{action} requires an artifact")
+        if context_evidence_digest is not None and not str(context_evidence_digest).strip():
+            raise ValueError("context_evidence_digest cannot be empty")
+        if verification_digest is not None and not str(verification_digest).strip():
+            raise ValueError("verification_digest cannot be empty")
         if ref is not None:
             self._verify_ref(ref)
         previous = self._read_channel("current")
@@ -169,12 +183,12 @@ class ArtifactStore:
             self._set_channel("shadow", None)
         else:
             if previous is None:
-                state = ReleaseState("rollback", None, None, None, datetime.now(timezone.utc).isoformat(), reason + "; no active artifact to replace")
+                state = ReleaseState("rollback", None, None, None, datetime.now(timezone.utc).isoformat(), reason + "; no active artifact to replace", context_evidence_digest, verification_digest)
                 self._record(state)
                 return state
             candidates = [x for x in self._history() if x.get("action") == "promote" and x.get("artifact_id") and x.get("artifact_id") != previous.artifact_id]
             if not candidates:
-                state = ReleaseState("rollback", previous.artifact_id, previous.digest, previous.artifact_id, datetime.now(timezone.utc).isoformat(), reason + "; no previous promoted artifact available")
+                state = ReleaseState("rollback", previous.artifact_id, previous.digest, previous.artifact_id, datetime.now(timezone.utc).isoformat(), reason + "; no previous promoted artifact available", context_evidence_digest, verification_digest)
                 self._record(state)
                 return state
             target_ref = self._ref_from_history(candidates[-1])
@@ -182,14 +196,36 @@ class ArtifactStore:
             self._set_channel("canary", None)
             self._set_channel("shadow", None)
             ref = target_ref
-        state = ReleaseState(action, ref.artifact_id if ref else None, ref.digest if ref else None, previous.artifact_id if previous else None, datetime.now(timezone.utc).isoformat(), reason)
+        state = ReleaseState(
+            action,
+            ref.artifact_id if ref else None,
+            ref.digest if ref else None,
+            previous.artifact_id if previous else None,
+            datetime.now(timezone.utc).isoformat(),
+            reason,
+            context_evidence_digest,
+            verification_digest,
+        )
         self._record(state)
         return state
 
-    def apply_decision(self, decision: object, artifact: ArtifactRef | None = None) -> ReleaseState:
+    def apply_decision(
+        self,
+        decision: object,
+        artifact: ArtifactRef | None = None,
+        *,
+        context_evidence_digest: str | None = None,
+        verification_digest: str | None = None,
+    ) -> ReleaseState:
         action = str(getattr(decision, "action", ""))
         reason = str(getattr(decision, "reason", "release decision"))
-        return self.transition(action, None if action == "rollback" else artifact, reason)
+        return self.transition(
+            action,
+            None if action == "rollback" else artifact,
+            reason,
+            context_evidence_digest=context_evidence_digest,
+            verification_digest=verification_digest,
+        )
 
     def _record(self, state: ReleaseState) -> None:
         with self.history.open("a", encoding="utf-8") as handle:
@@ -229,6 +265,18 @@ class ArtifactStore:
         return ref
 
 
-def apply_promotion_decision(store: ArtifactStore, decision: object, artifact: ArtifactRef | None = None) -> ReleaseState:
+def apply_promotion_decision(
+    store: ArtifactStore,
+    decision: object,
+    artifact: ArtifactRef | None = None,
+    *,
+    context_evidence_digest: str | None = None,
+    verification_digest: str | None = None,
+) -> ReleaseState:
     """Public integration point used by runtimes and deployment adapters."""
-    return store.apply_decision(decision, artifact)
+    return store.apply_decision(
+        decision,
+        artifact,
+        context_evidence_digest=context_evidence_digest,
+        verification_digest=verification_digest,
+    )
