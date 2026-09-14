@@ -64,7 +64,6 @@ def build_context(items: list[ContextItem], token_budget: int, reserve_tokens: i
 @dataclass(frozen=True)
 class MemoryFact:
     """Legacy value object mapped onto the canonical PersistentMemory record."""
-
     key: str
     value: str
     kind: str = "semantic"
@@ -77,12 +76,7 @@ class MemoryFact:
 
 
 class MemoryStore:
-    """Legacy adapter over the canonical AER PersistentMemory.
-
-    The agency runtime no longer owns a separate JSONL memory implementation.
-    All durable reads/writes flow through the canonical SQLite/FTS memory.
-    """
-
+    """Legacy adapter over the canonical AER PersistentMemory."""
     _KINDS = frozenset({"episodic", "semantic", "procedural"})
 
     def __init__(self, persist_path: str | Path | None = None) -> None:
@@ -96,28 +90,29 @@ class MemoryStore:
         self._store = PersistentMemory(self.persist_path, require_approval=False)
 
     @staticmethod
+    def _category(fact: MemoryFact) -> str:
+        return f"legacy:{fact.kind}:{fact.key}"
+
+    @staticmethod
     def _to_fact(record: MemoryRecord) -> MemoryFact:
-        return MemoryFact(
-            key=record.category,
-            value=record.text,
-            kind=record.category if record.category in MemoryStore._KINDS else "semantic",
-            source=record.project,
-            confidence=record.confidence,
-            timestamp=_timestamp(record.created_at),
-        )
+        parts = record.category.split(":", 2)
+        if len(parts) == 3 and parts[0] == "legacy":
+            kind, key = parts[1], parts[2]
+        else:
+            kind, key = "semantic", record.category
+        return MemoryFact(key=key, value=record.text, kind=kind, source=record.project, confidence=record.confidence, timestamp=_timestamp(record.created_at))
 
     def upsert(self, fact: MemoryFact) -> MemoryFact:
         if fact.kind not in self._KINDS:
             raise ValueError("unsupported memory kind")
         if not 0 <= fact.confidence <= 1 or not fact.key.strip():
             raise ValueError("invalid memory fact")
+        existing = self.get(fact.key)
+        if existing and existing.confidence > fact.confidence and existing.value != fact.value:
+            return existing
         record = self._store.remember(
-            fact.source or "default",
-            fact.kind,
-            fact.value,
-            confidence=fact.confidence,
-            verified=fact.confidence >= 0.9,
-            approved=True,
+            fact.source or "default", self._category(fact), fact.value,
+            confidence=fact.confidence, verified=fact.confidence >= 0.9, approved=True,
         )
         if record is None:
             raise RuntimeError("canonical memory rejected write")
@@ -125,21 +120,17 @@ class MemoryStore:
 
     def get(self, key: str) -> MemoryFact | None:
         rows = self._store.search("default", key, limit=20)
-        for row in rows:
-            if row.category == key or row.text == key:
-                return self._to_fact(row)
-        return None
+        matches = [self._to_fact(row) for row in rows if row.category.startswith("legacy:") and row.category.rsplit(":", 1)[-1] == key]
+        return matches[0] if matches else None
 
     def search(self, query: str, limit: int = 8) -> tuple[MemoryFact, ...]:
         if limit < 1:
             return ()
         rows = self._store.search("default", query, limit=limit)
-        return tuple(self._to_fact(row) for row in rows)
+        return tuple(self._to_fact(row) for row in rows if row.category.startswith("legacy:"))
 
     def snapshot(self) -> tuple[MemoryFact, ...]:
-        # Canonical memory intentionally exposes scoped search rather than a
-        # second independent snapshot store.
-        return self.search("", limit=0)
+        return ()
 
     def close(self) -> None:
         self._store.close()
@@ -161,7 +152,6 @@ def _timestamp(value: str) -> float:
 @dataclass(frozen=True)
 class ToolSpec:
     """Tool transport metadata; capability ownership remains in CapabilityFabric."""
-
     name: str
     description: str
     category: str
