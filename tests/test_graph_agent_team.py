@@ -101,8 +101,9 @@ class GraphAgentTeamTests(unittest.TestCase):
                 AgentSpec("planner", "planner"),
                 AgentSpec("builder", "builder", depends_on=("planner",), read_only=False),
             ])
-            first = team.execute(task="X", intent_digest="intent-a", base_prompt="base", memory=memory,
-                                 invoke_agent=invoke, checkpoint=store, run_id="resume-1", max_steps=1)
+            with self.assertRaises(RuntimeError):
+                team.execute(task="X", intent_digest="intent-a", base_prompt="base", memory=memory,
+                             invoke_agent=invoke, checkpoint=store, run_id="resume-1", max_steps=1)
             self.assertEqual(calls, ["planner"])
             resumed = team.execute(task="X", intent_digest="intent-a", base_prompt="base", memory=memory,
                                    invoke_agent=invoke, checkpoint=store, resume=True, run_id="resume-1")
