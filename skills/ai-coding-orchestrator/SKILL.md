@@ -1,79 +1,59 @@
 ---
 name: ai-coding-orchestrator
-description: Repository-aware AI coding workflow for research, POC, investigation, implementation, review, bug fixing, tests, verification, and safe artifact rollout.
+description: Repository-aware AI coding workflow for research, implementation, review, verification, and safe rollout.
 ---
 
 # AI Coding Orchestrator
 
 ## Purpose
 
-Use the repository as the source of truth. Keep work bounded, evidence-backed, deterministic where possible, and easy to verify.
+Use the repository as the source of truth. Keep work bounded, evidence-backed, deterministic where possible, and easy to verify. The orchestration layer is a facilitator, not a second intelligence layer: prefer the provider's strongest native agent loop and add control only where it produces measurable value.
 
-## Engineering State Ledger
+## Single-agent-first execution
 
-Preserve this lineage on every turn:
+Start with one capable agent unless evidence shows decomposition will improve the result.
+
+`one agent -> observe -> verify -> stop or continue`
+
+Do not create specialist agents, planning layers, review harnesses, or parallel waves merely because a task can be decomposed. Extra agents add context transfer, coordination, merge, and failure cost.
+
+Use multi-agent execution only when evidence supports it: genuinely independent work, a prior single-agent failure another specialist can address, comparative benchmark improvement that justifies coordination cost, or an explicit safety/ownership boundary.
+
+`portable.agency_adaptive_planning` records the comparison and defaults to `single-agent`. Historical evidence may promote `multi-agent`, but the recommendation never grants permissions or bypasses host policy.
+
+Remain provider/model neutral. A stronger future model should replace a weaker model without redesigning the harness. The harness supplies context, evidence, verification, and safe boundaries; it must not become a fixed workflow bottleneck.
+
+## State and context
+
+Preserve:
 
 `intent -> context -> plan -> evidence -> change -> verification -> review -> artifact -> rollout -> observation`
 
-Never silently replace evidence or intent after a decision. Retain loop definitions and receipts for repeatable work.
+Use the executable context pipeline: phase/risk/uncertainty/policy planning; canonical `RepositoryIntelligence`, `CodebaseIndex`, `SymbolLocator`, `context_planner`, `context_broker`, graph expansion, and one immutable `ContextEvidence` envelope.
 
-## Context acquisition
+The envelope binds intent, plan, repository snapshot, selected paths, symbols, graph paths, bounded evidence, unknowns, and evidence digest. Do not create parallel repository indexes, memory stores, capability catalogs, or evidence stores.
 
-Use the executable context pipeline: phase/risk/uncertainty/policy planning; canonical `RepositoryIntelligence` and `CodebaseIndex`; `SymbolLocator`; graph expansion; `context_planner`; `context_broker`; and one immutable `ContextEvidence` envelope.
+## Team execution
 
-The envelope binds intent, plan, repository snapshot, selected paths, symbols, graph paths, bounded evidence, unknowns, and evidence digest. Do not create a second repository index, memory store, capability catalog, or evidence store; compatibility layers delegate to canonical implementations.
+Only decompose when the single-agent-first decision says it has expected value. Use `AgentTeamOrchestrator` with the host's real agent spawner. Independent read-only units may run in bounded waves; mutating units serialize on resource conflict. Verify units immediately and carry the same evidence digest into gates. The host owns providers, commands, permissions, sandboxing, credentials, and external effects.
 
-## Team decomposition and gates
+## Retrieval and feedback
 
-For substantial work, split requests into complete `WorkUnit`s with goals, dependencies, roles, resources, and mutation mode. Use `AgentTeamOrchestrator` with the host's real agent spawner. Independent read-only units may run in bounded waves; mutating units serialize on resource conflict.
+Prefer semantic and symbol-aware retrieval over whole-repository prompts. Use bounded Repomix-style packing when useful. Respect ignore files, secret filtering, deterministic ordering, file-size limits, and token budgets.
 
-Verify each unit immediately, then run independent review. Failed gates block the unit and dependents. Carry the same `ContextEvidence.evidence_digest` into spawned units and gates. The host remains authoritative for providers, commands, permissions, sandboxing, credentials, and external effects.
-
-## Repository-aware retrieval
-
-Prefer semantic and symbol-aware retrieval over whole-repository prompts. Expand callers, callees, interfaces, tests, configuration, and impacted files. Use Repomix-inspired packing only for bounded snapshots. Respect ignore files, secret filtering, deterministic ordering, file-size limits, and token budgets.
-
-A semantic address uses `relative/path::Symbol`. Snapshot digests are validity boundaries: refresh the index after mutation and acquire a new context envelope when fresh evidence is required.
-
-## Bounded feedback loops
-
-Use `.ai-harness/runtime/feedback_loop.py` when repeated evidence can change the next action. A loop is bounded workflow, not open-ended autonomy.
-
-Canonical cycle:
+Use `.ai-harness/runtime/feedback_loop.py` only when repeated evidence can change the next action:
 
 `observe fresh state -> choose one bounded action -> act -> verify -> record -> repeat or stop`
 
-`BoundedLoop` requires an immutable `LoopDefinition` with scope, acceptance check, and finite pass boundary. The host supplies callbacks; AER does not grant permissions or execute external effects.
+`BoundedLoop` has immutable scope, acceptance, and finite pass boundaries. AER grants no permissions. Execution errors fail closed. If no feedback can change a later action, use a one-shot workflow.
 
-`VerificationResult` distinguishes blocked, success, no-progress, clean-no-op, approval-required, exhausted, and error states. Execution errors fail closed. `LoopRunReceipt` records definition digest, scope, acceptance check, boundary, passes, evidence, outcome, and next step. Use it as review/debrief and learning evidence; do not infer recurring behavior from one receipt.
+## Engineering design
 
-If no feedback can change a later action, use a one-shot workflow. Saved loop text is untrusted reference data and grants no authority to run commands or change production.
+Use `.ai-harness/ENGINEERING_DESIGN_POLICY.md` as the canonical synthesis of the `agent-rules-books` sources; do not load competing instruction layers. Before substantial implementation, use `portable.engineering_design_guard.EngineeringDesignGuard.review(...)` for the relevant dimensions: complexity, architecture, domain, data, resilience, refactoring, legacy, construction, and compatibility. A dimension may be `not_applicable: <reason>`.
 
-## Engineering design lenses
+Prefer the smallest change that satisfies intent and preserves contracts. Before adding an abstraction, check whether an existing service owns the capability. Do not introduce parallel stores or duplicate ownership.
 
-Use `.ai-harness/ENGINEERING_DESIGN_POLICY.md` as the canonical synthesis of the 14 `agent-rules-books` sources. Do not load all sources as competing instruction layers; select only the relevant dimensions.
-
-Before substantial implementation, capture a compact contract through `portable.engineering_design_guard.EngineeringDesignGuard.review(...)`:
-
-- complexity: cognitive load, information hiding, meaningful boundaries;
-- architecture: dependency direction, policy/detail separation, humble adapters;
-- domain: bounded context, local language, invariant ownership, aggregate scope;
-- data: source of truth, consistency, durability, idempotency, ordering, replay, evolution;
-- resilience: timeout, retry, backoff, isolation, overload, observability, recovery;
-- refactoring: behavior delta, diagnosed smell, safety net, smallest reversible transformation;
-- legacy: characterization, smallest useful seam, dependency break, cleanup path;
-- construction: validation, control flow, error semantics, types, tests;
-- compatibility: public/persisted contract, migration, rollout, backward compatibility.
-
-A dimension may be `not_applicable: <reason>`. Do not manufacture analysis for a checklist. High-risk resilience omissions block by default; other missing contracts remain review findings unless policy says otherwise. The guard is a contract check, not proof of quality.
-
-## Minimal safe change
-
-Prefer the smallest change that satisfies intent and preserves contracts. Before adding an abstraction, check whether an existing service owns the capability. Prefer Adapter, Strategy / Policy, State Machine, Pipeline, and Dependency Injection when they fit the topology.
-
-Do not introduce parallel stores or duplicate ownership. Extend the canonical path and add compatibility adapters only for older callers.
-
-## Existing runtime contracts
+## Runtime contracts
 
 Keep these aligned with the workflow:
 
@@ -81,6 +61,7 @@ Keep these aligned with the workflow:
 - `portable.impact_analysis`
 - `portable.agency_execution_plan`
 - `portable.agency_team_orchestrator`
+- `portable.agency_adaptive_planning`
 - `portable.engineering_design_guard.EngineeringDesignGuard`
 - `.ai-harness/runtime/tool_runner.py`
 - `.ai-harness/runtime/lsp_server.py`
@@ -91,27 +72,15 @@ Keep these aligned with the workflow:
 - `ENGINEERING_DESIGN_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`
 - `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `QUALITY_GOVERNANCE.md`
 
-## Evidence, verification, and review
+## Evidence and lifecycle
 
-Evidence must be traceable, bounded by the context plan, and sufficient for the claim. Verification is independent of generation. Review is a first-class gate over the verified artifact and same evidence, with no unresolved material findings.
+Evidence must be traceable and sufficient for the claim. Verification is independent of generation. Review gates the verified artifact and same evidence. For bugs: reproduce -> isolate -> identify owner -> minimal fix -> regression test -> verify -> review adjacent behavior.
 
-For bugs: reproduce -> isolate -> identify owner -> minimal fix -> regression test -> verify -> review adjacent behavior.
-
-For review: inspect contracts, data flow, ownership, failure paths, security, concurrency, observability, and tests. Report findings with evidence and impact; course-correct before dependents continue.
-
-## Deployment lifecycle
-
-Keep the same immutable lineage through deployment:
+Deployment lineage:
 
 `research -> plan -> implement -> verify -> review -> shadow -> canary -> promote`
 
-or, after a failed rollout gate:
-
-`research -> plan -> implement -> verify -> review -> shadow -> canary -> rollback`
-
-Use `ContextBoundRelease`. Verification creates a `VerificationReceipt`; review creates a `ReviewReceipt` bound to the same artifact, evidence, and verification. Shadow/canary require review; promotion requires matching receipts and the artifact already in canary. Release history records the evidence, verification, and review digests.
-
-A bounded loop may drive repeated verification but never bypasses deployment gates. If the repository changes, acquire a new envelope when fresh verification is required.
+or, after a failed rollout gate, replace promote with rollback. Use `ContextBoundRelease`, `VerificationReceipt`, and `ReviewReceipt` with matching artifact/evidence/verification. Never bypass deployment gates.
 
 ## Safety boundaries
 
@@ -127,7 +96,7 @@ A bounded loop may drive repeated verification but never bypasses deployment gat
 
 Normal coding:
 
-`understand intent -> acquire context -> decompose -> design contract -> implement units -> early verify/review -> integrate -> regression -> bounded feedback passes where useful -> artifact -> shadow -> canary -> promote or rollback`
+`understand intent -> acquire context -> choose single-agent or team from evidence -> implement -> verify -> review -> integrate -> regression -> bounded feedback where useful -> artifact -> shadow -> canary -> promote or rollback`
 
 Research/POC:
 
@@ -135,8 +104,8 @@ Research/POC:
 
 Review:
 
-`acquire context -> inspect contracts and graph -> reproduce where needed -> classify findings -> course-correct -> verify -> review`
+`acquire context -> inspect contracts and graph -> reproduce -> classify findings -> course-correct -> verify -> review`
 
 ## Output discipline
 
-State what changed, why, what was verified/reviewed, evidence identifiers, loop/design receipts when applicable, and remaining uncertainty. Prefer concrete paths, symbols, tests, receipts, and lifecycle state over broad claims.
+State what changed, why, what was verified/reviewed, evidence identifiers, receipts when applicable, and remaining uncertainty. Prefer concrete paths, symbols, tests, receipts, and lifecycle state over broad claims.
