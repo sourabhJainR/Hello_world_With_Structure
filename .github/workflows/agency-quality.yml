@@ -6,17 +6,22 @@ on:
       - 'agency/**'
       - 'portable/agency_*.py'
       - 'portable/ai_coding_agency_bridge.py'
+      - 'portable/context_bound_release.py'
       - 'portable/semantic_addressing.py'
       - 'portable/repository_intelligence.py'
       - 'portable/agent_capabilities.py'
       - 'portable/capability_fabric.py'
       - 'portable/persistent_memory.py'
+      - '.ai-harness/runtime/context_pipeline.py'
+      - '.ai-harness/runtime/canary_evaluator.py'
+      - '.ai-harness/runtime/policy_registry.py'
       - 'scripts/sync_agency_agents.py'
       - 'scripts/check_agency_agents.py'
       - 'tests/test_agency_*.py'
       - 'tests/test_ai_coding_agency_bridge.py'
       - 'tests/test_ai_coding_codebase_context.py'
       - 'tests/test_canonical_ownership.py'
+      - 'tests/test_context_evidence_lifecycle.py'
       - 'tests/test_semantic_addressing.py'
       - '.agents/skills/agency-*/**'
       - '.agents/skills/ai-coding-orchestrator/SKILL.md'
@@ -27,17 +32,22 @@ on:
       - 'agency/**'
       - 'portable/agency_*.py'
       - 'portable/ai_coding_agency_bridge.py'
+      - 'portable/context_bound_release.py'
       - 'portable/semantic_addressing.py'
       - 'portable/repository_intelligence.py'
       - 'portable/agent_capabilities.py'
       - 'portable/capability_fabric.py'
       - 'portable/persistent_memory.py'
+      - '.ai-harness/runtime/context_pipeline.py'
+      - '.ai-harness/runtime/canary_evaluator.py'
+      - '.ai-harness/runtime/policy_registry.py'
       - 'scripts/sync_agency_agents.py'
       - 'scripts/check_agency_agents.py'
       - 'tests/test_agency_*.py'
       - 'tests/test_ai_coding_agency_bridge.py'
       - 'tests/test_ai_coding_codebase_context.py'
       - 'tests/test_canonical_ownership.py'
+      - 'tests/test_context_evidence_lifecycle.py'
       - 'tests/test_semantic_addressing.py'
       - '.agents/skills/agency-*/**'
       - '.agents/skills/ai-coding-orchestrator/SKILL.md'
@@ -52,7 +62,7 @@ jobs:
         with:
           python-version: '3.x'
       - name: Compile agency runtime
-        run: python -m py_compile portable/agency_*.py portable/ai_coding_agency_bridge.py portable/semantic_addressing.py portable/repository_intelligence.py scripts/sync_agency_agents.py scripts/check_agency_agents.py
+        run: python -m py_compile portable/agency_*.py portable/ai_coding_agency_bridge.py portable/context_bound_release.py portable/semantic_addressing.py portable/repository_intelligence.py .ai-harness/runtime/context_pipeline.py .ai-harness/runtime/canary_evaluator.py .ai-harness/runtime/policy_registry.py scripts/sync_agency_agents.py scripts/check_agency_agents.py
       - name: Validate rubric
         run: python -m json.tool agency/AGENCY_QUALITY_RUBRIC.json >/dev/null
       - name: Validate vendored agency snapshot when present
@@ -68,6 +78,8 @@ jobs:
         run: python -m unittest tests/test_ai_coding_agency_bridge.py tests/test_ai_coding_codebase_context.py -v
       - name: Run canonical ownership tests
         run: python -m unittest tests/test_canonical_ownership.py tests/test_semantic_addressing.py -v
+      - name: Run context/evidence lifecycle tests
+        run: python -m unittest tests/test_context_evidence_lifecycle.py tests/test_canary_evaluator.py -v
       - name: Run v9 planner tests
         run: python -m unittest tests/test_agency_execution_plan.py tests/test_agency_multi_specialist.py -v
       - name: Run v10 adaptive feedback tests
