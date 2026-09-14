@@ -30,7 +30,8 @@ class GraphAwareRetrievalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "a.py").write_text("from b import B\nclass A:\n    def run(self):\n        return B().run()\n", encoding="utf-8")
-            (root / "b.py").write_text("class B:\n    def run(self):\n        return 1\n", encoding="utf-8")
+            (root / "b.py").write_text("from c import C\nclass B:\n    def run(self):\n        return C().run()\n", encoding="utf-8")
+            (root / "c.py").write_text("class C:\n    def run(self):\n        return 1\n", encoding="utf-8")
             context = retrieve(CodebaseIndex.build(root), "A run", graph_hops=1)
             self.assertTrue(any("hop_budget_exhausted" in x for x in context.unknowns))
 
