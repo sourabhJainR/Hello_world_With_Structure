@@ -2,6 +2,20 @@
 
 A provider-neutral AI software-engineering control plane for Claude Code and compatible coding agents. **AER (Adaptive Engineering Runtime)** is the engineering control-plane concept behind the orchestrator: it turns a natural-language task, Jira issue, bug, review, research question, or POC into a repository-aware workflow with bounded context, capability routing, verification, review, repair, durable evidence, graph orchestration, regression replay, and evidence-backed learning.
 
+## Executable engineering lifecycle
+
+For substantial work the control plane follows one evidence lineage:
+
+```text
+research -> plan -> implement -> verify -> review -> shadow -> canary -> promote
+                                                            |
+                                                            +-> rollback
+```
+
+`ContextEvidence` is immutable. Verification creates a `VerificationReceipt`; review creates a `ReviewReceipt` bound to the same artifact, evidence, and verification. Shadow and canary require the review receipt. Promotion requires matching verification/review receipts and the artifact already in canary. Release history records all three digests.
+
+For larger tasks, `portable.agency_team_orchestrator.AgentTeamOrchestrator` decomposes work into complete units, spawns independent read-only units in bounded parallel waves, serializes conflicting mutations, and runs verification and review immediately after each unit. Failed gates stop dependent work early, reducing wasted model calls, tokens, and implementation effort. The real model/provider/command runtime is supplied by the host through the `spawn`, `verify`, and `review` callbacks.
+
 ## AER CLI naming
 
 The **GitHub Actions `aer-portable` artifact is self-contained**. The downloaded artifact contains both the user-facing launcher **`aer_cli.py`** and the distribution bundle **`aer-portable.zip`** at the artifact root. This supports the documented bootstrap command:
@@ -232,7 +246,7 @@ aer-portable.zip
     +-- portable/aer_runtime.py       # AER runtime
     +-- .claude-plugin/
     |   +-- plugin.json               # Claude plugin manifest
-    |   +-- marketplace.json          # local marketplace metadata
+    |   +-- marketplace.json           # local marketplace metadata
     +-- skills/
         +-- ai-coding-orchestrator/
             +-- SKILL.md              # graph-aware engineering instructions
