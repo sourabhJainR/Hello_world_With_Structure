@@ -6,11 +6,12 @@ import hashlib
 import json
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, Mapping
 
-VERSION = "1.0"
+VERSION = "1.1"
 SAFE_MEMORY_KINDS = {"fact", "evidence", "decision", "do", "dont", "risk", "handoff", "unknown"}
 IMMUTABLE_MEMORY_KINDS = {"intent", "guardrail", "policy"}
+PHASES = {"discovery", "design", "spec", "ticketing", "implementation", "verification", "review", "rollout", "learning", "prototype"}
 
 
 def _stable_id(prefix: str, value: str) -> str:
@@ -78,10 +79,25 @@ def build_handoff(*, intent: dict[str, Any], phase: str, from_component: str,
                   to_component: str, findings: list[dict[str, Any]] | None = None,
                   decisions: list[dict[str, Any]] | None = None,
                   open_risks: list[dict[str, Any]] | None = None,
-                  next_actions: list[str] | None = None) -> dict[str, Any]:
+                  next_actions: list[str] | None = None,
+                  requested_phase: str | None = None,
+                  scope: list[str] | None = None,
+                  non_goals: list[str] | None = None,
+                  context_evidence_digest: str = "",
+                  repository_snapshot: str = "",
+                  artifact_ids: list[str] | None = None,
+                  receipt_ids: list[str] | None = None,
+                  parent_provenance_hash: str = "",
+                  verification_state: str = "") -> dict[str, Any]:
     digest = str(intent.get("intent_digest", "")).strip()
     if not digest:
         raise ValueError("intent contract with intent_digest is required")
+    phase = str(phase).strip().lower()
+    requested_phase = str(requested_phase or "").strip().lower()
+    if phase and phase not in PHASES:
+        raise ValueError(f"unsupported phase: {phase}")
+    if requested_phase and requested_phase not in PHASES:
+        raise ValueError(f"unsupported requested_phase: {requested_phase}")
     findings = list(findings or [])
     decisions = list(decisions or [])
     open_risks = list(open_risks or [])
@@ -90,28 +106,52 @@ def build_handoff(*, intent: dict[str, Any], phase: str, from_component: str,
         "version": VERSION,
         "id": _stable_id("handoff", _normalize({
             "intent_digest": digest, "phase": phase, "from": from_component, "to": to_component,
-            "findings": findings, "decisions": decisions, "open_risks": open_risks, "next_actions": next_actions,
+            "requested_phase": requested_phase, "findings": findings, "decisions": decisions,
+            "open_risks": open_risks, "next_actions": next_actions, "scope": scope or [],
+            "non_goals": non_goals or [], "context_evidence_digest": context_evidence_digest,
+            "repository_snapshot": repository_snapshot, "artifact_ids": sorted(set(artifact_ids or [])),
+            "receipt_ids": sorted(set(receipt_ids or [])), "parent_provenance_hash": parent_provenance_hash,
+            "verification_state": verification_state,
         })),
         "intent_digest": digest,
-        "phase": str(phase),
+        "phase": phase,
+        "requested_phase": requested_phase,
         "from_component": str(from_component),
         "to_component": str(to_component),
+        "scope": [str(x).strip() for x in (scope or []) if str(x).strip()],
+        "non_goals": [str(x).strip() for x in (non_goals or []) if str(x).strip()],
         "findings": findings,
         "decisions": decisions,
         "open_risks": open_risks,
         "next_actions": next_actions,
+        "context_evidence_digest": str(context_evidence_digest),
+        "repository_snapshot": str(repository_snapshot),
+        "artifact_ids": sorted(set(str(x).strip() for x in (artifact_ids or []) if str(x).strip())),
+        "receipt_ids": sorted(set(str(x).strip() for x in (receipt_ids or []) if str(x).strip())),
+        "parent_provenance_hash": str(parent_provenance_hash),
+        "verification_state": str(verification_state),
         "created_at": int(time.time()),
     }
     return packet
 
 
 def validate_handoff(packet: dict[str, Any], *, expected_intent_digest: str,
-                     allowed_scope: set[str] | None = None) -> dict[str, Any]:
+                     allowed_scope: set[str] | None = None,
+                     expected_requested_phase: str | None = None) -> dict[str, Any]:
     reasons: list[str] = []
     if packet.get("intent_digest") != expected_intent_digest:
         reasons.append("intent_mismatch")
     if not packet.get("from_component") or not packet.get("to_component"):
         reasons.append("missing_component")
+    if packet.get("phase") not in PHASES:
+        reasons.append("invalid_phase")
+    requested = packet.get("requested_phase", "")
+    if expected_requested_phase and requested != expected_requested_phase:
+        reasons.append("requested_phase_mismatch")
+    if expected_requested_phase and not requested:
+        reasons.append("missing_requested_phase")
+    if not packet.get("next_actions"):
+        reasons.append("missing_next_action")
     if allowed_scope is not None:
         for item in packet.get("findings", []) + packet.get("decisions", []) + packet.get("open_risks", []):
             scope = item.get("task_scope") if isinstance(item, dict) else None
@@ -119,6 +159,34 @@ def validate_handoff(packet: dict[str, Any], *, expected_intent_digest: str,
                 reasons.append("scope_violation")
                 break
     return {"passed": not reasons, "reasons": reasons}
+
+
+def record_handoff(*, ledger: Any, packet: dict[str, Any], run_id: str,
+                   context_evidence_digest: str = "", detail: Mapping[str, object] | None = None) -> Any:
+    """Record a handoff in the existing provenance ledger; never creates a second ledger."""
+    payload: dict[str, object] = {
+        "handoff_id": packet.get("id", ""),
+        "phase": packet.get("phase", ""),
+        "requested_phase": packet.get("requested_phase", ""),
+        "from_component": packet.get("from_component", ""),
+        "to_component": packet.get("to_component", ""),
+        "handoff_intent_digest": packet.get("intent_digest", ""),
+        "parent_provenance_hash": packet.get("parent_provenance_hash", ""),
+        "repository_snapshot": packet.get("repository_snapshot", ""),
+        "verification_state": packet.get("verification_state", ""),
+    }
+    payload.update(dict(detail or {}))
+    digest = context_evidence_digest or str(packet.get("context_evidence_digest", ""))
+    append = getattr(ledger, "append_evidence_event", None)
+    if append is None:
+        raise TypeError("ledger must expose append_evidence_event")
+    return append(
+        run_id=str(run_id),
+        event="phase.handoff",
+        context_evidence_digest=digest,
+        detail=payload,
+        artifact_ids=packet.get("artifact_ids", []),
+    )
 
 
 def persist_handoff(root: Path, packet: dict[str, Any]) -> Path:
@@ -136,9 +204,11 @@ def persist_handoff(root: Path, packet: dict[str, Any]) -> Path:
 
 
 def load_handoff(path: Path, *, expected_intent_digest: str,
-                 allowed_scope: set[str] | None = None) -> dict[str, Any]:
+                 allowed_scope: set[str] | None = None,
+                 expected_requested_phase: str | None = None) -> dict[str, Any]:
     packet = json.loads(Path(path).read_text(encoding="utf-8"))
-    result = validate_handoff(packet, expected_intent_digest=expected_intent_digest, allowed_scope=allowed_scope)
+    result = validate_handoff(packet, expected_intent_digest=expected_intent_digest, allowed_scope=allowed_scope,
+                              expected_requested_phase=expected_requested_phase)
     if not result["passed"]:
         raise ValueError("invalid handoff: " + ",".join(result["reasons"]))
     return packet
