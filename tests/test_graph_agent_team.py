@@ -1,3 +1,5 @@
+import importlib.util
+import sys
 import tempfile
 import threading
 import unittest
@@ -5,6 +7,12 @@ from pathlib import Path
 
 from portable.agency_state_graph import InMemoryCheckpointStore
 from portable.task_planner import TaskPlan
+
+
+ROOT = Path(__file__).resolve().parents[1]
+HARNESS = ROOT / ".ai-harness"
+sys.path.insert(0, str(HARNESS))
+
 from runtime.graph_agent_team import AgentSpec, GraphAgentTeam, SharedTaskMemory, team_for_route
 
 
