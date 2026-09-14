@@ -103,13 +103,25 @@ def _install_graph_team_bridge() -> None:
     if not getattr(GraphAgentTeam.execute, "_aer_guarded", False):
         original_execute = GraphAgentTeam.execute
 
-        def guarded_execute(self, *, task, intent_digest, base_prompt, memory, invoke_agent):
+        def guarded_execute(self, *, task, intent_digest, base_prompt, memory, invoke_agent,
+                           checkpoint=None, resume=False, run_id="graph-agent-team", max_steps=100):
             def guarded_invoke(agent, prompt):
                 if agent.read_only:
                     prompt += "\n\n## Security execution mode\npatch_allowed: false\n"
                 return invoke_agent(agent, prompt)
 
-            return original_execute(self, task=task, intent_digest=intent_digest, base_prompt=base_prompt, memory=memory, invoke_agent=guarded_invoke)
+            return original_execute(
+                self,
+                task=task,
+                intent_digest=intent_digest,
+                base_prompt=base_prompt,
+                memory=memory,
+                invoke_agent=guarded_invoke,
+                checkpoint=checkpoint,
+                resume=resume,
+                run_id=run_id,
+                max_steps=max_steps,
+            )
 
         guarded_execute._aer_guarded = True
         GraphAgentTeam.execute = guarded_execute
@@ -181,3 +193,5 @@ def _install_graph_team_bridge() -> None:
             return 1, "GRAPH_TEAM_ERROR: " + json.dumps(error, ensure_ascii=False, sort_keys=True), 0.0
 
     engine.invoke = graph_invoke
+
+_install_graph_team_bridge()
