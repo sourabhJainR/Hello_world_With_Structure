@@ -19,13 +19,35 @@ Discover actual provider capabilities before selecting execution surfaces. Nativ
 
 Map supported provider events to AER phases such as `session_start`, `plan_start`, `before_agent`, `after_agent`, `before_tool`, `after_tool`, `before_verify`, `after_verify`, `before_promotion`, `after_promotion`, `session_end` and `recovery`. Hooks may annotate or veto and must fail closed on handler errors.
 
+## Canonical capability and memory ownership
+There is exactly one canonical owner for each cross-cutting capability domain:
+
+- `portable.agent_capabilities` owns the capability catalog, capability risk/fallback semantics, provider adapter selection and durable `PersistentMemory`.
+- `portable.capability_fabric` and `portable.persistent_memory` are compatibility facades only.
+- `portable.agency_agent_capabilities` owns agency-specific context/tool/event/collaboration metadata only. Its legacy `MemoryStore` is an adapter over canonical `PersistentMemory`; it must not create another durable store.
+- New capability or memory behavior must extend the canonical owner first. Do not create another parallel `*Capabilities`, `*MemoryStore`, `*SecondBrain` or provider-specific durable store with overlapping responsibility.
+
+The ownership contract is documented in `docs/CAPABILITY_MEMORY_OWNERSHIP.md`.
+
 ## Mandatory runtime services
 Sandbox repository-local commands through `.ai-harness/runtime/tool_runner.py` and `sandbox.py`. Prefer native LSP; otherwise use `.ai-harness/runtime/lsp_server.py`. Route every provider attempt through `.ai-harness/runtime/feedback_loop.py`. Route prompts through `.ai-harness/runtime/auto_compaction.py` while preserving contract/security/acceptance/verification/risk content. Configuration lives in `.ai-harness/config.toml`.
 
 ## Capabilities
-The portable capability implementation is `portable.agent_capabilities`; public facades include `portable.capability_fabric`, `portable.persistent_memory`, `portable.automation_scheduler` and `portable.output_quality`.
+The canonical portable capability implementation is `portable.agent_capabilities`. Discover before use and select the smallest justified capability set. Provider adapters select transport only; AER remains authoritative for acceptance, security and verification. Risky execution requires the sandbox. Scheduled/delegated work re-enters normal lifecycle and cannot bypass policy. Memory is bounded, intent-scoped, redacted and approval-aware. Delegated output is evidence-bearing work, not proof.
 
-Discover before use and select the smallest justified capability set. Provider adapters select transport only; AER remains authoritative for acceptance, security and verification. Risky execution requires the sandbox. Scheduled/delegated work re-enters normal lifecycle and cannot bypass policy. Memory is bounded, intent-scoped, redacted and approval-aware. Delegated output is evidence-bearing work, not proof.
+## Repository intelligence
+Use `portable.repository_intelligence.RepositoryIntelligence` as the single entry point when a task needs repository-wide context.
+
+It composes the existing graph-aware `CodebaseIndex` rather than replacing it, and adds:
+
+- Serena-inspired symbol/relationship retrieval for code understanding;
+- stable project-scoped structural context rather than line-number-only addressing;
+- Repomix-inspired `.gitignore`/`.ignore`/`.repomixignore` handling;
+- secret exclusion before agent context is emitted;
+- deterministic token accounting and hard context budgets;
+- optional structural compression for broad repository context.
+
+Use semantic retrieval for symbols, references, dependencies and architecture. Use normal text search for strings, comments, configuration and non-code. Use packing only when broad context is justified. Do not make Serena or Repomix runtime dependencies of the core.
 
 ## Agency specialist layer
 When specialist expertise materially improves a task, use `.agents/skills/agency-specialist-orchestrator/SKILL.md` and the pinned registry when present. Select one primary specialist when possible; add support/review specialists only for independent expertise or material risk. Read-only analysis may be parallel. Mutations are bounded and serialized. Specialist output is work product, never proof by itself.
