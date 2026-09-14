@@ -19,6 +19,7 @@ class TaskProfile:
     evidence_required: tuple[str, ...] = ()
     technologies: tuple[str, ...] = ()
     support_limit: int = 2
+    context: object | None = None
 
     def __post_init__(self) -> None:
         if not self.task_id.strip() or not self.request.strip():

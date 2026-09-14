@@ -10,6 +10,7 @@ on:
       - 'scripts/check_agency_agents.py'
       - 'tests/test_agency_*.py'
       - 'tests/test_ai_coding_agency_bridge.py'
+      - 'tests/test_ai_coding_codebase_context.py'
       - '.agents/skills/agency-*/**'
       - '.agents/skills/ai-coding-orchestrator/SKILL.md'
       - '.ai-harness/AGENCY_AGENT_QUALITY.md'
@@ -23,6 +24,7 @@ on:
       - 'scripts/check_agency_agents.py'
       - 'tests/test_agency_*.py'
       - 'tests/test_ai_coding_agency_bridge.py'
+      - 'tests/test_ai_coding_codebase_context.py'
       - '.agents/skills/agency-*/**'
       - '.agents/skills/ai-coding-orchestrator/SKILL.md'
       - '.ai-harness/AGENCY_AGENT_QUALITY.md'
@@ -49,8 +51,10 @@ jobs:
       - name: Run agency tests
         run: python -m unittest discover -s tests -p 'test_agency_*.py' -v
       - name: Run AI coding bridge tests
-        run: python -m unittest tests/test_ai_coding_agency_bridge.py -v
+        run: python -m unittest tests/test_ai_coding_agency_bridge.py tests/test_ai_coding_codebase_context.py -v
       - name: Run v9 planner tests
         run: python -m unittest tests/test_agency_execution_plan.py tests/test_agency_multi_specialist.py -v
       - name: Run v10 adaptive feedback tests
         run: python -m unittest tests/test_agency_adaptive_planning.py -v
+      - name: Run v11 retrieval and evaluation tests
+        run: python -m unittest tests/test_agency_codebase_context.py tests/test_agency_ragas_eval.py -v
