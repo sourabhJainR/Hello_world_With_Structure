@@ -2,7 +2,7 @@
 
 Use only when the task needs orchestration detail.
 
-`Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair -> Learn -> Stop`.
+`Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair -> Learn -> Regression -> Release -> Monitor -> Stop`.
 
 Use `Agent -> bounded Loop -> Graph -> Orchestration` only as complexity requires.
 
@@ -14,3 +14,13 @@ Recovery is evidence-driven: classify failure, preserve the failing evidence, ch
 
 For self-modification use:
 `Candidate -> Regression -> Safety -> Shadow -> Canary -> Promote -> Monitor -> Rollback`.
+
+When an artifact exists, the release decision is executable through
+`portable.agency_release_lifecycle.ArtifactStore`:
+
+- `shadow` stores an immutable candidate in the shadow channel without changing `current`;
+- `canary` stores an immutable candidate in the canary channel without changing `current`;
+- `promote` atomically advances the `current` channel and clears staged channels;
+- `rollback` returns to the previous promoted immutable artifact when available.
+
+A release transition is recorded in append-only history and returned in the execution result. The artifact payload is content-addressed so a release pointer cannot silently mutate underneath a decision.
