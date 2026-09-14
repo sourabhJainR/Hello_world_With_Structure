@@ -28,15 +28,27 @@ class ContextBoundRelease:
     def canary(self, artifact: ArtifactRef, *, reason: str = "canary evaluation") -> ReleaseState:
         return self._transition("canary", artifact, reason)
 
-    def promote(self, artifact: ArtifactRef, *, reason: str = "promotion gate passed") -> ReleaseState:
-        return self._transition("promote", artifact, reason)
+    def promote(self, artifact: ArtifactRef, *, reason: str = "promotion gate passed", verification_digest: str | None = None) -> ReleaseState:
+        return self._transition("promote", artifact, reason, verification_digest=verification_digest)
 
-    def rollback(self, *, reason: str = "rollback gate failed") -> ReleaseState:
-        return self._transition("rollback", None, reason)
+    def rollback(self, *, reason: str = "rollback gate failed", verification_digest: str | None = None) -> ReleaseState:
+        return self._transition("rollback", None, reason, verification_digest=verification_digest)
 
-    def _transition(self, action: str, artifact: ArtifactRef | None, reason: str) -> ReleaseState:
-        binding = self.evidence_digest
-        return self.store.transition(action, artifact, f"{reason}; context_evidence_digest={binding}")
+    def _transition(
+        self,
+        action: str,
+        artifact: ArtifactRef | None,
+        reason: str,
+        *,
+        verification_digest: str | None = None,
+    ) -> ReleaseState:
+        return self.store.transition(
+            action,
+            artifact,
+            reason,
+            context_evidence_digest=self.evidence_digest,
+            verification_digest=verification_digest,
+        )
 
 
 def bind_release_context(store_root: str | Path, context_evidence: Any) -> ContextBoundRelease:
