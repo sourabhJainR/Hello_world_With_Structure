@@ -13,7 +13,7 @@ from portable.agency_provenance import ProvenanceLedger
 
 
 class AgencyAdaptivePlanningTests(unittest.TestCase):
-    def _passed(self, index, *, score=98, conflicts=0, waves=1, regression="passed"):
+    def _passed(self, index, *, score=98, conflicts=0, waves=1, regression="passed", mode="single-agent"):
         return BenchmarkObservation(
             task_id=f"run-{index}",
             plan_digest=f"digest-{index}",
@@ -24,30 +24,56 @@ class AgencyAdaptivePlanningTests(unittest.TestCase):
             wave_count=waves,
             conflict_count=conflicts,
             blocked_count=0,
+            execution_mode=mode,
         )
 
-    def test_insufficient_history_keeps_requested_posture(self):
+    def test_insufficient_history_defaults_to_single_agent(self):
         rec = recommend_plan([], requested_mutation_mode="bounded", requested_support_limit=2)
         self.assertEqual(rec.mutation_mode, "bounded")
-        self.assertEqual(rec.support_limit, 2)
+        self.assertEqual(rec.support_limit, 0)
+        self.assertEqual(rec.execution_mode, "single-agent")
         self.assertEqual(rec.confidence, "none")
 
     def test_regression_feedback_tightens_mutation_mode(self):
         history = BenchmarkHistory([self._passed(i, regression="failed") for i in range(3)])
         rec = recommend_plan(history, requested_mutation_mode="bounded", requested_support_limit=2)
         self.assertEqual(rec.mutation_mode, "read-only")
+        self.assertEqual(rec.execution_mode, "single-agent")
         self.assertTrue(any("regressions" in reason for reason in rec.reasons))
 
-    def test_high_quality_low_conflict_history_allows_extra_support(self):
+    def test_high_quality_single_agent_history_keeps_single_agent(self):
         history = BenchmarkHistory([self._passed(i) for i in range(4)])
         rec = recommend_plan(history, requested_mutation_mode="bounded", requested_support_limit=2)
-        self.assertEqual(rec.support_limit, 3)
+        self.assertEqual(rec.support_limit, 0)
+        self.assertEqual(rec.execution_mode, "single-agent")
         self.assertEqual(rec.confidence, "high")
+
+    def test_multi_agent_is_promoted_only_when_single_agent_failed_and_multi_agent_recovered(self):
+        history = BenchmarkHistory([
+            self._passed(1, regression="failed", mode="single-agent"),
+            self._passed(2, regression="failed", mode="single-agent"),
+            self._passed(3, mode="multi-agent", waves=2),
+        ])
+        rec = recommend_plan(history, requested_mutation_mode="bounded", requested_support_limit=2)
+        self.assertEqual(rec.execution_mode, "multi-agent")
+        self.assertGreaterEqual(rec.support_limit, 1)
+        self.assertTrue(any("comparative evidence" in reason or "evidence of recovering" in reason for reason in rec.reasons))
+
+    def test_multi_agent_does_not_win_when_it_is_also_failing(self):
+        history = BenchmarkHistory([
+            self._passed(1, regression="failed", mode="single-agent"),
+            self._passed(2, regression="failed", mode="single-agent"),
+            self._passed(3, regression="failed", mode="multi-agent", waves=2),
+        ])
+        rec = recommend_plan(history, requested_mutation_mode="bounded", requested_support_limit=2)
+        self.assertEqual(rec.execution_mode, "single-agent")
+        self.assertEqual(rec.support_limit, 0)
 
     def test_conflict_history_caps_support(self):
         history = BenchmarkHistory([self._passed(i, score=92, conflicts=1, waves=2) for i in range(4)])
         rec = recommend_plan(history, requested_mutation_mode="bounded", requested_support_limit=3)
-        self.assertEqual(rec.support_limit, 1)
+        self.assertEqual(rec.support_limit, 0)
+        self.assertEqual(rec.execution_mode, "single-agent")
         self.assertTrue(any("conflicts" in reason for reason in rec.reasons))
 
     def test_apply_recommendation_never_exceeds_requested_support(self):
@@ -55,7 +81,7 @@ class AgencyAdaptivePlanningTests(unittest.TestCase):
         rec = recommend_plan(history, requested_mutation_mode="bounded", requested_support_limit=2)
         mode, support = apply_recommendation("bounded", 2, rec, allowed_mutation_modes={"bounded"})
         self.assertEqual(mode, "bounded")
-        self.assertEqual(support, 2)
+        self.assertEqual(support, 0)
 
     def test_observation_binds_plan_and_provenance(self):
         ledger = ProvenanceLedger()
@@ -75,6 +101,7 @@ class AgencyAdaptivePlanningTests(unittest.TestCase):
         self.assertEqual(result.regression_status, "omitted")
         self.assertEqual(result.wave_count, 1)
         self.assertEqual(result.specialist_results, ("builder:primary",))
+        self.assertEqual(result.execution_mode, "single-agent")
 
     def test_jsonl_history_round_trip(self):
         history = BenchmarkHistory([self._passed(1), self._passed(2, conflicts=1)])

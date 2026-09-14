@@ -1,8 +1,8 @@
-"""Benchmark-driven feedback and adaptive planning for Agency Runtime v10.
+"""Evidence-driven adaptive planning with a single-agent-first execution posture.
 
-The module is deterministic and planning-only. It turns completed v9 execution
-signals into reusable observations and bounded recommendations for the next run.
-It never grants permissions, executes tools, or mutates repository state.
+The planner is intentionally small: it observes outcomes and recommends the
+least complicated execution shape that has evidence of working. It does not
+execute tools, grant permissions, or require a particular model/provider.
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from .agency_provenance import ProvenanceLedger
 
 
 MUTATION_ORDER = ("read-only", "bounded", "serialized")
+EXECUTION_ORDER = ("single-agent", "multi-agent")
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,7 @@ class BenchmarkObservation:
     conflict_count: int
     blocked_count: int
     specialist_results: tuple[str, ...] = ()
+    execution_mode: str = "single-agent"
 
     def __post_init__(self) -> None:
         if not self.task_id.strip() or not self.plan_digest.strip():
@@ -38,6 +40,8 @@ class BenchmarkObservation:
             raise ValueError("unsupported release status")
         if self.regression_status not in {"passed", "failed", "omitted"}:
             raise ValueError("unsupported regression status")
+        if self.execution_mode not in EXECUTION_ORDER:
+            raise ValueError("unsupported execution mode")
         if self.quality_score < 0:
             raise ValueError("quality_score cannot be negative")
         for value in (self.wave_count, self.conflict_count, self.blocked_count):
@@ -60,6 +64,7 @@ class BenchmarkObservation:
             "conflict_count": self.conflict_count,
             "blocked_count": self.blocked_count,
             "specialist_results": list(self.specialist_results),
+            "execution_mode": self.execution_mode,
         }
 
 
@@ -99,6 +104,7 @@ class BenchmarkHistory:
                     int(data["conflict_count"]),
                     int(data["blocked_count"]),
                     tuple(str(x) for x in data.get("specialist_results", ())),
+                    str(data.get("execution_mode", "single-agent")),
                 )
             )
         return history
@@ -117,6 +123,7 @@ class AdaptiveRecommendation:
     support_limit: int
     reasons: tuple[str, ...]
     confidence: str
+    execution_mode: str = "single-agent"
 
     def __post_init__(self) -> None:
         if self.mutation_mode not in MUTATION_ORDER:
@@ -125,6 +132,8 @@ class AdaptiveRecommendation:
             raise ValueError("support_limit cannot be negative")
         if self.confidence not in {"none", "low", "medium", "high"}:
             raise ValueError("unsupported confidence")
+        if self.execution_mode not in EXECUTION_ORDER:
+            raise ValueError("unsupported execution mode")
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -132,6 +141,7 @@ class AdaptiveRecommendation:
             "support_limit": self.support_limit,
             "reasons": list(self.reasons),
             "confidence": self.confidence,
+            "execution_mode": self.execution_mode,
         }
 
 
@@ -149,6 +159,7 @@ def observe_run(
     regression_status: str | None,
     quality_score: int,
     specialist_results: Sequence[str] = (),
+    execution_mode: str = "single-agent",
 ) -> BenchmarkObservation:
     return BenchmarkObservation(
         task_id=task_id,
@@ -161,7 +172,32 @@ def observe_run(
         conflict_count=len(plan.conflicts),
         blocked_count=len(plan.blocked),
         specialist_results=tuple(str(x) for x in specialist_results),
+        execution_mode=execution_mode,
     )
+
+
+def _recommend_execution_mode(recent: Sequence[BenchmarkObservation]) -> tuple[str, str]:
+    """Choose the least complicated mode supported by observed evidence.
+
+    A single agent is the default because every additional agent adds context
+    transfer, coordination, and merge cost. Multi-agent execution is promoted
+    only when the history contains evidence that it improved outcomes: recent
+    single-agent attempts failed while multi-agent attempts passed.
+    """
+    if not recent:
+        return "single-agent", "no execution history: prefer the simplest path"
+
+    single = [item for item in recent if item.execution_mode == "single-agent"]
+    multi = [item for item in recent if item.execution_mode == "multi-agent"]
+    single_failures = sum(not item.passed for item in single)
+    multi_successes = sum(item.passed for item in multi)
+    multi_failures = sum(not item.passed for item in multi)
+
+    if single_failures and multi_successes > 0 and multi_successes >= multi_failures:
+        return "multi-agent", "multi-agent execution has evidence of recovering work that single-agent execution could not complete"
+    if single and all(item.passed for item in single):
+        return "single-agent", "recent single-agent work passed; avoid coordination cost until evidence says otherwise"
+    return "single-agent", "insufficient comparative evidence to justify additional agents"
 
 
 def recommend_plan(
@@ -173,9 +209,9 @@ def recommend_plan(
 ) -> AdaptiveRecommendation:
     """Recommend a bounded next-run posture from historical execution outcomes.
 
-    Adaptation is intentionally conservative: poor regression/release outcomes
-    tighten mutation behavior before increasing specialist parallelism. No rule
-    expands host permissions or allows an otherwise-disallowed mutation mode.
+    The execution shape is adaptive but single-agent-first. History can promote
+    multi-agent execution only when comparative evidence shows that it helps.
+    No recommendation can expand host permissions or bypass policy bounds.
     """
     if requested_mutation_mode not in MUTATION_ORDER:
         raise ValueError("unsupported requested mutation mode")
@@ -184,7 +220,13 @@ def recommend_plan(
     observations = list(history.observations if isinstance(history, BenchmarkHistory) else history)
     recent = observations[-max(min_samples, 10) :]
     if len(recent) < min_samples:
-        return AdaptiveRecommendation(requested_mutation_mode, requested_support_limit, ("insufficient benchmark history",), "none")
+        return AdaptiveRecommendation(
+            requested_mutation_mode,
+            0,
+            ("insufficient benchmark history; single-agent is the default",),
+            "none",
+            "single-agent",
+        )
 
     failures = sum(not item.passed for item in recent)
     regression_failures = sum(item.regression_status == "failed" for item in recent)
@@ -192,12 +234,13 @@ def recommend_plan(
     blocked_runs = sum(item.blocked_count > 0 for item in recent)
     average_score = sum(item.quality_score for item in recent) / len(recent)
     conflict_rate = conflict_runs / len(recent)
+    execution_mode, execution_reason = _recommend_execution_mode(recent)
 
     mode = requested_mutation_mode
     support = requested_support_limit
-    reasons: list[str] = []
+    reasons: list[str] = [execution_reason]
 
-    if regression_failures or failures:
+    if failures or regression_failures:
         target_index = max(0, MUTATION_ORDER.index(mode) - 1)
         if regression_failures:
             reasons.append("recent artifact regressions tighten mutation posture")
@@ -212,15 +255,18 @@ def recommend_plan(
         support = min(requested_support_limit + 1, 3)
         reasons.append("strong recent quality with low conflict permits one extra support specialist")
 
+    # Single-agent means no support agents. This is the key simplification: the
+    # support budget is available only when evidence promotes a team execution.
+    if execution_mode == "single-agent":
+        support = 0
+
     if average_score >= 95 and failures == 0 and regression_failures == 0:
         confidence = "high"
     elif len(recent) >= 5:
         confidence = "medium"
     else:
         confidence = "low"
-    if not reasons:
-        reasons.append("retain requested execution posture")
-    return AdaptiveRecommendation(mode, support, tuple(reasons), confidence)
+    return AdaptiveRecommendation(mode, support, tuple(reasons), confidence, execution_mode)
 
 
 def apply_recommendation(
