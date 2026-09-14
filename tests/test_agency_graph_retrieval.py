@@ -29,13 +29,12 @@ class GraphAwareRetrievalTests(unittest.TestCase):
     def test_hop_budget_is_explicit(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "a.py").write_text("from b import B\nclass A:\n    def run(self):\n        return B().run()\n", encoding="utf-8")
+            (root / "a.py").write_text("from b import B\nclass Alpha:\n    def run(self):\n        return B().run()\n", encoding="utf-8")
             (root / "b.py").write_text("from c import C\nclass B:\n    def run(self):\n        return C().run()\n", encoding="utf-8")
             (root / "c.py").write_text("class C:\n    def run(self):\n        return 1\n", encoding="utf-8")
-            # Query the implementation name so only a.py is a lexical seed.
-            # b.py/c.py also contain run(), and using "A run" would make them
-            # lexical matches before graph expansion, masking the hop limit.
-            context = retrieve(CodebaseIndex.build(root), "A", graph_hops=1)
+            # Use a multi-character implementation name because the retrieval
+            # tokenizer intentionally ignores one-character query terms.
+            context = retrieve(CodebaseIndex.build(root), "Alpha", graph_hops=1)
             self.assertEqual(("a.py",), context.graph_trace.seed_paths)
             self.assertTrue(any("hop_budget_exhausted" in x for x in context.unknowns))
             self.assertNotIn("c.py", context.graph_trace.expanded_paths)
