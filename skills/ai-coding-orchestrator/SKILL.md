@@ -23,11 +23,15 @@ Use multi-agent execution only when evidence supports it: genuinely independent 
 
 Remain provider/model neutral. A stronger future model should replace a weaker model without redesigning the harness. The harness supplies context, evidence, verification, and safe boundaries; it must not become a fixed workflow bottleneck.
 
-## State and context
+## Engineering State Ledger
 
 Preserve:
 
 `intent -> context -> plan -> evidence -> change -> verification -> review -> artifact -> rollout -> observation`
+
+Never silently replace evidence or intent after a decision.
+
+## State and context
 
 Use the executable context pipeline: phase/risk/uncertainty/policy planning; canonical `RepositoryIntelligence`, `CodebaseIndex`, `SymbolLocator`, `context_planner`, `context_broker`, graph expansion, and one immutable `ContextEvidence` envelope.
 
@@ -50,6 +54,8 @@ Use `.ai-harness/runtime/feedback_loop.py` only when repeated evidence can chang
 ## Engineering design
 
 Use `.ai-harness/ENGINEERING_DESIGN_POLICY.md` as the canonical synthesis of the `agent-rules-books` sources; do not load competing instruction layers. Before substantial implementation, use `portable.engineering_design_guard.EngineeringDesignGuard.review(...)` for the relevant dimensions: complexity, architecture, domain, data, resilience, refactoring, legacy, construction, and compatibility. A dimension may be `not_applicable: <reason>`.
+
+## Minimal safe change
 
 Prefer the smallest change that satisfies intent and preserves contracts. Before adding an abstraction, check whether an existing service owns the capability. Do not introduce parallel stores or duplicate ownership.
 
