@@ -202,12 +202,21 @@ class CompiledStateGraph:
         events: list[GraphEvent] = []
         trace = list(existing.trace if existing else ())
         step = existing.step if existing else 0
+        skip_before_once = existing is not None
 
         while next_nodes:
             if step >= max_steps:
                 raise RuntimeError(f"graph exceeded max_steps={max_steps}")
             step += 1
             snapshot = dict(current)
+            if not skip_before_once:
+                for name in next_nodes:
+                    if name != StateGraph.END and name in self._g._before:
+                        cp = Checkpoint(run_id, step - 1, dict(current), tuple(next_nodes), tuple(trace))
+                        if store:
+                            store.save(cp)
+                        raise GraphInterrupt(run_id, step - 1, dict(current), tuple(next_nodes), f"interrupted before {name}")
+            skip_before_once = False
             updates: list[tuple[str, Mapping[str, Any], int]] = []
             parallel = [name for name in next_nodes if name != StateGraph.END and parallel_nodes and parallel_nodes(name)]
             sequential = [name for name in next_nodes if name != StateGraph.END and name not in parallel]
@@ -243,7 +252,6 @@ class CompiledStateGraph:
             next_nodes = list(dict.fromkeys(next_set))
             if store:
                 store.save(Checkpoint(run_id, step, dict(current), tuple(next_nodes), tuple(trace)))
-            existing = None
             if StateGraph.END in next_nodes:
                 next_nodes = []
 
