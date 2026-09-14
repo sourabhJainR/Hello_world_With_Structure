@@ -2,7 +2,8 @@
 
 The host orchestrator owns model/tool execution, permissions, concurrency and side
 effects. Agency Runtime owns task profiling, specialist selection, scheduling,
-evidence, provenance, regression, adaptive feedback and release gating.
+evidence, provenance, regression, adaptive feedback, release gating and the
+optional evidence-first codebase context supplied to the worker.
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ from .agency_adaptive_planning import (
     recommend_plan,
 )
 from .agency_artifact_regression import ArtifactSnapshot, RegressionDecision, compare_artifacts
+from .agency_codebase_context import CodebaseContext, retrieve_from_path
 from .agency_multi_specialist import SpecialistResourceProfile, build_specialist_plan
 from .agency_provenance import ProvenanceLedger
 from .agency_release import ReleaseDecision, decide_release
@@ -34,6 +36,10 @@ class CodingTask:
     support_limit: int = 2
     protected_paths: tuple[str, ...] = ()
     allowed_artifact_changes: tuple[str, ...] = ()
+    workspace_root: str | None = None
+    context_query: str | None = None
+    context_token_budget: int = 4000
+    context_max_files: int = 12
 
 
 @dataclass
@@ -46,6 +52,7 @@ class OrchestratorRun:
     provenance: ProvenanceLedger
     adaptive_recommendation: AdaptiveRecommendation | None = None
     benchmark: object | None = None
+    codebase_context: CodebaseContext | None = None
 
     @property
     def ready(self) -> bool:
@@ -61,12 +68,25 @@ class OrchestratorRun:
             "provenance": self.provenance.as_dict(),
             "adaptive_recommendation": self.adaptive_recommendation.as_dict() if self.adaptive_recommendation else None,
             "benchmark": self.benchmark.as_dict() if self.benchmark else None,
+            "codebase_context": self.codebase_context.as_dict() if self.codebase_context else None,
             "ready": self.ready,
         }
 
 
 def _artifact_map(items: Iterable[ArtifactSnapshot]) -> dict[str, ArtifactSnapshot]:
     return {item.path: item for item in items}
+
+
+def _build_codebase_context(task: CodingTask) -> CodebaseContext | None:
+    if not task.workspace_root:
+        return None
+    query = task.context_query or task.goal
+    return retrieve_from_path(
+        task.workspace_root,
+        query,
+        token_budget=task.context_token_budget,
+        max_files=task.context_max_files,
+    )
 
 
 def run_coding_task(
@@ -80,10 +100,12 @@ def run_coding_task(
     registry: Mapping[str, object] | None = None,
     rubric: Mapping[str, object] | None = None,
 ) -> OrchestratorRun:
-    """Execute a task with v10 adaptation from prior benchmark outcomes.
+    """Execute a task with adaptive planning and minimal-token codebase evidence.
 
-    Historical outcomes shape the next task's mutation posture and specialist
-    count, but never expand host permissions or bypass the v9 execution plan.
+    When ``workspace_root`` is supplied, retrieval happens before the worker is
+    called. The worker receives the immutable context through ``TaskProfile.context``.
+    Every omitted or unreadable area is surfaced as an explicit unknown instead of
+    being silently guessed by the model.
     """
     history = benchmark_history if isinstance(benchmark_history, BenchmarkHistory) else BenchmarkHistory(list(benchmark_history))
     recommendation = recommend_plan(
@@ -97,6 +119,7 @@ def run_coding_task(
         recommendation,
     )
     effective_task = replace(task, mutation_mode=mutation_mode, support_limit=support_limit)
+    codebase_context = _build_codebase_context(effective_task)
     profile = TaskProfile(
         task_id=effective_task.task_id,
         request=effective_task.goal,
@@ -105,12 +128,22 @@ def run_coding_task(
         mutation_mode=effective_task.mutation_mode,
         acceptance=effective_task.acceptance,
         technologies=effective_task.technologies,
+        context=codebase_context,
     )
     execution = execute(profile, worker, registry=registry, rubric=rubric, support_limit=effective_task.support_limit)
     execution_plan = build_specialist_plan(execution.assignments, resource_profiles)
     provenance = ProvenanceLedger()
     provenance.append(task.task_id, "task-profiled", task.goal)
     provenance.append(task.task_id, "adaptive-recommendation", str(recommendation.as_dict()))
+    if codebase_context:
+        provenance.append(task.task_id, "codebase-indexed", codebase_context.snapshot_digest)
+        provenance.append(
+            task.task_id,
+            "codebase-context-selected",
+            f"{len(codebase_context.chunks)} chunk(s); {codebase_context.token_estimate} token-estimate",
+        )
+        for unknown in codebase_context.unknowns:
+            provenance.append(task.task_id, "codebase-unknown", unknown)
     provenance.append(task.task_id, "specialists-planned", ",".join(a.specialist for a in execution.assignments))
     provenance.append(task.task_id, "execution-plan", execution_plan.digest())
     for item in execution.evidence:
@@ -151,7 +184,7 @@ def run_coding_task(
     )
     provenance.append(task.task_id, "benchmark-observed", benchmark.plan_digest, (benchmark.plan_digest,))
     history.add(benchmark)
-    return OrchestratorRun(task, execution, execution_plan, regression, release, provenance, recommendation, benchmark)
+    return OrchestratorRun(task, execution, execution_plan, regression, release, provenance, recommendation, benchmark, codebase_context)
 
 
 def verify_provenance(run: OrchestratorRun) -> None:
