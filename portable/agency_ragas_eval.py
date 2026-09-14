@@ -1,8 +1,9 @@
-"""Ragas-inspired evaluation primitives for the coding agency.
+"""Ragas-inspired, deterministic evaluation primitives for the coding agency.
 
-These metrics borrow the useful separation used by Ragas: retrieval quality and
-answer quality are measured independently. They are deterministic and do not
-require an LLM, which keeps the portable runtime cheap and reproducible.
+The implementation keeps retrieval quality and answer quality separate while
+remaining dependency-free.  It is deliberately conservative: unsupported answer
+claims are surfaced even when the aggregate score is still above the release
+threshold.
 """
 from __future__ import annotations
 
@@ -22,6 +23,14 @@ def _overlap(a: str, b: str) -> float:
     if not left or not right:
         return 0.0
     return len(left & right) / len(left | right)
+
+
+def _support(a: str, b: str) -> float:
+    """Return the share of claim tokens evidenced by a source."""
+    claim, source = _tokens(a), _tokens(b)
+    if not claim or not source:
+        return 0.0
+    return len(claim & source) / len(claim)
 
 
 def _mean(values: Iterable[float]) -> float:
@@ -79,14 +88,10 @@ def retrieval_metrics(
     retrieved_paths: Sequence[str] = (),
     expected_paths: Sequence[str] = (),
 ) -> RetrievalMetrics:
-    """Measure ranking precision, recall and expected-path coverage.
-
-    Context precision rewards relevant evidence appearing early; context recall
-    measures how much of the expected evidence was recovered. When references
-    are absent, the corresponding score is neutral rather than guessed.
-    """
+    """Measure ranking precision, recall and expected-path coverage."""
     if not retrieved_contexts:
         return RetrievalMetrics(0.0, 0.0 if relevant_contexts else 1.0, 0.0 if expected_paths else 1.0)
+
     precision_terms: list[float] = []
     for rank, context in enumerate(retrieved_contexts, 1):
         if relevant_contexts:
@@ -96,6 +101,7 @@ def retrieval_metrics(
             hit = 1.0
         precision_terms.append(hit / rank)
     precision = _mean(precision_terms)
+
     recall = 1.0 if not relevant_contexts else _mean(
         1.0 if max((_overlap(ref, ctx) for ctx in retrieved_contexts), default=0.0) >= 0.20 else 0.0
         for ref in relevant_contexts
@@ -117,14 +123,14 @@ def answer_metrics(
 ) -> AnswerMetrics:
     """Score relevance, evidence support and optional reference correctness."""
     relevance = _overlap(query, answer)
-    if not answer.strip():
-        faithfulness = 0.0
-    elif not evidence:
+    if not answer.strip() or not evidence:
         faithfulness = 0.0
     else:
         claims = [s.strip() for s in re.split(r"(?<=[.!?])\s+", answer) if s.strip()]
         supported = sum(
-            1 for claim in claims if max((_overlap(claim, source) for source in evidence), default=0.0) >= 0.20
+            1
+            for claim in claims
+            if max((_support(claim, source) for source in evidence), default=0.0) >= 0.60
         )
         faithfulness = supported / len(claims) if claims else 0.0
     correctness = relevance if reference is None else _overlap(answer, reference)
@@ -164,10 +170,9 @@ def evaluate_codebase_answer(
         findings.append("retrieval recall is below 0.80")
     if retrieval.context_precision < 0.80:
         findings.append("retrieval precision is below 0.80")
-    if answer_score.faithfulness < 0.80:
+    if answer_score.faithfulness < 1.0:
         findings.append("answer contains claims not sufficiently supported by retrieved evidence")
     if unknown_count:
         findings.append(f"{unknown_count} explicit unknown(s) remain")
-    if unknown_count:
         score *= max(0.0, 1.0 - min(0.5, unknown_count * 0.05))
-    return CodebaseEvaluation(retrieval, answer_score, round(score, 4), tuple(findings))
+    return CodebaseEvaluation(retrieval, answer_score, unknown_count, round(score, 4), tuple(findings))
