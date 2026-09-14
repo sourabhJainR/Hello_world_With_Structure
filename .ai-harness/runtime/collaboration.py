@@ -6,12 +6,12 @@ import hashlib
 import json
 import time
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Mapping
 
 VERSION = "1.1"
 SAFE_MEMORY_KINDS = {"fact", "evidence", "decision", "do", "dont", "risk", "handoff", "unknown"}
 IMMUTABLE_MEMORY_KINDS = {"intent", "guardrail", "policy"}
-PHASES = {"discovery", "design", "spec", "ticketing", "implementation", "verification", "review", "rollout", "learning", "prototype"}
+PHASES = {"discovery", "analysis", "design", "spec", "ticketing", "implementation", "verification", "review", "rollout", "learning", "prototype"}
 
 
 def _stable_id(prefix: str, value: str) -> str:
@@ -145,12 +145,15 @@ def validate_handoff(packet: dict[str, Any], *, expected_intent_digest: str,
         reasons.append("missing_component")
     if packet.get("phase") not in PHASES:
         reasons.append("invalid_phase")
-    requested = packet.get("requested_phase", "")
-    if expected_requested_phase and requested != expected_requested_phase:
+    requested = str(packet.get("requested_phase", "") or "").strip().lower()
+    expected = str(expected_requested_phase or "").strip().lower()
+    if expected and requested != expected:
         reasons.append("requested_phase_mismatch")
-    if expected_requested_phase and not requested:
+    if expected and not requested:
         reasons.append("missing_requested_phase")
-    if not packet.get("next_actions"):
+    # next_actions is a required field only for the new phase-aware contract.
+    # Legacy analysis handoffs remain loadable for backward compatibility.
+    if (requested or expected) and not packet.get("next_actions"):
         reasons.append("missing_next_action")
     if allowed_scope is not None:
         for item in packet.get("findings", []) + packet.get("decisions", []) + packet.get("open_risks", []):
