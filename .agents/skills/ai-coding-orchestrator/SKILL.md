@@ -25,12 +25,6 @@ The envelope contains intent, context-plan, repository snapshot, selected paths,
 
 Do not create a second repository index, memory store, capability catalog, or evidence store. Compatibility layers must delegate to the canonical implementation.
 
-## Repository-aware retrieval
-
-For code tasks prefer semantic and symbol-aware retrieval over whole-repository prompts. Use graph expansion for callers, callees, interfaces, tests, configuration, and impacted files. Use Repomix-inspired packing only when a bounded repository snapshot is useful. Respect `.gitignore`, `.ignore`, `.repomixignore`, secret filtering, deterministic ordering, file-size limits, and token budgets.
-
-A semantic address uses `relative/path::Symbol`. Snapshot digests are validity boundaries: refresh the index after repository mutation and acquire a new context envelope when fresh evidence is required.
-
 ## Team decomposition and early gates
 
 For substantial work, split the request into complete `WorkUnit`s with explicit goals, dependencies, specialist roles, read/write resources, and mutation mode. Use `AgentTeamOrchestrator` with the host's real agent spawner. Independent read-only units may run in bounded parallel waves; mutating units are serialized by resource conflict.
@@ -38,6 +32,12 @@ For substantial work, split the request into complete `WorkUnit`s with explicit 
 Do not wait until the end to discover a bad approach. After each unit completes, run verification immediately and then independent review. A failed verification/review blocks that unit and its dependents so later agents do not spend tokens on work that is already invalid. Carry the same `ContextEvidence.evidence_digest` into every spawned unit and gate.
 
 The host remains authoritative for model/provider selection, commands, permissions, sandboxing, credentials, and external side effects.
+
+## Repository-aware retrieval
+
+For code tasks prefer semantic and symbol-aware retrieval over whole-repository prompts. Use graph expansion for callers, callees, interfaces, tests, configuration, and impacted files. Use Repomix-inspired packing only when a bounded repository snapshot is useful. Respect `.gitignore`, `.ignore`, `.repomixignore`, secret filtering, deterministic ordering, file-size limits, and token budgets.
+
+A semantic address uses `relative/path::Symbol`. Snapshot digests are validity boundaries: refresh the index after repository mutation and acquire a new context envelope when fresh evidence is required.
 
 ## Minimal safe change
 
@@ -59,6 +59,16 @@ Keep these established runtime entry points aligned with the orchestration workf
 - `.ai-harness/runtime/auto_compaction.py`
 - `downgrade=explicit_install_only`
 - `ORCHESTRATION_SPEC.md`
+- `TEN_LOOP_POLICY.md`
+- `CONTEXT_POLICY.md`
+- `ARCHITECTURE_POLICY.md`
+- `EXECUTION_POLICY.md`
+- `VERIFICATION_POLICY.md`
+- `REVIEW_POLICY.md`
+- `LEARNING_POLICY.md`
+- `TOKEN_POLICY.md`
+- `PROVIDER_CONTRACT.md`
+- `QUALITY_GOVERNANCE.md`
 
 ## Evidence, verification, and review
 
