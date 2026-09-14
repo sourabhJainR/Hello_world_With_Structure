@@ -1,113 +1,94 @@
 ---
 name: ai-coding-orchestrator
-description: Repository-aware AI engineering control plane for bounded, evidence-driven execution, verification, collaboration and controlled learning.
+description: Repository-aware AI coding workflow for research, POC, investigation, implementation, review, bug fixing, tests, verification, and safe artifact rollout.
 ---
 
-# Adaptive AI Coding Orchestrator
+# AI Coding Orchestrator
 
-## Contract
-AER owns intent, routing, context selection, budgets, safety, verification, learning and promotion. Providers/extensions supply capabilities but never redefine AER semantics.
+## Purpose
 
-Preserve:
-`GOAL | BOUNDARIES | ACCEPTANCE | SECURITY/PERMISSIONS | CURRENT STATE`.
-For non-trivial work use:
-`GOAL | NON-GOALS | REQUIREMENTS | CONSTRAINTS | PROTECTED BEHAVIOR | BOUNDARIES | ACCEPTANCE | RISKS | ASSUMPTIONS | intent_digest`.
-Use the minimal safe change consistent with repository rules.
+Use the repository as the source of truth. Keep work bounded, evidence-backed, deterministic where possible, and easy to verify. The orchestrator is for research, POC, investigation, coding, review, bug fixes, unit-test writing, and deployment validation.
 
-## Provider lifecycle
-Discover actual provider capabilities before selecting execution surfaces. Native capabilities may include subagents, hooks, session resume, structured output, tool interception, MCP and background execution, but they cannot override AER security, acceptance, verification or promotion rules.
+## Engineering State Ledger
 
-Map supported provider events to AER phases such as `session_start`, `plan_start`, `before_agent`, `after_agent`, `before_tool`, `after_tool`, `before_verify`, `after_verify`, `before_promotion`, `after_promotion`, `session_end` and `recovery`. Hooks may annotate or veto and must fail closed on handler errors.
+Every turn should preserve:
 
-## Canonical capability and memory ownership
-There is exactly one canonical owner for each cross-cutting capability domain:
+`intent -> context -> plan -> evidence -> change -> verification -> artifact -> rollout -> observation`
 
-- `portable.agent_capabilities` owns the capability catalog, capability risk/fallback semantics, provider adapter selection and durable `PersistentMemory`.
-- `portable.capability_fabric` and `portable.persistent_memory` are compatibility facades only.
-- `portable.agency_agent_capabilities` owns agency-specific context/tool/event/collaboration metadata only. Its legacy `MemoryStore` is an adapter over canonical `PersistentMemory`; it must not create another durable store.
-- New capability or memory behavior must extend the canonical owner first. Do not create another parallel `*Capabilities`, `*MemoryStore`, `*SecondBrain` or provider-specific durable store with overlapping responsibility.
+Carry stable identifiers across stages. Never silently replace evidence or intent after a decision has been made.
 
-The ownership contract is documented in `docs/CAPABILITY_MEMORY_OWNERSHIP.md`.
+## Context acquisition
 
-## Mandatory runtime services
-Sandbox repository-local commands through `.ai-harness/runtime/tool_runner.py` and `sandbox.py`. Prefer native LSP; otherwise use `.ai-harness/runtime/lsp_server.py`. Route every provider attempt through `.ai-harness/runtime/feedback_loop.py`. Route prompts through `.ai-harness/runtime/auto_compaction.py` while preserving contract/security/acceptance/verification/risk content. Configuration lives in `.ai-harness/config.toml`.
+Use the executable context pipeline:
 
-## Capabilities
-The canonical portable capability implementation is `portable.agent_capabilities`. Discover before use and select the smallest justified capability set. Provider adapters select transport only; AER remains authoritative for acceptance, security and verification. Risky execution requires the sandbox. Scheduled/delegated work re-enters normal lifecycle and cannot bypass policy. Memory is bounded, intent-scoped, redacted and approval-aware. Delegated output is evidence-bearing work, not proof.
+1. plan retrieval from phase, risk, uncertainty, and policy
+2. use canonical `RepositoryIntelligence` and `CodebaseIndex`
+3. resolve symbols with `SymbolLocator`
+4. expand relevant graph relationships
+5. rank and budget evidence with `context_planner`
+6. lease selected records through `context_broker`
+7. return one immutable `ContextEvidence` envelope
 
-## Repository intelligence
-Use `portable.repository_intelligence.RepositoryIntelligence` as the single entry point when a task needs repository-wide context.
+The envelope contains intent, context-plan, repository snapshot, selected paths, symbol references, graph paths, bounded evidence items, unknowns, and an evidence digest.
 
-It composes the existing graph-aware `CodebaseIndex` rather than replacing it, and adds:
+Do not create a second repository index, memory store, capability catalog, or evidence store. Compatibility layers must delegate to the canonical implementation.
 
-- Serena-inspired symbol/relationship retrieval for code understanding;
-- stable project-scoped structural context rather than line-number-only addressing;
-- Repomix-inspired `.gitignore`/`.ignore`/`.repomixignore` handling;
-- secret exclusion before agent context is emitted;
-- deterministic token accounting and hard context budgets;
-- optional structural compression for broad repository context.
+## Repository-aware retrieval
 
-Use semantic retrieval for symbols, references, dependencies and architecture. Use normal text search for strings, comments, configuration and non-code. Use packing only when broad context is justified. Do not make Serena or Repomix runtime dependencies of the core.
+For code tasks prefer semantic and symbol-aware retrieval over whole-repository prompts. Use graph expansion for callers, callees, interfaces, tests, configuration, and impacted files. Use Repomix-inspired packing only when a bounded repository snapshot is useful. Respect `.gitignore`, `.ignore`, `.repomixignore`, secret filtering, deterministic ordering, file-size limits, and token budgets.
 
-## Agency specialist layer
-When specialist expertise materially improves a task, use `.agents/skills/agency-specialist-orchestrator/SKILL.md` and the pinned registry when present. Select one primary specialist when possible; add support/review specialists only for independent expertise or material risk. Read-only analysis may be parallel. Mutations are bounded and serialized. Specialist output is work product, never proof by itself.
+A semantic address uses `relative/path::Symbol`. Snapshot digests are validity boundaries: refresh the index after repository mutation and acquire a new context envelope when fresh evidence is required.
 
-## Agency Runtime v8
-For substantial coding tasks use `portable.ai_coding_agency_bridge` and the v8 skill. It converts the request to a `TaskProfile`, selects specialists, accepts structured worker output, records evidence, evaluates quality, performs artifact regression, records provenance and issues a release decision. The host owns provider/tool calls, permissions, sandboxing, concurrency, mutation ordering and side effects. The bridge never executes commands or grants authority.
+## Minimal safe change
 
-A high score is not sufficient for release: hard gates, findings, verification and artifact regression must also pass.
+Prefer the smallest change that satisfies the intent and preserves existing contracts. Before adding a new abstraction, check whether an existing service already owns the capability. Prefer Adapter, Strategy / Policy, State Machine, Pipeline, and Dependency Injection patterns when they fit the existing topology.
 
-## Agency Runtime v9
-For multi-specialist work build a conflict-aware plan with `portable.agency_execution_plan` and expose it through the bridge. Every work unit declares:
-`ROLE | MUTATION_MODE | READ_PATHS | WRITE_PATHS | DEPENDENCIES | PRIORITY`.
+Do not introduce parallel stores or duplicate ownership merely to support a new feature. Extend the canonical path and add a compatibility adapter when older callers need it.
 
-The host honors plan waves: compatible read-only work may share a wave; overlapping read/write and write/write resources are serialized; independent mutations are explicitly ordered; dependencies precede dependents; missing dependencies or cycles block the plan; undeclared writes are forbidden. Record the execution-plan digest in provenance. Never claim parallelism that the plan did not allow.
+## Evidence and verification
 
-## Agency Runtime v10
-Repeated coding workflows may pass `BenchmarkHistory` to `run_coding_task` so prior measured outcomes influence the next plan. Each benchmark binds the task to its v9 plan digest and provenance head and records release status, artifact-regression status, quality score, wave/conflict/blocked counts and specialist results.
+Evidence must be traceable to a source, bounded by the context plan, and sufficient for the claim. Verification is independent of generation. For implementation tasks, cover changed behavior with focused unit tests and run the relevant existing regression suite.
 
-Adaptive planning is deterministic and bounded. Recent release or regression failures may tighten mutation mode. Frequent conflicts or blocked plans may cap support specialists. Sustained high quality with low conflict may permit one additional support specialist, but never above caller limits. Recommendations never expand permissions, alter protected-path policy, bypass v9 scheduling or convert a failed regression into success. Benchmark history is evidence for future planning, not authorization.
+For bugs: reproduce -> isolate -> identify owner -> make minimal fix -> add regression test -> verify adjacent behavior.
 
-## Control-plane policies
-Detailed policies remain on-demand context:
-`ORCHESTRATION_SPEC.md | TEN_LOOP_POLICY.md | CONTEXT_POLICY.md | ARCHITECTURE_POLICY.md | EXECUTION_POLICY.md | VERIFICATION_POLICY.md | REVIEW_POLICY.md | LEARNING_POLICY.md | TOKEN_POLICY.md | PROVIDER_CONTRACT.md | QUALITY_GOVERNANCE.md | AGENCY_AGENT_QUALITY.md`.
+For review: inspect contract, data flow, ownership, failure paths, security boundaries, concurrency, observability, and tests. Report findings with evidence and impact.
 
-## Repository-first execution
-Use:
-`DISCOVER -> SCORE -> LEASE -> USE -> COMPRESS -> RELEASE`.
-Inspect instructions, git state, structure, dependencies and tests before editing. Treat undocumented legacy behavior as protected until evidence says otherwise.
+## Deployment lifecycle
 
-## Planning and impact
-Use `portable.task_planner.TaskPlan` for durable non-trivial plans. A task is ready only when dependencies are done. Keep IDs stable for evidence and regression history.
+The same `ContextEvidence` object must flow into rollout evaluation. Do not reconstruct context between execution and deployment.
 
-Before changing common/exported/inherited/configured/multi-consumer paths run:
-`python -m portable.impact_analysis --root . path/to/changed/file.py`.
+`shadow -> canary -> promote`
 
-## Execution, verification and learning
-Use:
-`Understand -> Profile -> Specify -> Retrieve -> Route -> Capability plan -> Plan -> Impact -> Execute -> Observe -> Evaluate -> Verify -> Review -> Repair -> Learn -> Stop`.
+or
 
-Verification order:
-`syntax/static -> focused tests -> integration/system -> regression replay -> security/policy -> final diff review`.
+`shadow -> canary -> rollback`
 
-Retain:
-`intent_digest | graph_digest | environment_fingerprint | trajectory | attempts | repairs | evaluator outcomes | evidence digests | final outcome`.
-Regression claims require baseline and post-change evidence.
+Pass `context_evidence` to shadow/canary evaluation. Each report and staged canary record carries `context_evidence_digest`. Use `ContextBoundRelease` for executable artifact transitions so `shadow`, `canary`, `promote`, and `rollback` carry the same evidence digest into the release audit trail.
 
-Learning follows:
-`Observe -> Outcome -> Candidate -> Regression Replay -> Safety -> Shadow/Canary -> Promote -> Monitor -> Rollback`.
-Executable changes remain candidates until gates pass. Learning must not expand permissions or security boundaries.
+Policy records retain the context evidence digest. If the repository changes and fresh verification is required, acquire a new envelope rather than mutating the old one.
 
-## Distribution
-Portable artifacts are immutable. `update` is forward-only; explicit `install <artifact>` may activate a verified older/newer artifact. `downgrade=explicit_install_only`. `.ai-harness/ARTIFACT_UPGRADE_CONTRACT.json` is authoritative.
+## Safety boundaries
 
-## State and precedence
-Engineering State Ledger:
-`INTENT | CONTRACT | REPO_FACTS | TASK_PLAN | IMPACT | DECISIONS | EVIDENCE | CHANGESET | VERIFY | OUTCOME | OPEN_RISKS | NEXT`.
+- Never treat model output as evidence without a source or verification result.
+- Never bypass security, permission, scope, or regression gates because a task is urgent.
+- Never execute generated code during candidate validation when static validation is sufficient.
+- Keep external/network capabilities behind the existing provider and capability contracts.
+- Keep rollout decisions reversible and auditable.
 
-Precedence:
-`Repository/team rules > security/permissions > acceptance > local architecture > verification > orchestrator > extension > model preference`.
+## Working sequence
 
-## Completion
-Report:
-`Outcome | Changed files | Task plan | Impact/shared-path findings | Evidence | Verification | Regression checks | Review | Capability plan | Graph/team execution | Agency specialists | Adaptive recommendation | Benchmark observation | Assumptions | Risks | Incomplete checks | Efficiency`.
+For a normal coding task:
+
+`understand intent -> acquire context -> plan -> implement -> test -> review -> verify -> package -> shadow/canary -> promote or rollback`
+
+For research/POC:
+
+`define question -> acquire bounded evidence -> investigate -> record unknowns -> prototype -> measure -> decide`
+
+For review:
+
+`acquire context -> inspect contracts and graph -> reproduce where needed -> classify findings -> propose minimal safe change -> verify`
+
+## Output discipline
+
+State what changed, why, what was verified, and any remaining uncertainty. Prefer concrete file paths, symbols, tests, evidence identifiers, and lifecycle state over broad claims.
