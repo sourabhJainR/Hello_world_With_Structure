@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Any, Callable, Mapping
 
 from portable.agency_state_graph import CheckpointStore, StateGraph
 from portable.task_planner import Task, TaskPlan
+
 
 @dataclass(frozen=True)
 class AgentSpec:
@@ -20,6 +22,7 @@ class AgentSpec:
     read_only: bool = True
     critical: bool = True
     focus: str = ""
+
 
 @dataclass
 class AgentResult:
@@ -33,51 +36,76 @@ class AgentResult:
     error: str | None = None
     memory_ids: list[str] = field(default_factory=list)
 
+
 class SharedTaskMemory:
-    """Append-only memory visible to every agent in one graph run."""
-    def __init__(self, path: Path, intent_digest: str) -> None:
+    """Bounded append-only memory for one graph run.
+
+    This is deliberately task-scoped working memory, not durable project memory;
+    durable memory remains owned by ``portable.agent_capabilities.PersistentMemory``.
+    """
+
+    def __init__(self, path: Path, intent_digest: str, *, max_entries: int = 256, max_chars: int = 200_000) -> None:
+        if max_entries < 1 or max_chars < 1:
+            raise ValueError("memory budgets must be positive")
         self.path = Path(path)
         self.intent_digest = intent_digest
+        self.max_entries = max_entries
+        self.max_chars = max_chars
+        self._lock = threading.RLock()
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def publish(self, *, agent: str, role: str, kind: str, text: str,
                 evidence: list[str] | None = None, confidence: float = 0.0) -> str:
+        clean = str(text).strip()
+        if not clean:
+            raise ValueError("shared memory text is required")
         payload = {"intent_digest": self.intent_digest, "agent": agent, "role": role,
-                   "kind": kind, "text": str(text).strip(),
+                   "kind": kind, "text": clean,
                    "evidence": sorted(set(evidence or [])),
                    "confidence": max(0.0, min(1.0, float(confidence))), "created_at": time.time()}
         memory_id = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[:20]
         payload["id"] = memory_id
-        with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n")
+        line = json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n"
+        with self._lock:
+            existing = self.snapshot(self.max_entries)
+            used = sum(len(json.dumps(row, ensure_ascii=False, sort_keys=True)) + 1 for row in existing)
+            if used + len(line) > self.max_chars:
+                raise ValueError("shared task memory budget exceeded")
+            with self.path.open("a", encoding="utf-8") as handle:
+                handle.write(line)
         return memory_id
 
     def snapshot(self, limit: int = 24) -> list[dict[str, Any]]:
-        if not self.path.exists():
+        if limit < 1 or not self.path.exists():
             return []
-        rows: list[dict[str, Any]] = []
-        for line in self.path.read_text(encoding="utf-8").splitlines():
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(row, dict) and row.get("intent_digest") == self.intent_digest:
-                rows.append(row)
-        return rows[-max(1, int(limit)):]
+        with self._lock:
+            rows: list[dict[str, Any]] = []
+            with self.path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(row, dict) and row.get("intent_digest") == self.intent_digest:
+                        rows.append(row)
+            return rows[-int(limit):]
 
     def compact_text(self, limit: int = 6000) -> str:
+        if limit < 1:
+            return ""
         rows = self.snapshot()
         if not rows:
             return "No shared task memory yet."
         parts: list[str] = []
         used = 0
-        for row in rows:
+        for row in reversed(rows):
             line = f"[{row.get('role')}] {row.get('kind')}: {row.get('text', '')}"
             if used + len(line) + 1 > limit:
                 break
             parts.append(line)
             used += len(line) + 1
-        return "\n".join(parts)
+        return "\n".join(reversed(parts))
+
 
 class GraphAgentTeam:
     """Run role agents through one canonical dependency contract and StateGraph executor."""
@@ -128,9 +156,6 @@ class GraphAgentTeam:
             def run(state: Mapping[str, Any], agent: AgentSpec = agent) -> Mapping[str, Any]:
                 deps = [state.get(f"result:{name}") for name in agent.depends_on]
                 if any(not item or item.get("status") != "passed" for item in deps):
-                    # Preserve the old scheduler contract: dependency-blocked roles
-                    # are represented in graph state for routing but are not exposed
-                    # as executed AgentResults.
                     return {f"result:{agent.name}": {"status": "blocked", "activated": False}}
                 prompt = f"""# AER graph agent
 
@@ -208,6 +233,7 @@ Read-only: {agent.read_only}
                 "shared_memory_entries": len(memory.snapshot(500)),
                 "accepted": accepted,
                 "execution_trace": list(run.trace), "execution_digest": run.digest}
+
 
 def team_for_route(route: Mapping[str, Any]) -> GraphAgentTeam:
     mode = str(route.get("mode", "implement"))
