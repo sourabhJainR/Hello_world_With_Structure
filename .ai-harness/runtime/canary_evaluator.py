@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic shadow/canary evaluation with bounded staged rollout."""
+"""Deterministic shadow/canary evaluation with staged rollout evidence binding."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -39,6 +39,7 @@ class EvaluationReport:
     verification_rate: float
     gate_passed: bool
     failures: tuple[str, ...]
+    context_evidence_digest: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +51,7 @@ class CanaryStage:
     verification_rate: float
     gate_passed: bool
     failures: tuple[str, ...]
+    context_evidence_digest: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,14 +61,19 @@ class CanaryPlan:
     promoted: bool
     halted_at: int | None
     reason: str
+    context_evidence_digest: str = ""
 
 
-def evaluate_shadow(candidate: PolicyCandidate, cases: Iterable[ReplayCase], runner: Callable[[ReplayCase, PolicyCandidate], Any]) -> EvaluationReport:
-    return _evaluate(candidate, cases, runner, mode="shadow")
+def _context_digest(context_evidence: Any | None) -> str:
+    return str(getattr(context_evidence, "evidence_digest", "") or "")
 
 
-def evaluate_canary(candidate: PolicyCandidate, cases: Iterable[ReplayCase], runner: Callable[[ReplayCase, PolicyCandidate], Any], *, min_pass_rate: float = 1.0, min_verification_rate: float = 1.0) -> EvaluationReport:
-    report = _evaluate(candidate, cases, runner, mode="canary")
+def evaluate_shadow(candidate: PolicyCandidate, cases: Iterable[ReplayCase], runner: Callable[[ReplayCase, PolicyCandidate], Any], *, context_evidence: Any | None = None) -> EvaluationReport:
+    return _evaluate(candidate, cases, runner, mode="shadow", context_evidence_digest=_context_digest(context_evidence))
+
+
+def evaluate_canary(candidate: PolicyCandidate, cases: Iterable[ReplayCase], runner: Callable[[ReplayCase, PolicyCandidate], Any], *, min_pass_rate: float = 1.0, min_verification_rate: float = 1.0, context_evidence: Any | None = None) -> EvaluationReport:
+    report = _evaluate(candidate, cases, runner, mode="canary", context_evidence_digest=_context_digest(context_evidence))
     gate = report.total > 0 and report.pass_rate >= min_pass_rate and report.verification_rate >= min_verification_rate
     return EvaluationReport(**{**asdict(report), "gate_passed": gate})
 
@@ -80,24 +87,26 @@ def evaluate_staged_canary(
     min_cases_per_stage: int = 3,
     min_pass_rate: float = 1.0,
     min_verification_rate: float = 1.0,
+    context_evidence: Any | None = None,
 ) -> CanaryPlan:
-    """Progress only when every bounded stage passes; halt on first regression."""
+    """Progress only when every bounded stage passes under the same evidence envelope."""
     all_cases = list(cases)
+    context_digest = _context_digest(context_evidence)
     stages: list[CanaryStage] = []
     for index, exposure in enumerate(exposures, start=1):
         if not all_cases:
-            return CanaryPlan(candidate.policy_id, tuple(stages), False, index, "empty-canary-corpus")
+            return CanaryPlan(candidate.policy_id, tuple(stages), False, index, "empty-canary-corpus", context_digest)
         count = max(min_cases_per_stage, int(round(len(all_cases) * max(0.0, min(1.0, exposure)))))
         selected = all_cases[:min(len(all_cases), count)]
-        report = evaluate_canary(candidate, selected, runner, min_pass_rate=min_pass_rate, min_verification_rate=min_verification_rate)
-        stage = CanaryStage(index, exposure, report.total, report.pass_rate, report.verification_rate, report.gate_passed, report.failures)
+        report = evaluate_canary(candidate, selected, runner, min_pass_rate=min_pass_rate, min_verification_rate=min_verification_rate, context_evidence=context_evidence)
+        stage = CanaryStage(index, exposure, report.total, report.pass_rate, report.verification_rate, report.gate_passed, report.failures, context_digest)
         stages.append(stage)
         if not report.gate_passed:
-            return CanaryPlan(candidate.policy_id, tuple(stages), False, index, "canary-gate-failed")
-    return CanaryPlan(candidate.policy_id, tuple(stages), True, None, "all-canary-stages-passed")
+            return CanaryPlan(candidate.policy_id, tuple(stages), False, index, "canary-gate-failed", context_digest)
+    return CanaryPlan(candidate.policy_id, tuple(stages), True, None, "all-canary-stages-passed", context_digest)
 
 
-def _evaluate(candidate: PolicyCandidate, cases: Iterable[ReplayCase], runner: Callable[[ReplayCase, PolicyCandidate], Any], *, mode: str) -> EvaluationReport:
+def _evaluate(candidate: PolicyCandidate, cases: Iterable[ReplayCase], runner: Callable[[ReplayCase, PolicyCandidate], Any], *, mode: str, context_evidence_digest: str = "") -> EvaluationReport:
     outcomes: list[EvaluationOutcome] = []
     failures: list[str] = []
     for case in cases:
@@ -120,7 +129,7 @@ def _evaluate(candidate: PolicyCandidate, cases: Iterable[ReplayCase], runner: C
         avg_token_cost=round(sum(x.token_cost for x in outcomes) / total, 3) if total else 0.0,
         pass_rate=round(passed / total, 3) if total else 0.0,
         verification_rate=round(verified / total, 3) if total else 0.0,
-        gate_passed=not failures and total > 0, failures=tuple(failures),
+        gate_passed=not failures and total > 0, failures=tuple(failures), context_evidence_digest=context_evidence_digest,
     )
 
 
