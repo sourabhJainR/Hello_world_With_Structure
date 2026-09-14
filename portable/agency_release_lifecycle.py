@@ -64,15 +64,23 @@ class ArtifactStore:
             raise FileNotFoundError(str(path))
         return digest.hexdigest()
 
+    def _existing_digest(self, destination: Path, source_was_file: bool) -> str:
+        if source_was_file:
+            files = [p for p in destination.rglob("*") if p.is_file()]
+            if len(files) != 1:
+                raise RuntimeError("immutable artifact payload shape changed")
+            return self._digest(files[0])
+        return self._digest(destination)
+
     def stage(self, source: str | Path, artifact_id: str) -> ArtifactRef:
         source_path = Path(source).expanduser().resolve()
         if not artifact_id.strip():
             raise ValueError("artifact_id is required")
+        source_was_file = source_path.is_file()
         digest = self._digest(source_path)
         destination = self.artifacts / digest
         if destination.exists():
-            existing = self._digest(destination)
-            if existing != digest:
+            if self._existing_digest(destination, source_was_file) != digest:
                 raise RuntimeError("artifact digest collision detected")
         else:
             temp = self.artifacts / f".{digest}.tmp"
@@ -141,8 +149,7 @@ class ArtifactStore:
                 state = ReleaseState("rollback", previous.artifact_id, previous.digest, previous.artifact_id, datetime.now(timezone.utc).isoformat(), reason + "; no previous promoted artifact available")
                 self._record(state)
                 return state
-            target = candidates[-1]
-            target_ref = self._ref_from_history(target)
+            target_ref = self._ref_from_history(candidates[-1])
             self._set_channel("current", target_ref)
             self._set_channel("canary", None)
             self._set_channel("shadow", None)
