@@ -94,7 +94,7 @@ class ArtifactStore:
             temp.replace(destination)
         size = sum(p.stat().st_size for p in destination.rglob("*") if p.is_file())
         ref = ArtifactRef(artifact_id, digest, str(destination), size)
-        self._write_json(destination / "artifact.json", {"artifact": ref.as_dict()})
+        self._write_json(self.artifacts / f"{digest}.json", {"artifact": ref.as_dict()})
         return ref
 
     def _read_channel(self, channel: str) -> ArtifactRef | None:
@@ -120,11 +120,10 @@ class ArtifactStore:
         temp.replace(path)
 
     def state(self) -> Mapping[str, object]:
-        return {
-            "shadow": self._read_channel("shadow").as_dict() if self._read_channel("shadow") else None,
-            "canary": self._read_channel("canary").as_dict() if self._read_channel("canary") else None,
-            "current": self._read_channel("current").as_dict() if self._read_channel("current") else None,
-        }
+        shadow = self._read_channel("shadow")
+        canary = self._read_channel("canary")
+        current = self._read_channel("current")
+        return {"shadow": shadow.as_dict() if shadow else None, "canary": canary.as_dict() if canary else None, "current": current.as_dict() if current else None}
 
     def transition(self, action: str, ref: ArtifactRef | None, reason: str) -> ReleaseState:
         if action not in ACTIONS:
@@ -142,28 +141,31 @@ class ArtifactStore:
             self._set_channel("shadow", None)
         else:
             if previous is None:
-                raise RuntimeError("rollback requested but no current artifact exists")
-            history = self._history()
-            candidates = [x for x in history if x.get("action") in {"promote", "rollback"} and x.get("artifact_id") and x.get("artifact_id") != previous.artifact_id]
+                state = ReleaseState("rollback", None, None, None, datetime.now(timezone.utc).isoformat(), reason + "; no active artifact to replace")
+                self._record(state)
+                return state
+            candidates = [x for x in self._history() if x.get("action") in {"promote", "rollback"} and x.get("artifact_id") and x.get("artifact_id") != previous.artifact_id]
             if not candidates:
-                raise RuntimeError("rollback requested but no previous promoted artifact exists")
-            target = candidates[-1]
-            target_ref = self._ref_from_history(target)
+                state = ReleaseState("rollback", previous.artifact_id, previous.digest, previous.artifact_id, datetime.now(timezone.utc).isoformat(), reason + "; no previous promoted artifact available")
+                self._record(state)
+                return state
+            target_ref = self._ref_from_history(candidates[-1])
             self._set_channel("current", target_ref)
             self._set_channel("canary", None)
             self._set_channel("shadow", None)
             ref = target_ref
         state = ReleaseState(action, ref.artifact_id if ref else None, ref.digest if ref else None, previous.artifact_id if previous else None, datetime.now(timezone.utc).isoformat(), reason)
-        with self.history.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(state.as_dict(), sort_keys=True) + "\n")
+        self._record(state)
         return state
 
     def apply_decision(self, decision: object, artifact: ArtifactRef | None = None) -> ReleaseState:
         action = str(getattr(decision, "action", ""))
         reason = str(getattr(decision, "reason", "release decision"))
-        if action == "rollback":
-            return self.transition("rollback", None, reason)
-        return self.transition(action, artifact, reason)
+        return self.transition(action, None if action == "rollback" else artifact, reason)
+
+    def _record(self, state: ReleaseState) -> None:
+        with self.history.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(state.as_dict(), sort_keys=True) + "\n")
 
     def _history(self) -> list[dict]:
         if not self.history.is_file():
