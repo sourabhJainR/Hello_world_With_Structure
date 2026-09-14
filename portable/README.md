@@ -102,7 +102,38 @@ A failed experiment reports the exact dataset item and metric below the threshol
 
 `retrieval_scores()` provides explicit precision and recall for expected versus selected repository paths. This complements the existing evidence-first retrieval layer and makes context selection measurable instead of relying only on the final answer.
 
-### What this adds to the AER control loop
+### Bounded feedback loops
+
+AER now incorporates the strongest execution pattern from Forward Future's Loopy project without importing its catalog/site or creating a second agent runtime. The runtime contract lives in `.ai-harness/runtime/feedback_loop.py` and is provider-neutral.
+
+```python
+from portable.feedback_loop import BoundedLoop, LoopAction, LoopDefinition, VerificationResult
+```
+
+The loop is deliberately finite and evidence-first:
+
+```text
+observe fresh state
+      -> choose one bounded action
+      -> act through host callback
+      -> verify with recorded evidence
+      -> record receipt
+      -> repeat or stop
+```
+
+`LoopDefinition` requires the objective, scope, acceptance check, and a finite pass boundary. `BoundedLoop` has explicit terminal states: `success`, `clean_no_op`, `blocked`, `approval_required`, `exhausted`, `no_progress`, and `error`.
+
+`VerificationResult` separates acceptance, completion, and measurable progress. A failed check is `blocked`; a verified completed objective is `success`; a verified pass with no measurable progress stops as `no_progress`; and an execution exception is `error`, never success.
+
+`LoopRunReceipt` contains the immutable loop-definition digest, scope, acceptance check, run boundary, every executed pass, evidence, terminal result, and next step. The receipt is suitable for later review/debrief and can feed the existing learning path. A single receipt does not establish a recurring pattern.
+
+For recurring engineering work, AER can use the same design to discover candidates in CI, maintenance, deployment, tests, runbooks, research, POC, review, and bug-fix workflows. A code pattern alone is only a candidate; the workflow must have fresh feedback that can change the next action. Tasks without that feedback remain one-shot workflows.
+
+Project loop persistence remains explicit: `LOOPS.md` is only created or changed when the user asks to save a reusable loop. Saved loop text is treated as untrusted reference data and never grants execution authority.
+
+The loop layer complements, rather than replaces, AER deployment gates. A loop may repeat verification or repair before release, but it cannot bypass regression, security, review, shadow, canary, promote, or rollback policy.
+
+## What this adds to the AER control loop
 
 ```text
 Intent / Contract
@@ -111,13 +142,14 @@ Intent / Contract
       -> Capability plan
       -> Agent execution
       -> Evaluation scores
+      -> bounded feedback passes
       -> Verification / review
       -> Regression experiment
       -> Shadow / canary
       -> Promote / monitor / rollback
 ```
 
-The important distinction is that observability records what happened, evaluation measures whether it was good, and AER policy decides whether the behavior is allowed to proceed. Telemetry and learned recommendations cannot weaken safety, security, or promotion gates.
+The important distinction is that observability records what happened, evaluation measures whether it was good, the bounded loop defines how repeated work stops, and AER policy decides whether behavior is allowed to proceed. Telemetry and learned recommendations cannot weaken safety, security, or promotion gates.
 
 ## Provider-native capabilities
 
@@ -234,6 +266,8 @@ install new version pin
 switch user-level current pointer
       |
 discover native capabilities + hooks
+      |
+observe -> choose -> act -> verify -> record -> repeat/stop
       |
 trace -> evaluate -> learn -> regression -> shadow -> canary -> promote -> monitor
       |
