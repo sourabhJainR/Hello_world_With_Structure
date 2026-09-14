@@ -56,5 +56,5 @@ jobs:
         run: python -m unittest tests/test_agency_execution_plan.py tests/test_agency_multi_specialist.py -v
       - name: Run v10 adaptive feedback tests
         run: python -m unittest tests/test_agency_adaptive_planning.py -v
-      - name: Run v11 retrieval and evaluation tests
-        run: python -m unittest tests/test_agency_codebase_context.py tests/test_agency_ragas_eval.py -v
+      - name: Run v11/v12 retrieval and evaluation tests
+        run: python -m unittest tests/test_agency_codebase_context.py tests/test_agency_ragas_eval.py tests/test_agency_graph_retrieval.py -v
