@@ -1,7 +1,9 @@
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
+from portable.agency_state_graph import InMemoryCheckpointStore
 from portable.task_planner import TaskPlan
 from runtime.graph_agent_team import AgentSpec, GraphAgentTeam, SharedTaskMemory, team_for_route
 
@@ -54,6 +56,59 @@ class GraphAgentTeamTests(unittest.TestCase):
             self.assertTrue(result["accepted"])
             self.assertIn("finding from planner", seen["builder"])
             self.assertEqual(result["shared_memory_entries"], 2)
+            self.assertEqual(result["execution_trace"], ["planner", "builder"])
+
+    def test_read_only_dependencies_run_in_parallel_through_state_graph(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory = SharedTaskMemory(Path(tmp) / "memory.jsonl", "intent-a")
+            active = 0
+            peak = 0
+            lock = threading.Lock()
+
+            def invoke(agent, prompt):
+                nonlocal active, peak
+                if agent.name in {"explorer", "researcher"}:
+                    with lock:
+                        active += 1
+                        peak = max(peak, active)
+                    import time as _time
+                    _time.sleep(0.03)
+                    with lock:
+                        active -= 1
+                return 0, agent.name, 0.01
+
+            team = GraphAgentTeam([
+                AgentSpec("planner", "planner"),
+                AgentSpec("explorer", "explorer", depends_on=("planner",)),
+                AgentSpec("researcher", "researcher", depends_on=("planner",)),
+                AgentSpec("builder", "builder", depends_on=("explorer", "researcher"), read_only=False),
+            ], max_parallel_read_only=2)
+            result = team.execute(task="X", intent_digest="intent-a", base_prompt="base", memory=memory, invoke_agent=invoke)
+            self.assertTrue(result["accepted"])
+            self.assertEqual(peak, 2)
+
+    def test_checkpoint_resume_does_not_repeat_completed_agents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            memory = SharedTaskMemory(Path(tmp) / "memory.jsonl", "intent-a")
+            store = InMemoryCheckpointStore()
+            calls = []
+
+            def invoke(agent, prompt):
+                calls.append(agent.name)
+                return 0, agent.name, 0.01
+
+            team = GraphAgentTeam([
+                AgentSpec("planner", "planner"),
+                AgentSpec("builder", "builder", depends_on=("planner",), read_only=False),
+            ])
+            first = team.execute(task="X", intent_digest="intent-a", base_prompt="base", memory=memory,
+                                 invoke_agent=invoke, checkpoint=store, run_id="resume-1", max_steps=1)
+            self.assertEqual(calls, ["planner"])
+            resumed = team.execute(task="X", intent_digest="intent-a", base_prompt="base", memory=memory,
+                                   invoke_agent=invoke, checkpoint=store, resume=True, run_id="resume-1")
+            self.assertTrue(resumed["accepted"])
+            self.assertEqual(calls, ["planner", "builder"])
+            self.assertEqual(resumed["execution_trace"], ["planner", "builder"])
 
     def test_route_creates_builder_verifier_and_reviews(self):
         team = team_for_route({"mode": "implement", "capabilities": [], "risk": "high"})
