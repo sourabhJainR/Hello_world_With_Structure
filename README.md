@@ -95,7 +95,7 @@ The repository includes dedicated coverage for:
 - dependency blocking and cycle rejection;
 - graph-phase construction and portable-bundle validation.
 
-The graph-specific CI workflow compiles the AER runtime, runs the graph and resilience suites plus `.ai-harness/tests`, and validates a fresh portable bundle. See [` .github/workflows/graph-runtime-check.yml`](.github/workflows/graph-runtime-check.yml).
+The graph-specific CI workflow compiles the AER runtime, runs the graph and resilience suites plus `.ai-harness/tests`, and validates a fresh portable bundle. See [`.github/workflows/graph-runtime-check.yml`](.github/workflows/graph-runtime-check.yml).
 
 ## AER CLI and portable distribution
 
@@ -376,7 +376,7 @@ The repository intentionally contains compatibility and historical documentation
 - [`docs/USAGE_AND_PLATFORM_INTEGRATION.md`](docs/USAGE_AND_PLATFORM_INTEGRATION.md) — platform usage and integration.
 - [`docs/ENGINEERING_WORK_REPORTS.md`](docs/ENGINEERING_WORK_REPORTS.md) — engineering work-report and evidence flow.
 - [`docs/REGRESSION_CANARY.md`](docs/REGRESSION_CANARY.md) — regression, shadow, and canary controls.
-- [`docs/ENGINEERING_DESIGN_POLICY.md`](.ai-harness/ENGINEERING_DESIGN_POLICY.md) — engineering-design guardrails.
+- [` .ai-harness/ENGINEERING_DESIGN_POLICY.md`](.ai-harness/ENGINEERING_DESIGN_POLICY.md) — engineering-design guardrails.
 
 ## Design principle
 
