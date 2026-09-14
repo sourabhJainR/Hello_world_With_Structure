@@ -8,6 +8,7 @@ from .agency_quality import ReviewFinding, QualityReceipt, evaluate
 from .agency_provenance import ProvenanceLedger
 from .agency_observability import Tracer
 from .agency_trace_export import RegressionLink, apply_regression_score, correlate_trace_with_regression
+from .agency_regression_loop import PromotionDecision, PromotionPolicy, RegressionPlan, RegressionRun, run_trace_regression_loop
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,8 @@ class ExecutionResult:
     receipt: QualityReceipt | None = None
     trace_id: str | None = None
     regression_link: RegressionLink | None = None
+    regression_run: RegressionRun | None = None
+    promotion_decision: PromotionDecision | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -88,6 +91,8 @@ class ExecutionResult:
             "receipt": self.receipt.as_dict() if self.receipt else None,
             "trace_id": self.trace_id,
             "regression": self.regression_link.as_dict() if self.regression_link else None,
+            "regression_run": self.regression_run.as_dict() if self.regression_run else None,
+            "promotion": self.promotion_decision.as_dict() if self.promotion_decision else None,
         }
 
     def provenance(self) -> ProvenanceLedger:
@@ -122,14 +127,18 @@ def _receipt_score(receipt: QualityReceipt | None) -> float:
     return max(0.0, min(1.0, sum(values) / (100 * len(values)))) if values else (1.0 if getattr(receipt, "passed", False) else 0.0)
 
 
-def execute(task: TaskProfile, worker: Callable[[TaskProfile, list[Assignment]], Mapping[str, object]], registry: Mapping[str, object] | None = None, rubric: Mapping[str, object] | None = None, support_limit: int | None = None, tracer: Tracer | None = None, regression_id: str | None = None, regression_result: object | None = None) -> ExecutionResult:
-    """Execute a task and optionally correlate its trace with a regression result.
+def execute(task: TaskProfile, worker: Callable[[TaskProfile, list[Assignment]], Mapping[str, object]], registry: Mapping[str, object] | None = None, rubric: Mapping[str, object] | None = None, support_limit: int | None = None, tracer: Tracer | None = None, regression_id: str | None = None, regression_result: object | None = None, regression_plan: RegressionPlan | None = None, promotion_policy: PromotionPolicy | None = None) -> ExecutionResult:
+    """Execute a task and optionally close the trace -> regression -> release loop.
 
-    The regression is supplied by the caller so existing regression engines remain
-    authoritative. Correlation enriches observability; it never overrides AER gates.
+    ``regression_result`` remains supported for backwards compatibility. When a
+    ``regression_plan`` is supplied, AER creates the run, executes every dataset
+    case, correlates the result with this trace, and computes a conservative
+    shadow/canary/promote/rollback decision.
     """
     if regression_result is not None and not regression_id:
         raise ValueError("regression_id is required when regression_result is supplied")
+    if regression_plan is not None and regression_result is not None:
+        raise ValueError("regression_plan and regression_result are mutually exclusive")
     tracer = tracer or Tracer()
     trace = tracer.start("aer.coding_task", {"task_id": task.task_id, "risk": task.risk, "mutation_mode": task.mutation_mode})
     try:
@@ -169,7 +178,26 @@ def execute(task: TaskProfile, worker: Callable[[TaskProfile, list[Assignment]],
         verify_span.finish({"passed": bool(getattr(result.receipt, "passed", False)), "quality": score})
         trace.score("task_quality", score, "quality receipt", "aer")
 
-        if regression_result is not None and regression_id:
+        if regression_plan is not None:
+            regression_span = trace.span("regression", "evaluation", {"dataset": regression_plan.dataset.name, "dataset_version": regression_plan.dataset.version})
+            regression_run, decision = run_trace_regression_loop(
+                trace,
+                regression_plan,
+                quality=score,
+                hard_gates=result.hard_gates,
+                policy=promotion_policy or PromotionPolicy(),
+                regression_id=regression_id,
+            )
+            result.regression_run = regression_run
+            result.regression_link = correlate_trace_with_regression(trace, regression_run.regression_id, regression_run.result)
+            apply_regression_score(trace, result.regression_link)
+            result.promotion_decision = decision
+            regression_span.score("regression_pass", 1.0 if regression_run.passed else 0.0, "AER-owned regression outcome", "regression")
+            regression_span.finish({"regression_id": regression_run.regression_id, "passed": regression_run.passed, "dataset_digest": regression_run.result.dataset_digest, "failures": regression_run.result.failures, "promotion": decision.action})
+            trace.metadata["promotion"] = decision.as_dict()
+            result.ledger.append(LedgerEntry("regression", f"{regression_run.regression_id}: {'passed' if regression_run.passed else 'failed'}"))
+            result.ledger.append(LedgerEntry("promotion", f"{decision.action}: {decision.reason}"))
+        elif regression_result is not None and regression_id:
             regression_span = trace.span("regression", "evaluation", {"regression_id": regression_id})
             result.regression_link = correlate_trace_with_regression(trace, regression_id, regression_result)
             apply_regression_score(trace, result.regression_link)
