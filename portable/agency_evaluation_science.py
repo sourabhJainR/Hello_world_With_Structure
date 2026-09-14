@@ -1,9 +1,4 @@
-"""Scientific evaluation primitives inspired by Agent Evaluation chapters.
-
-Keeps evaluation deterministic and dependency-free: repeated scores can be
-summarized with confidence intervals, paired deltas, and a conservative
-selection rule rather than relying on one lucky run.
-"""
+"""Dependency-free statistical primitives for agent evaluation."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,16 +22,26 @@ class MetricSummary:
 
 
 def summarize(name: str, values: Iterable[float], confidence_z: float = 1.96) -> MetricSummary:
+    """Summarize samples without assuming their numeric range.
+
+    Confidence intervals are intentionally not clipped to [0, 1]: paired deltas,
+    latency changes, costs, and other evaluation metrics can be negative or exceed
+    one. Range validation belongs to the metric-specific gate.
+    """
+    if not name.strip():
+        raise ValueError("metric name is required")
     samples = [float(x) for x in values]
     if not samples:
         raise ValueError("at least one evaluation sample is required")
-    if confidence_z <= 0:
-        raise ValueError("confidence_z must be positive")
+    if not all(math.isfinite(x) for x in samples):
+        raise ValueError("evaluation samples must be finite")
+    if confidence_z <= 0 or not math.isfinite(confidence_z):
+        raise ValueError("confidence_z must be a finite positive value")
     average = mean(samples)
     deviation = stdev(samples) if len(samples) > 1 else 0.0
-    error = deviation / math.sqrt(len(samples)) if samples else 0.0
+    error = deviation / math.sqrt(len(samples))
     margin = confidence_z * error
-    return MetricSummary(name, len(samples), average, deviation, error, max(0.0, average - margin), min(1.0, average + margin))
+    return MetricSummary(name, len(samples), average, deviation, error, average - margin, average + margin)
 
 
 def paired_delta(baseline: Iterable[float], candidate: Iterable[float]) -> MetricSummary:
@@ -53,7 +58,11 @@ def select_candidate(
     minimum_mean: float = 0.0,
     minimum_samples: int = 1,
 ) -> tuple[str, tuple[MetricSummary, ...]]:
-    summaries = tuple(summarize(name, values) for name, values in candidates.items())
+    if minimum_samples < 1:
+        raise ValueError("minimum_samples must be positive")
+    if not math.isfinite(float(minimum_mean)):
+        raise ValueError("minimum_mean must be finite")
+    summaries = tuple(summarize(name, values) for name, values in sorted(candidates.items()))
     eligible = [s for s in summaries if s.count >= minimum_samples and s.mean >= minimum_mean]
     if not eligible:
         raise ValueError("no candidate satisfies evaluation gates")
