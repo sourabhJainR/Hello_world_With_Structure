@@ -1,11 +1,4 @@
-"""Executable artifact lifecycle for AER release decisions.
-
-The lifecycle turns a PromotionDecision into an observable, reversible state
-transition. It is deliberately local and provider-neutral: an artifact is
-content-addressed, copied into an immutable store, and referenced by channels.
-No deployment platform is required, while platform adapters can mirror the
-same transitions later.
-"""
+"""Executable artifact lifecycle for AER release decisions."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,7 +8,6 @@ import json
 from pathlib import Path
 import shutil
 from typing import Mapping
-
 
 ACTIONS = {"shadow", "canary", "promote", "rollback"}
 
@@ -149,7 +141,8 @@ class ArtifactStore:
                 state = ReleaseState("rollback", previous.artifact_id, previous.digest, previous.artifact_id, datetime.now(timezone.utc).isoformat(), reason + "; no previous promoted artifact available")
                 self._record(state)
                 return state
-            target_ref = self._ref_from_history(candidates[-1])
+            target = candidates[-1]
+            target_ref = self._ref_from_history(target)
             self._set_channel("current", target_ref)
             self._set_channel("canary", None)
             self._set_channel("shadow", None)
@@ -180,9 +173,12 @@ class ArtifactStore:
                 values.append(value)
         return values
 
-    @staticmethod
-    def _ref_from_history(value: Mapping[str, object]) -> ArtifactRef:
-        return ArtifactRef(str(value["artifact_id"]), str(value["digest"]), str(value.get("path", "")), int(value.get("size", 0)))
+    def _ref_from_history(self, value: Mapping[str, object]) -> ArtifactRef:
+        digest = str(value["digest"])
+        path = self.artifacts / digest
+        if not path.exists():
+            raise RuntimeError(f"rollback artifact is missing: {digest}")
+        return ArtifactRef(str(value["artifact_id"]), digest, str(path), int(value.get("size", 0)))
 
 
 def apply_promotion_decision(store: ArtifactStore, decision: object, artifact: ArtifactRef | None = None) -> ReleaseState:
