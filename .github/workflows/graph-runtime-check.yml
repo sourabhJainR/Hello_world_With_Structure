@@ -9,6 +9,7 @@ on:
       - '.ai-harness/resilient_provider.py'
       - 'portable/agency_state_graph.py'
       - 'tests/test_agency_state_graph.py'
+      - 'tests/test_graph_agent_team.py'
       - 'tests/test_response_resilience.py'
       - '.github/workflows/graph-runtime-check.yml'
   push:
@@ -19,6 +20,7 @@ on:
       - '.ai-harness/resilient_provider.py'
       - 'portable/agency_state_graph.py'
       - 'tests/test_agency_state_graph.py'
+      - 'tests/test_graph_agent_team.py'
       - 'tests/test_response_resilience.py'
       - '.github/workflows/graph-runtime-check.yml'
 
@@ -35,6 +37,7 @@ jobs:
       - name: Run graph and response resilience tests
         run: |
           python -m unittest tests.test_agency_state_graph -v
+          python -m unittest tests.test_graph_agent_team -v
           python -m unittest tests.test_response_resilience -v
           python -m unittest discover -s .ai-harness/tests -v
       - name: Validate portable build
