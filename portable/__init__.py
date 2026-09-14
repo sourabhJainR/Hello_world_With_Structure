@@ -13,6 +13,7 @@ from .automation_scheduler import AutomationScheduler, Schedule
 from .output_quality import OutputQualityGate, QualityResult
 from .feedback_loop import BoundedLoop, LoopAction, LoopDefinition, LoopPass, LoopRunReceipt, VerificationResult
 from .agency_provenance import ProvenanceLedger, ProvenanceRecord
+from .engineering_design_guard import DesignDimension, DesignFinding, DesignReviewReceipt, EngineeringDesignGuard, FindingSeverity
 
 __all__ = [
     "main", "AdaptiveRuntime", "HookBus", "HookDecision", "HookEvent", "HookPhase", "HookedExecution",
@@ -21,5 +22,6 @@ __all__ = [
     "CAPABILITIES", "Capability", "CapabilityFabric", "ProviderAdapter", "ProviderAdapterRegistry",
     "MemoryRecord", "PersistentMemory", "AutomationScheduler", "Schedule", "OutputQualityGate", "QualityResult",
     "BoundedLoop", "LoopAction", "LoopDefinition", "LoopPass", "LoopRunReceipt", "VerificationResult",
-    "ProvenanceLedger", "ProvenanceRecord",
+    "ProvenanceLedger", "ProvenanceRecord", "DesignDimension", "DesignFinding", "DesignReviewReceipt",
+    "EngineeringDesignGuard", "FindingSeverity",
 ]

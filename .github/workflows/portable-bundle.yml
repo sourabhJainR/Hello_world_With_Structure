@@ -20,6 +20,7 @@ on:
       - 'tests/test_bidirectional_install.py'
       - 'tests/test_contract_alignment.py'
       - 'tests/test_graph_agent_team.py'
+      - 'tests/test_engineering_design_guard.py'
       - '.github/workflows/portable-bundle.yml'
       - '.github/actions/publish-ci-artifacts/**'
 
@@ -41,7 +42,7 @@ jobs:
       - name: Run portable bundle tests
         run: |
           set -o pipefail
-          PYTHONPATH=.:.ai-harness python -m unittest tests.test_portable_aer tests.test_task_planner tests.test_impact_analysis tests.test_bidirectional_install tests.test_contract_alignment tests.test_graph_agent_team -v 2>&1 | tee ci-artifacts/portable-tests.log
+          PYTHONPATH=.:.ai-harness python -m unittest tests.test_portable_aer tests.test_task_planner tests.test_impact_analysis tests.test_bidirectional_install tests.test_contract_alignment tests.test_graph_agent_team tests.test_engineering_design_guard -v 2>&1 | tee ci-artifacts/portable-tests.log
       - name: Build bundle
         run: python aer_cli.py build --output aer-portable.zip
       - name: Verify bundle
