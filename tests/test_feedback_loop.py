@@ -41,7 +41,7 @@ def test_success_receipt_is_digest_bound() -> None:
     assert result.passes[-1].complete is True
 
 
-def test_loop_receipt_is_chained_into_provenance() -> None:
+def test_loop_receipt_is_chained_into_provenance_and_can_continue_to_rollout() -> None:
     ledger = ProvenanceLedger()
     context_digest = "ctx-123"
 
@@ -61,12 +61,25 @@ def test_loop_receipt_is_chained_into_provenance() -> None:
         artifact_ids=("artifact-1",),
     )
 
+    rollout_record = ledger.append_evidence_event(
+        run_id="run-123",
+        event="shadow.started",
+        context_evidence_digest=context_digest,
+        detail={
+            "loop_receipt_digest": result.receipt_digest,
+            "loop_provenance_record_hash": result.provenance_record_hash,
+            "stage": "shadow",
+        },
+        artifact_ids=("artifact-1",),
+    )
+
     ledger.verify()
     assert result.result == "success"
     assert result.context_evidence_digest == context_digest
-    assert result.provenance_record_hash == ledger.records[-1].record_hash
+    assert result.provenance_record_hash == ledger.records[-2].record_hash
+    assert rollout_record.parent_hash == result.provenance_record_hash
     assert [r.event for r in ledger.records] == [
-        "loop.started", "loop.pass.completed", "loop.completed"
+        "loop.started", "loop.pass.completed", "loop.completed", "shadow.started"
     ]
     assert all("artifact-1" in record.artifact_ids for record in ledger.records)
     assert all(context_digest in record.detail for record in ledger.records)
