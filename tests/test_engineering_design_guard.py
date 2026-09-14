@@ -35,6 +35,7 @@ def test_complete_domain_data_and_refactoring_contract_is_ready():
             "construction": "validate boundary inputs and preserve diagnostic errors",
             "compatibility": "existing API remains backward compatible",
             "complexity": "reduce caller knowledge by hiding invoice state transitions",
+            "resilience": "not_applicable: no external or asynchronous dependency changes",
         },
     )
 
@@ -43,10 +44,11 @@ def test_complete_domain_data_and_refactoring_contract_is_ready():
     assert receipt.receipt_digest
 
 
-def test_not_applicable_requires_a_reason():
+def test_not_applicable_requires_a_reason_for_relevant_dimension():
     receipt = EngineeringDesignGuard.review(
-        intent="Rename a local pure function",
-        changed_paths=["portable/naming.py"],
+        intent="Change retry behavior for an outbound client",
+        changed_paths=["portable/client.py"],
+        risk="medium",
         design={"resilience": "not_applicable"},
     )
 
