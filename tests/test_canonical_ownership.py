@@ -44,6 +44,34 @@ def test_repository_intelligence_is_budgeted_and_secret_aware(tmp_path: Path):
     assert packed.token_estimate <= 100
 
 
+def test_repository_intelligence_traverses_non_ignored_project_metadata(tmp_path: Path):
+    metadata = tmp_path / ".agents"
+    metadata.mkdir()
+    (metadata / "skill.md").write_text("# Coding skill\nUse semantic retrieval.\n", encoding="utf-8")
+    hidden = tmp_path / ".hidden"
+    hidden.mkdir()
+    (hidden / "ignored.txt").write_text("hidden implementation", encoding="utf-8")
+
+    intelligence = RepositoryIntelligence(tmp_path)
+    packed = intelligence.pack(include=(".agents/*",), token_budget=100)
+
+    paths = {item.path for item in packed.files}
+    assert ".agents/skill.md" in paths
+    assert ".hidden/ignored.txt" not in paths
+
+
+def test_repository_intelligence_refreshes_semantic_index_after_mutation(tmp_path: Path):
+    (tmp_path / "service.py").write_text("class Service:\n    def run(self):\n        return 'old'\n", encoding="utf-8")
+    intelligence = RepositoryIntelligence(tmp_path)
+    before = intelligence.retrieve("Service run", token_budget=100)
+    assert "service.py" in before.relevant_paths
+
+    (tmp_path / "new_service.py").write_text("class NewService:\n    def run(self):\n        return 'new'\n", encoding="utf-8")
+    intelligence.refresh()
+    after = intelligence.retrieve("NewService run", token_budget=100)
+    assert "new_service.py" in after.relevant_paths
+
+
 def test_repository_intelligence_reuses_graph_aware_retrieval(tmp_path: Path):
     (tmp_path / "service.py").write_text("class Service:\n    def run(self):\n        return 'ok'\n", encoding="utf-8")
     intelligence = RepositoryIntelligence(tmp_path)
