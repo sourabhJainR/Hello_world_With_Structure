@@ -13,7 +13,6 @@ import time
 from typing import Any, Callable, Mapping, Protocol
 
 
-# Chapter 2: context engineering
 @dataclass(frozen=True)
 class ContextItem:
     key: str
@@ -51,12 +50,11 @@ def build_context(items: list[ContextItem], token_budget: int, reserve_tokens: i
     return ContextPack(tuple(selected), used, tuple(omitted), digest)
 
 
-# Chapter 3: persistent memory / knowledge lifecycle
 @dataclass(frozen=True)
 class MemoryFact:
     key: str
     value: str
-    kind: str = "semantic"  # episodic | semantic | procedural
+    kind: str = "semantic"
     source: str = ""
     confidence: float = 1.0
     timestamp: float = field(default_factory=time.time)
@@ -94,12 +92,11 @@ class MemoryStore:
         return tuple(sorted(self._facts.values(), key=lambda x: x.key))
 
 
-# Chapter 4: active tool discovery + execution policy
 @dataclass(frozen=True)
 class ToolSpec:
     name: str
     description: str
-    category: str  # perception | execution | collaboration | event | communication
+    category: str
     risk: str = "low"
     permissions: tuple[str, ...] = ()
     handler: Callable[..., Any] | None = None
@@ -130,8 +127,13 @@ class ToolRegistry:
             raise ValueError("tool name and handler are required")
         self._tools[tool.name] = tool
 
+    def list_tools(self) -> tuple[ToolSpec, ...]:
+        return tuple(self._tools[name] for name in sorted(self._tools))
+
     def discover(self, query: str, limit: int = 5) -> tuple[ToolSpec, ...]:
         terms = {x.lower() for x in query.split() if len(x) > 1}
+        if not terms:
+            return self.list_tools()[:limit]
         ranked = []
         for tool in self._tools.values():
             haystack = f"{tool.name} {tool.description} {tool.category}".lower()
@@ -149,7 +151,6 @@ class ToolRegistry:
         return tool.handler(**dict(arguments))  # type: ignore[misc]
 
 
-# Chapter 6: event-driven / interruptible interaction
 @dataclass(frozen=True)
 class AgentEvent:
     event_id: str
@@ -182,7 +183,6 @@ class EventRuntime:
         return [handler(event) for handler in self._handlers.get(event.kind, ())]
 
 
-# Chapter 9: continual evolution
 @dataclass(frozen=True)
 class LearningSignal:
     trace_id: str
@@ -194,7 +194,7 @@ class LearningSignal:
 @dataclass(frozen=True)
 class EvolutionCandidate:
     candidate_id: str
-    carrier: str  # knowledge | prompt | skill | program | harness | parameter
+    carrier: str
     change: str
     evidence_trace_ids: tuple[str, ...]
     baseline_score: float
@@ -209,7 +209,6 @@ def validate_candidate(candidate: EvolutionCandidate, minimum_improvement: float
     return candidate.improvement >= minimum_improvement and bool(candidate.evidence_trace_ids)
 
 
-# Chapter 10: multi-agent collaboration
 @dataclass(frozen=True)
 class AgentNode:
     agent_id: str
