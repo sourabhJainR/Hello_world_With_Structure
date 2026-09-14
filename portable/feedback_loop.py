@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Sequence
 
 LOOP_TERMINAL_STATES = (
@@ -262,14 +264,13 @@ class FeedbackPolicy:
 class FeedbackLoop:
     """Compatibility learning store; bounded execution stays in BoundedLoop."""
 
-    def __init__(self, root, policy: FeedbackPolicy | None = None) -> None:
-        self.root = root.expanduser().resolve() if hasattr(root, "expanduser") else root
+    def __init__(self, root: Path, policy: FeedbackPolicy | None = None) -> None:
+        self.root = root.expanduser().resolve()
         self.policy = policy or FeedbackPolicy()
         self.path = self.root / ".ai-harness" / "learning" / "feedback-events.jsonl"
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
     def observe(self, *, task_id: str, outcome: str, verified: bool, strategy: str, evidence: list[str] | None = None) -> dict:
-        import time
         event = {
             "ts": time.time(), "task_id": task_id, "outcome": outcome,
             "verified": bool(verified), "strategy": strategy,
