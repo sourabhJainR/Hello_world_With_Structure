@@ -11,6 +11,7 @@ def test_shadow_canary_promote_and_rollback(tmp_path: Path):
     source2.write_text("two", encoding="utf-8")
     store = ArtifactStore(tmp_path / "release")
     a = store.stage(source1, "v1")
+    assert store.stage(source1, "v1-repeat").digest == a.digest
     b = store.stage(source2, "v2")
 
     shadow = store.apply_decision(PromotionDecision("shadow", "quality", 0.8, True, "r1"), a)
