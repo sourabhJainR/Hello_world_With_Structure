@@ -45,6 +45,18 @@ Prefer the smallest change that satisfies the intent and preserves existing cont
 
 Do not introduce parallel stores or duplicate ownership merely to support a new feature. Extend the canonical path and add a compatibility adapter when older callers need it.
 
+## Existing runtime contracts
+
+Keep these established runtime entry points aligned with the orchestration workflow:
+
+- `portable.task_planner.TaskPlan`
+- `portable.impact_analysis`
+- `.ai-harness/runtime/tool_runner.py`
+- `.ai-harness/runtime/lsp_server.py`
+- `.ai-harness/runtime/feedback_loop.py`
+- `.ai-harness/runtime/auto_compaction.py`
+- `downgrade=explicit_install_only`
+
 ## Evidence and verification
 
 Evidence must be traceable to a source, bounded by the context plan, and sufficient for the claim. Verification is independent of generation. For implementation tasks, cover changed behavior with focused unit tests and run the relevant existing regression suite.
