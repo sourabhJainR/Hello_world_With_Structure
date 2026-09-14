@@ -68,7 +68,14 @@ class RepositoryIntelligence:
     def __init__(self, root: str | Path, *, extra_ignores: Iterable[str] = ()) -> None:
         self.root = Path(root).resolve()
         self.extra_ignores = frozenset(extra_ignores)
-        self.index = CodebaseIndex.build(self.root, ignores=self.ignore_names())
+        self.index = self._build_index()
+
+    def _build_index(self) -> CodebaseIndex:
+        return CodebaseIndex.build(self.root, ignores=self.ignore_names())
+
+    def refresh(self) -> None:
+        """Refresh semantic indexing after repository mutations."""
+        self.index = self._build_index()
 
     def ignore_names(self) -> frozenset[str]:
         return DEFAULT_IGNORES | self.extra_ignores
@@ -91,7 +98,7 @@ class RepositoryIntelligence:
 
         candidates = []
         for current, dirs, names in os.walk(self.root):
-            dirs[:] = [d for d in dirs if d not in self.ignore_names() and not d.startswith(".")]
+            dirs[:] = [d for d in dirs if d not in self.ignore_names()]
             for name in names:
                 path = Path(current) / name
                 rel = path.relative_to(self.root).as_posix()
