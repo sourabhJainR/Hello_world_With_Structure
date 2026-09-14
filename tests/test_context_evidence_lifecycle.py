@@ -61,7 +61,6 @@ class ContextEvidenceLifecycleTests(unittest.TestCase):
 
             for state in (shadow, canary, promoted, rollback):
                 self.assertEqual(state.context_evidence_digest, "evidence-abc")
-                self.assertIn("context_evidence_digest=evidence-abc", state.reason) if False else None
             self.assertEqual(promoted.verification_digest, "verification-123")
             self.assertEqual(rollback.verification_digest, "verification-456")
 
