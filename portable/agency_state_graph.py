@@ -1,22 +1,28 @@
 """Small provider-neutral state graph runtime inspired by durable agent graphs.
 
-AER deliberately does not depend on LangGraph. This module adopts the useful
+AER deliberately does not depend on LangGraph. This module adopts useful
 architectural ideas: explicit state, reducer-based merges, conditional routing,
-bounded retries, checkpoint-after-step durability, interrupts, and deterministic
-execution traces. Model/provider/tool execution remains outside the runtime.
+bounded retries, checkpoint-after-step durability, interrupts, deterministic
+execution traces, and bounded parallel supersteps. Model/provider/tool execution
+remains outside the runtime.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from hashlib import sha256
-from typing import Any, Callable, Iterable, Mapping, MutableMapping, Sequence
-
+from typing import Any, Callable, Mapping, MutableMapping, Protocol, Sequence
 
 State = MutableMapping[str, Any]
 Node = Callable[[Mapping[str, Any]], Mapping[str, Any]]
 Router = Callable[[Mapping[str, Any]], str | Sequence[str]]
 Reducer = Callable[[Any, Any], Any]
-CheckpointStore = Callable[["Checkpoint"], None]
+
+
+class CheckpointStore(Protocol):
+    def save(self, checkpoint: "Checkpoint") -> None: ...
+
+    def load(self, run_id: str) -> "Checkpoint | None": ...
 
 
 @dataclass(frozen=True)
@@ -100,9 +106,10 @@ class InMemoryCheckpointStore:
 class StateGraph:
     """Deterministic stateful graph executor.
 
-    Nodes return partial state. Multiple nodes scheduled in the same superstep
-    are evaluated against the same state snapshot and their updates are merged
-    through declared reducers. This prevents accidental ordering dependence.
+    Nodes scheduled in the same superstep receive the same state snapshot.
+    Parallel-safe nodes may be evaluated concurrently, while updates are merged
+    back in graph order through declared reducers. This preserves deterministic
+    state semantics without forcing every node to be concurrency-safe.
     """
 
     START = "__start__"
@@ -128,6 +135,7 @@ class StateGraph:
         return self
 
     def add_edge(self, source: str, target: str) -> "StateGraph":
+        self._validate_source(source)
         self._validate_target(target)
         self._edges[source] = self._edges.get(source, ()) + (target,)
         return self
@@ -157,6 +165,10 @@ class StateGraph:
             raise ValueError("graph must define an entry edge from START")
         return CompiledStateGraph(self)
 
+    def _validate_source(self, source: str) -> None:
+        if source != self.START and source not in self._nodes:
+            raise ValueError(f"unknown source node: {source}")
+
     def _validate_target(self, target: str, *, allow_end: bool = True) -> None:
         if target != self.END and target not in self._nodes:
             raise ValueError(f"unknown graph node: {target}")
@@ -176,32 +188,51 @@ class CompiledStateGraph:
         checkpoint: CheckpointStore | None = None,
         resume: bool = False,
         max_steps: int = 100,
+        parallel_nodes: Callable[[str], bool] | None = None,
+        max_parallel_nodes: int = 1,
     ) -> GraphRun:
         if max_steps < 1:
             raise ValueError("max_steps must be positive")
+        if max_parallel_nodes < 1:
+            raise ValueError("max_parallel_nodes must be positive")
         store = checkpoint
-        existing = getattr(store, "load", lambda _run_id: None)(run_id) if resume and store else None
+        existing = store.load(run_id) if resume and store else None
         current: dict[str, Any] = dict(existing.state if existing else state)
         next_nodes = list(existing.next_nodes if existing else self._g._edges[StateGraph.START])
         events: list[GraphEvent] = []
         trace = list(existing.trace if existing else ())
         step = existing.step if existing else 0
+        skip_before_once = existing is not None
 
         while next_nodes:
             if step >= max_steps:
                 raise RuntimeError(f"graph exceeded max_steps={max_steps}")
             step += 1
             snapshot = dict(current)
+            if not skip_before_once:
+                for name in next_nodes:
+                    if name != StateGraph.END and name in self._g._before:
+                        cp = Checkpoint(run_id, step - 1, dict(current), tuple(next_nodes), tuple(trace))
+                        if store:
+                            store.save(cp)
+                        raise GraphInterrupt(run_id, step - 1, dict(current), tuple(next_nodes), f"interrupted before {name}")
+            skip_before_once = False
             updates: list[tuple[str, Mapping[str, Any], int]] = []
-            for name in tuple(next_nodes):
+            parallel = [name for name in next_nodes if name != StateGraph.END and parallel_nodes and parallel_nodes(name)]
+            sequential = [name for name in next_nodes if name != StateGraph.END and name not in parallel]
+            results_by_name: dict[str, tuple[Mapping[str, Any], int]] = {}
+
+            if parallel:
+                with ThreadPoolExecutor(max_workers=min(max_parallel_nodes, len(parallel))) as pool:
+                    futures = {name: pool.submit(self._run_node, name, snapshot) for name in parallel}
+                    for name in parallel:
+                        results_by_name[name] = futures[name].result()
+            for name in sequential:
+                results_by_name[name] = self._run_node(name, snapshot)
+            for name in next_nodes:
                 if name == StateGraph.END:
                     continue
-                if name in self._g._before and not (existing and step == existing.step + 1):
-                    cp = Checkpoint(run_id, step - 1, dict(current), tuple(next_nodes), tuple(trace))
-                    if store:
-                        store.save(cp)
-                    raise GraphInterrupt(run_id, step - 1, dict(current), tuple(next_nodes), f"interrupted before {name}")
-                output, attempts = self._run_node(name, snapshot)
+                output, attempts = results_by_name[name]
                 updates.append((name, output, attempts))
 
             for name, output, attempts in updates:
@@ -221,7 +252,6 @@ class CompiledStateGraph:
             next_nodes = list(dict.fromkeys(next_set))
             if store:
                 store.save(Checkpoint(run_id, step, dict(current), tuple(next_nodes), tuple(trace)))
-            existing = None
             if StateGraph.END in next_nodes:
                 next_nodes = []
 
@@ -236,7 +266,7 @@ class CompiledStateGraph:
                 if not isinstance(output, Mapping):
                     raise TypeError(f"node {name} must return a mapping")
                 return output, attempt
-            except Exception as exc:  # retry is bounded; final exception is preserved
+            except Exception as exc:
                 last = exc
         assert last is not None
         raise last

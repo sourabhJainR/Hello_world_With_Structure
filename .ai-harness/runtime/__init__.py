@@ -27,9 +27,7 @@ def _phase_team(route: dict[str, Any], phase: str, graph_types):
 
     phase = str(phase)
     if phase == "context":
-        agents = common + [
-            AgentSpec("context-auditor", "context auditor", depends_on=("explorer",), read_only=True, focus="Validate repository context, scope, relevant evidence and missing information."),
-        ]
+        agents = common + [AgentSpec("context-auditor", "context auditor", depends_on=("explorer",), read_only=True, focus="Validate repository context, scope, relevant evidence and missing information.")]
     elif phase == "research":
         agents = common + [
             AgentSpec("researcher", "researcher", depends_on=("planner",), read_only=True, focus="Gather task-relevant technical evidence, alternatives and current practices."),
@@ -63,17 +61,11 @@ def _phase_team(route: dict[str, Any], phase: str, graph_types):
             AgentSpec("correctness-reviewer", "correctness reviewer", depends_on=("builder", "verifier"), read_only=True, focus="Confirm the repair solves the actual failure without regression."),
         ]
     elif phase == "grill":
-        agents = common + [
-            AgentSpec("risk-reviewer", "risk reviewer", depends_on=("explorer",), read_only=True, focus="Stress-test assumptions, failure modes, operational risks and edge cases."),
-        ]
+        agents = common + [AgentSpec("risk-reviewer", "risk reviewer", depends_on=("explorer",), read_only=True, focus="Stress-test assumptions, failure modes, operational risks and edge cases.")]
     elif phase == "review":
-        agents = common + [
-            AgentSpec("correctness-reviewer", "correctness reviewer", depends_on=("explorer",), read_only=True, focus="Check correctness, compatibility, edge cases, tests and task completeness."),
-        ]
+        agents = common + [AgentSpec("correctness-reviewer", "correctness reviewer", depends_on=("explorer",), read_only=True, focus="Check correctness, compatibility, edge cases, tests and task completeness.")]
     else:
-        agents = common + [
-            AgentSpec("phase-reviewer", "phase reviewer", depends_on=("explorer",), read_only=True, focus="Review the current phase result for correctness, safety and completeness."),
-        ]
+        agents = common + [AgentSpec("phase-reviewer", "phase reviewer", depends_on=("explorer",), read_only=True, focus="Review the current phase result for correctness, safety and completeness.")]
 
     review_names = {a.name for a in agents if "reviewer" in a.name or a.name in {"risk-reviewer", "context-auditor"}}
     if risk in {"high", "critical"} and phase in {"execute", "debug", "poc", "repair", "review", "grill"}:
@@ -84,9 +76,7 @@ def _phase_team(route: dict[str, Any], phase: str, graph_types):
         ])
         review_names.update({"security-reviewer", "architecture-reviewer"})
 
-    final_deps = tuple(a.name for a in agents if a.name in review_names)
-    if not final_deps:
-        final_deps = (agents[-1].name,)
+    final_deps = tuple(a.name for a in agents if a.name in review_names) or (agents[-1].name,)
     agents.append(AgentSpec("synthesizer", "team synthesizer", depends_on=final_deps, read_only=True, focus="Synthesize evidence, decisions, unresolved risks and the recommended next action for this phase."))
     return GraphAgentTeam(agents)
 
@@ -103,13 +93,16 @@ def _install_graph_team_bridge() -> None:
     if not getattr(GraphAgentTeam.execute, "_aer_guarded", False):
         original_execute = GraphAgentTeam.execute
 
-        def guarded_execute(self, *, task, intent_digest, base_prompt, memory, invoke_agent):
+        def guarded_execute(self, *, task, intent_digest, base_prompt, memory, invoke_agent,
+                           checkpoint=None, resume=False, run_id="graph-agent-team", max_steps=100):
             def guarded_invoke(agent, prompt):
                 if agent.read_only:
                     prompt += "\n\n## Security execution mode\npatch_allowed: false\n"
                 return invoke_agent(agent, prompt)
 
-            return original_execute(self, task=task, intent_digest=intent_digest, base_prompt=base_prompt, memory=memory, invoke_agent=guarded_invoke)
+            return original_execute(self, task=task, intent_digest=intent_digest, base_prompt=base_prompt,
+                                    memory=memory, invoke_agent=guarded_invoke, checkpoint=checkpoint,
+                                    resume=resume, run_id=run_id, max_steps=max_steps)
 
         guarded_execute._aer_guarded = True
         GraphAgentTeam.execute = guarded_execute
@@ -156,24 +149,22 @@ def _install_graph_team_bridge() -> None:
                 agent_prompt.write_text(prompt, encoding="utf-8")
                 return original_invoke(provider, agent_prompt, f"graph-{phase}-{agent.name}", run_dir, timeout, dry_run, logger)
 
-            result = team.execute(task=task, intent_digest=intent_digest, base_prompt=base_prompt, memory=memory, invoke_agent=invoke_agent)
+            result = team.execute(task=task, intent_digest=intent_digest, base_prompt=base_prompt,
+                                  memory=memory, invoke_agent=invoke_agent)
             result["phase"] = phase
             result["duration_seconds"] = round(engine.time.monotonic() - started, 3)
             result["provider"] = provider.get("name")
             result["mode"] = "graph-agent-team"
-            result["collaboration"] = {
-                "enabled": True,
-                "phase_scoped": True,
-                "shared_memory": True,
-                "dependency_graph": True,
-                "parallel_read_only": True,
-                "serialized_mutations": True,
-                "fail_closed": True,
-            }
+            result["collaboration"] = {"enabled": True, "phase_scoped": True, "shared_memory": True,
+                                       "dependency_graph": True, "parallel_read_only": True,
+                                       "serialized_mutations": True, "fail_closed": True}
             marker.write_text(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
             output = "GRAPH_TEAM_JSON: " + json.dumps(result, ensure_ascii=False, sort_keys=True)
             (run_dir / f"{phase}.output.md").write_text(output + "\n", encoding="utf-8")
-            return (0 if result.get("accepted") else 1), output, float(result["duration_seconds"])
+            # Dry-run validates graph construction and artifact generation. Provider
+            # execution is intentionally simulated by engine.invoke and therefore
+            # must not turn a structurally valid run into a failed CLI invocation.
+            return (0 if dry_run or result.get("accepted") else 1), output, float(result["duration_seconds"])
         except Exception as exc:
             logger.exception("graph agent team failed; refusing silent single-agent fallback", exc_info=exc)
             error = {"mode": "graph-agent-team", "status": "failed", "phase": phase, "error": str(exc), "accepted": False}
@@ -181,3 +172,5 @@ def _install_graph_team_bridge() -> None:
             return 1, "GRAPH_TEAM_ERROR: " + json.dumps(error, ensure_ascii=False, sort_keys=True), 0.0
 
     engine.invoke = graph_invoke
+
+_install_graph_team_bridge()
