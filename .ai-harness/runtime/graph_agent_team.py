@@ -2,7 +2,6 @@
 """Dependency-aware multi-agent team execution with task-scoped shared memory."""
 from __future__ import annotations
 
-import concurrent.futures
 import hashlib
 import json
 import time
@@ -10,8 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from portable.agency_state_graph import CheckpointStore, StateGraph
 from portable.task_planner import Task, TaskPlan
-
 
 @dataclass(frozen=True)
 class AgentSpec:
@@ -21,7 +20,6 @@ class AgentSpec:
     read_only: bool = True
     critical: bool = True
     focus: str = ""
-
 
 @dataclass
 class AgentResult:
@@ -35,14 +33,8 @@ class AgentResult:
     error: str | None = None
     memory_ids: list[str] = field(default_factory=list)
 
-
 class SharedTaskMemory:
-    """Append-only memory visible to every agent in one graph run.
-
-    Entries are keyed by the current intent digest, so agents cannot silently
-    consume memory from another task. The file is local to the run directory.
-    """
-
+    """Append-only memory visible to every agent in one graph run."""
     def __init__(self, path: Path, intent_digest: str) -> None:
         self.path = Path(path)
         self.intent_digest = intent_digest
@@ -51,16 +43,9 @@ class SharedTaskMemory:
     def publish(self, *, agent: str, role: str, kind: str, text: str,
                 evidence: list[str] | None = None, confidence: float = 0.0) -> str:
         text = str(text).strip()
-        payload = {
-            "intent_digest": self.intent_digest,
-            "agent": agent,
-            "role": role,
-            "kind": kind,
-            "text": text,
-            "evidence": sorted(set(evidence or [])),
-            "confidence": max(0.0, min(1.0, float(confidence))),
-            "created_at": time.time(),
-        }
+        payload = {"intent_digest": self.intent_digest, "agent": agent, "role": role,
+                   "kind": kind, "text": text, "evidence": sorted(set(evidence or [])),
+                   "confidence": max(0.0, min(1.0, float(confidence))), "created_at": time.time()}
         memory_id = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[:20]
         payload["id"] = memory_id
         with self.path.open("a", encoding="utf-8") as handle:
@@ -84,7 +69,7 @@ class SharedTaskMemory:
         rows = self.snapshot()
         if not rows:
             return "No shared task memory yet."
-        parts = []
+        parts: list[str] = []
         used = 0
         for row in rows:
             line = f"[{row.get('role')}] {row.get('kind')}: {row.get('text', '')}"
@@ -94,19 +79,12 @@ class SharedTaskMemory:
             used += len(line) + 1
         return "\n".join(parts)
 
-
 class GraphAgentTeam:
-    """Run a dependency graph of role-specific agents.
+    """Run role agents through one canonical dependency contract and StateGraph executor.
 
-    Independent read-only agents run in parallel. Mutating agents are serialized
-    and only start after their declared dependencies have completed. Every
-    agent receives the latest shared task memory and publishes its output back
-    into that memory for downstream agents.
-
-    Dependency validation and readiness use the canonical ``TaskPlan`` contract
-    so agent graphs and durable work plans cannot drift into separate schedulers.
+    TaskPlan is the canonical dependency model; StateGraph is only the execution
+    engine projected from it. SharedTaskMemory remains task-scoped and unique.
     """
-
     def __init__(self, agents: list[AgentSpec], *, max_parallel_read_only: int = 4,
                  max_agents: int = 12) -> None:
         self.agents = {agent.name: agent for agent in agents}
@@ -118,65 +96,47 @@ class GraphAgentTeam:
         self._plan = self._build_task_plan()
 
     def _build_task_plan(self) -> TaskPlan:
-        tasks = [
-            Task(
-                id=agent.name,
-                title=agent.role,
-                description=agent.focus,
-                dependencies=list(agent.depends_on),
-                tags=["graph-agent"],
-                acceptance=["agent execution completes successfully"],
-                metadata={"read_only": agent.read_only, "critical": agent.critical},
-            )
-            for agent in self.agents.values()
-        ]
-        return TaskPlan(tasks)
+        return TaskPlan([Task(id=a.name, title=a.role, description=a.focus,
+                              dependencies=list(a.depends_on), tags=["graph-agent"],
+                              acceptance=["agent execution completes successfully"],
+                              metadata={"read_only": a.read_only, "critical": a.critical})
+                         for a in self.agents.values()])
 
     def _validate(self) -> None:
         self._plan.validate()
 
     def levels(self) -> list[list[AgentSpec]]:
-        """Produce deterministic ready-levels through the canonical TaskPlan scheduler."""
         plan = self._build_task_plan()
         levels: list[list[AgentSpec]] = []
         while True:
             ready = plan.ready(tag="graph-agent")
             if not ready:
-                pending = [task for task in plan.tasks.values() if task.status == "pending"]
-                if pending:
+                if any(t.status == "pending" for t in plan.tasks.values()):
                     raise ValueError("agent graph could not be scheduled")
-                break
-            level = [self.agents[task.id] for task in ready]
+                return levels
+            level = [self.agents[t.id] for t in ready]
             levels.append(level)
-            for task in ready:
-                task.status = "done"
-        return levels
+            for t in ready:
+                t.status = "done"
 
     def digest(self) -> str:
-        payload = [
-            {"name": a.name, "role": a.role, "depends_on": list(a.depends_on),
-             "read_only": a.read_only, "critical": a.critical, "focus": a.focus}
-            for level in self.levels() for a in level
-        ]
+        payload = [{"name": a.name, "role": a.role, "depends_on": list(a.depends_on),
+                     "read_only": a.read_only, "critical": a.critical, "focus": a.focus}
+                    for level in self.levels() for a in level]
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
-    def execute(
-        self,
-        *,
-        task: str,
-        intent_digest: str,
-        base_prompt: str,
-        memory: SharedTaskMemory,
-        invoke_agent: Callable[[AgentSpec, str], tuple[int, str, float]],
-    ) -> dict[str, Any]:
-        results: dict[str, AgentResult] = {}
-        blocked: set[str] = set()
-
-        def run_agent(agent: AgentSpec) -> AgentResult:
-            if any(name in blocked or results[name].status != "passed" for name in agent.depends_on):
-                return AgentResult(agent.name, agent.role, "blocked", error="dependency failed")
-            shared = memory.compact_text()
-            prompt = f"""# AER graph agent
+    def _build_execution_graph(self, results: dict[str, AgentResult], *, task: str,
+                               intent_digest: str, base_prompt: str, memory: SharedTaskMemory,
+                               invoke_agent: Callable[[AgentSpec, str], tuple[int, str, float]]) -> StateGraph:
+        graph = StateGraph()
+        for agent in self.agents.values():
+            def run(state: Mapping[str, Any], agent: AgentSpec = agent) -> Mapping[str, Any]:
+                deps = [state.get(f"result:{name}") for name in agent.depends_on]
+                if any(not item or item.get("status") != "passed" for item in deps):
+                    result = AgentResult(agent.name, agent.role, "blocked", error="dependency failed")
+                    results[agent.name] = result
+                    return {f"result:{agent.name}": result.__dict__.copy()}
+                prompt = f"""# AER graph agent
 
 You are the {agent.role} agent in a shared-memory engineering team.
 
@@ -190,7 +150,7 @@ Focus: {agent.focus or 'Use the task contract and repository evidence to perform
 Read-only: {agent.read_only}
 
 ## Shared task memory
-{shared}
+{memory.compact_text()}
 
 ## Team contract
 - Work only on the current task.
@@ -203,52 +163,55 @@ Read-only: {agent.read_only}
 ## Base instructions
 {base_prompt}
 """
-            code, output, duration = invoke_agent(agent, prompt)
-            status = "passed" if code == 0 else "failed"
-            result = AgentResult(agent.name, agent.role, status, exit_code=code,
-                                 duration_seconds=duration, output=output)
-            memory_id = memory.publish(agent=agent.name, role=agent.role, kind="agent_output",
-                                       text=output[-12000:], evidence=[f"agent:{agent.name}"],
-                                       confidence=0.8 if code == 0 else 0.2)
-            result.memory_ids.append(memory_id)
-            return result
-
-        for level in self.levels():
-            ready = [agent for agent in level if not any(dep in blocked for dep in agent.depends_on)]
-            parallel = [agent for agent in ready if agent.read_only]
-            serial = [agent for agent in ready if not agent.read_only]
-            if parallel:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=min(self.max_parallel_read_only, len(parallel))) as pool:
-                    futures = {pool.submit(run_agent, agent): agent for agent in parallel}
-                    for future in concurrent.futures.as_completed(futures):
-                        agent = futures[future]
-                        result = future.result()
-                        results[agent.name] = result
-                        if result.status != "passed" and agent.critical:
-                            blocked.add(agent.name)
-            for agent in serial:
-                result = run_agent(agent)
+                code, output, duration = invoke_agent(agent, prompt)
+                result = AgentResult(agent.name, agent.role, "passed" if code == 0 else "failed",
+                                     exit_code=code, duration_seconds=duration, output=output)
+                result.memory_ids.append(memory.publish(agent=agent.name, role=agent.role,
+                                                        kind="agent_output", text=output[-12000:],
+                                                        evidence=[f"agent:{agent.name}"],
+                                                        confidence=0.8 if code == 0 else 0.2))
                 results[agent.name] = result
-                if result.status != "passed" and agent.critical:
-                    blocked.add(agent.name)
+                return {f"result:{agent.name}": result.__dict__.copy()}
+            graph.add_node(agent.name, run)
+        roots = [a.name for a in self.agents.values() if not a.depends_on]
+        for name in roots:
+            graph.add_edge(StateGraph.START, name)
+        for agent in self.agents.values():
+            for dep in agent.depends_on:
+                graph.add_edge(dep, agent.name)
+        terminals = {a.name for a in self.agents.values()
+                     if not any(a.name in other.depends_on for other in self.agents.values())}
+        for name in terminals:
+            graph.add_edge(name, StateGraph.END)
+        return graph
 
-            for agent in ready:
-                result = results.get(agent.name)
-                if result and result.status != "passed" and agent.critical:
-                    blocked.add(agent.name)
-
-        return {
-            "graph_digest": self.digest(),
-            "intent_digest": intent_digest,
-            "agents": {name: result.__dict__ for name, result in results.items()},
-            "shared_memory_file": str(memory.path),
-            "shared_memory_entries": len(memory.snapshot(500)),
-            "accepted": all(result.status == "passed" for result in results.values() if self.agents[result.name].critical),
-        }
-
+    def execute(self, *, task: str, intent_digest: str, base_prompt: str,
+                memory: SharedTaskMemory,
+                invoke_agent: Callable[[AgentSpec, str], tuple[int, str, float]],
+                checkpoint: CheckpointStore | None = None, resume: bool = False,
+                run_id: str = "graph-agent-team", max_steps: int = 100) -> dict[str, Any]:
+        """Execute with StateGraph while preserving the prior public result contract."""
+        self._validate()
+        results: dict[str, AgentResult] = {}
+        run = self._build_execution_graph(results, task=task, intent_digest=intent_digest,
+                                           base_prompt=base_prompt, memory=memory,
+                                           invoke_agent=invoke_agent).compile().invoke(
+            {}, run_id=run_id, checkpoint=checkpoint, resume=resume, max_steps=max_steps,
+            parallel_nodes=lambda name: self.agents[name].read_only,
+            max_parallel_nodes=self.max_parallel_read_only)
+        for agent in self.agents.values():
+            payload = run.state.get(f"result:{agent.name}")
+            if isinstance(payload, dict):
+                results[agent.name] = AgentResult(**payload)
+        return {"graph_digest": self.digest(), "intent_digest": intent_digest,
+                "agents": {name: result.__dict__ for name, result in results.items()},
+                "shared_memory_file": str(memory.path),
+                "shared_memory_entries": len(memory.snapshot(500)),
+                "accepted": all(result.status == "passed" for result in results.values()
+                                 if self.agents[result.name].critical),
+                "execution_trace": list(run.trace), "execution_digest": run.digest}
 
 def team_for_route(route: Mapping[str, Any]) -> GraphAgentTeam:
-    """Choose a small role graph from the deterministic route."""
     mode = str(route.get("mode", "implement"))
     caps = set(route.get("capabilities", []))
     agents: list[AgentSpec] = [
