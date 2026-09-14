@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from typing import Callable, Iterable, Mapping, Sequence
 
-_TOKEN_RE = re.compile(r"[A-Za-z0-9_./-]+")
+_TOKEN_RE = re.compile(r"[A-Za-z0-9]+")
 _RISK_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 
 
