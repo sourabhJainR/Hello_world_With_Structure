@@ -41,3 +41,19 @@ def test_rollback_without_active_artifact_is_recorded(tmp_path: Path):
     state = store.transition("rollback", None, "failed candidate")
     assert state.action == "rollback"
     assert state.artifact_id is None
+
+
+def test_channel_state_detects_tampered_content(tmp_path: Path):
+    source = tmp_path / "a.txt"
+    source.write_text("one", encoding="utf-8")
+    store = ArtifactStore(tmp_path / "release")
+    artifact = store.stage(source, "v1")
+    store.transition("promote", artifact, "verified")
+    payload = Path(artifact.path) / source.name
+    payload.write_text("tampered", encoding="utf-8")
+    try:
+        store.state()
+    except RuntimeError as exc:
+        assert "digest" in str(exc)
+    else:
+        raise AssertionError("tampered artifact must not remain trusted")
