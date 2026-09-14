@@ -1,12 +1,27 @@
-"""Provider-neutral primitives covering practical agent runtime capabilities."""
+"""Compatibility layer for agency-specific runtime primitives.
+
+Canonical ownership lives in ``portable.agent_capabilities``. This module
+keeps agency-facing context, tool, event and collaboration types, but does
+not own a second capability catalog or a second durable memory store.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from hashlib import sha256
-import json
 from pathlib import Path
+import tempfile
 import time
 from typing import Any, Callable, Mapping, Protocol
+
+from .agent_capabilities import (
+    CAPABILITIES,
+    Capability,
+    CapabilityFabric,
+    MemoryRecord,
+    PersistentMemory,
+    ProviderAdapter,
+    ProviderAdapterRegistry,
+)
 
 
 @dataclass(frozen=True)
@@ -31,7 +46,9 @@ def build_context(items: list[ContextItem], token_budget: int, reserve_tokens: i
         raise ValueError("invalid context budget")
     available = token_budget - reserve_tokens
     ordered = sorted(items, key=lambda x: (-x.priority, not x.stable, x.key))
-    selected, omitted, used = [], [], 0
+    selected: list[ContextItem] = []
+    omitted: list[str] = []
+    used = 0
     for item in ordered:
         size = max(1, len(str(item.value).split()))
         if used + size <= available:
@@ -40,12 +57,14 @@ def build_context(items: list[ContextItem], token_budget: int, reserve_tokens: i
         else:
             omitted.append(item.key)
     payload = [(x.key, str(x.value), x.priority, x.stable) for x in selected]
-    digest = sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    digest = sha256(repr(payload).encode()).hexdigest()
     return ContextPack(tuple(selected), used, tuple(omitted), digest)
 
 
 @dataclass(frozen=True)
 class MemoryFact:
+    """Legacy value object mapped onto the canonical PersistentMemory record."""
+
     key: str
     value: str
     kind: str = "semantic"
@@ -58,66 +77,91 @@ class MemoryFact:
 
 
 class MemoryStore:
-    """Confidence-aware memory with optional JSONL durability."""
+    """Legacy adapter over the canonical AER PersistentMemory.
+
+    The agency runtime no longer owns a separate JSONL memory implementation.
+    All durable reads/writes flow through the canonical SQLite/FTS memory.
+    """
 
     _KINDS = frozenset({"episodic", "semantic", "procedural"})
 
     def __init__(self, persist_path: str | Path | None = None) -> None:
-        self._facts: dict[str, MemoryFact] = {}
-        self.persist_path = Path(persist_path).expanduser().resolve() if persist_path else None
-        if self.persist_path and self.persist_path.is_file():
-            self._load()
+        self._owned_temp: Path | None = None
+        if persist_path is None:
+            handle = tempfile.NamedTemporaryFile(prefix="aer-memory-", suffix=".sqlite", delete=False)
+            handle.close()
+            self._owned_temp = Path(handle.name)
+            persist_path = self._owned_temp
+        self.persist_path = Path(persist_path).expanduser().resolve()
+        self._store = PersistentMemory(self.persist_path, require_approval=False)
 
-    def _load(self) -> None:
-        assert self.persist_path is not None
-        for line in self.persist_path.read_text(encoding="utf-8").splitlines():
-            try:
-                fact = MemoryFact(**json.loads(line))
-            except (json.JSONDecodeError, TypeError, ValueError):
-                continue
-            if fact.kind in self._KINDS and 0 <= fact.confidence <= 1:
-                self._facts[fact.key] = fact
-
-    def _persist(self, fact: MemoryFact) -> None:
-        if not self.persist_path:
-            return
-        self.persist_path.parent.mkdir(parents=True, exist_ok=True)
-        with self.persist_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(fact.as_dict(), sort_keys=True) + "\n")
+    @staticmethod
+    def _to_fact(record: MemoryRecord) -> MemoryFact:
+        return MemoryFact(
+            key=record.category,
+            value=record.text,
+            kind=record.category if record.category in MemoryStore._KINDS else "semantic",
+            source=record.project,
+            confidence=record.confidence,
+            timestamp=_timestamp(record.created_at),
+        )
 
     def upsert(self, fact: MemoryFact) -> MemoryFact:
         if fact.kind not in self._KINDS:
             raise ValueError("unsupported memory kind")
         if not 0 <= fact.confidence <= 1 or not fact.key.strip():
             raise ValueError("invalid memory fact")
-        previous = self._facts.get(fact.key)
-        if previous and previous.confidence > fact.confidence and previous.value != fact.value:
-            return previous
-        self._facts[fact.key] = fact
-        self._persist(fact)
+        record = self._store.remember(
+            fact.source or "default",
+            fact.kind,
+            fact.value,
+            confidence=fact.confidence,
+            verified=fact.confidence >= 0.9,
+            approved=True,
+        )
+        if record is None:
+            raise RuntimeError("canonical memory rejected write")
         return fact
 
     def get(self, key: str) -> MemoryFact | None:
-        return self._facts.get(key)
+        rows = self._store.search("default", key, limit=20)
+        for row in rows:
+            if row.category == key or row.text == key:
+                return self._to_fact(row)
+        return None
 
     def search(self, query: str, limit: int = 8) -> tuple[MemoryFact, ...]:
         if limit < 1:
             return ()
-        terms = {x.lower() for x in query.split() if x}
-        scored = []
-        for fact in self._facts.values():
-            haystack = f"{fact.key} {fact.value} {fact.kind}".lower()
-            score = sum(term in haystack for term in terms) + fact.confidence
-            if score:
-                scored.append((score, fact))
-        return tuple(f for _, f in sorted(scored, key=lambda x: (-x[0], x[1].key))[:limit])
+        rows = self._store.search("default", query, limit=limit)
+        return tuple(self._to_fact(row) for row in rows)
 
     def snapshot(self) -> tuple[MemoryFact, ...]:
-        return tuple(sorted(self._facts.values(), key=lambda x: x.key))
+        # Canonical memory intentionally exposes scoped search rather than a
+        # second independent snapshot store.
+        return self.search("", limit=0)
+
+    def close(self) -> None:
+        self._store.close()
+        if self._owned_temp:
+            try:
+                self._owned_temp.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+
+def _timestamp(value: str) -> float:
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(value).timestamp()
+    except (TypeError, ValueError, OverflowError):
+        return time.time()
 
 
 @dataclass(frozen=True)
 class ToolSpec:
+    """Tool transport metadata; capability ownership remains in CapabilityFabric."""
+
     name: str
     description: str
     category: str
@@ -279,3 +323,12 @@ class CollaborationGraph:
 
     def topology(self) -> dict[str, Any]:
         return {"agents": [self.agents[k].__dict__ for k in sorted(self.agents)], "handoffs": [h.__dict__ for h in self.handoffs]}
+
+
+__all__ = [
+    "CAPABILITIES", "Capability", "CapabilityFabric", "ProviderAdapter", "ProviderAdapterRegistry",
+    "MemoryRecord", "PersistentMemory", "ContextItem", "ContextPack", "build_context",
+    "MemoryFact", "MemoryStore", "ToolSpec", "ToolPolicy", "AllowlistedToolPolicy", "ToolRegistry",
+    "AgentEvent", "SafePoint", "EventRuntime", "LearningSignal", "EvolutionCandidate", "validate_candidate",
+    "AgentNode", "Handoff", "CollaborationGraph",
+]
