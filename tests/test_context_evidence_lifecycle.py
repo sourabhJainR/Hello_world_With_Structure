@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
 
 from portable.agency_release_lifecycle import ArtifactStore
 from portable.context_bound_release import bind_release_context
-from portable.agency_codebase_context import CodebaseIndex
 
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / ".ai-harness" / "runtime"
+sys.path.insert(0, str(RUNTIME))
 
 
 def _load_runtime_module(name: str):
@@ -33,12 +34,8 @@ class ContextEvidenceLifecycleTests(unittest.TestCase):
                 encoding="utf-8",
             )
             evidence = module.ContextAcquisitionPipeline(root).acquire(
-                task_id="T-1",
-                query="Service handle",
-                phase="implement",
-                intent_digest="intent-123",
-                risk="medium",
-                uncertainty="high",
+                task_id="T-1", query="Service handle", phase="implement",
+                intent_digest="intent-123", risk="medium", uncertainty="high",
             )
             self.assertEqual(evidence.intent_digest, "intent-123")
             self.assertTrue(evidence.evidence_digest)
