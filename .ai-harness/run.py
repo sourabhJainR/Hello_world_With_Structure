@@ -5,9 +5,11 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+HARNESS_ROOT = Path(__file__).resolve().parent
+REPO_ROOT = HARNESS_ROOT.parent
+for path in (REPO_ROOT, HARNESS_ROOT):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 # Keep the historical launcher API available to tests and integrations. The
 # legacy module guards its CLI entrypoint, so importing this module never
