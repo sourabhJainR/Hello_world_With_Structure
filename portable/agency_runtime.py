@@ -123,8 +123,10 @@ def evidence_id(item: EvidenceItem) -> str:
 def _receipt_score(receipt: QualityReceipt | None) -> float:
     if receipt is None:
         return 0.0
-    values = [float(v) for v in getattr(receipt, "dimensions", {}).values() if isinstance(v, (int, float))]
-    return max(0.0, min(1.0, sum(values) / (100 * len(values)))) if values else (1.0 if getattr(receipt, "passed", False) else 0.0)
+    score = getattr(receipt, "score", None)
+    if isinstance(score, (int, float)):
+        return max(0.0, min(1.0, float(score) / 100.0))
+    return 1.0 if getattr(receipt, "passed", False) else 0.0
 
 
 def execute(task: TaskProfile, worker: Callable[[TaskProfile, list[Assignment]], Mapping[str, object]], registry: Mapping[str, object] | None = None, rubric: Mapping[str, object] | None = None, support_limit: int | None = None, tracer: Tracer | None = None, regression_id: str | None = None, regression_result: object | None = None, regression_plan: RegressionPlan | None = None, promotion_policy: PromotionPolicy | None = None) -> ExecutionResult:
