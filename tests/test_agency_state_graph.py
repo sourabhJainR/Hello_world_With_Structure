@@ -1,0 +1,72 @@
+from __future__ import annotations
+
+import unittest
+
+from portable.agency_state_graph import (
+    GraphInterrupt,
+    InMemoryCheckpointStore,
+    RetryPolicy,
+    StateGraph,
+)
+
+
+class StateGraphTests(unittest.TestCase):
+    def test_reducer_merges_parallel_updates_from_same_snapshot(self):
+        graph = StateGraph(reducers={"findings": lambda left, right: left + right})
+        graph.add_node("a", lambda state: {"findings": ["a"], "seen": state["value"]})
+        graph.add_node("b", lambda state: {"findings": ["b"], "seen": state["value"]})
+        graph.add_edge(StateGraph.START, "a").add_edge(StateGraph.START, "b")
+        graph.add_edge("a", StateGraph.END).add_edge("b", StateGraph.END)
+        result = graph.compile().invoke({"value": 7, "findings": []})
+        self.assertEqual(result.state["findings"], ["a", "b"])
+        self.assertEqual(result.state["seen"], 7)
+
+    def test_conditional_routing(self):
+        graph = StateGraph()
+        graph.add_node("classify", lambda state: {"route": "fix" if state["broken"] else "done"})
+        graph.add_node("fix", lambda state: {"fixed": True})
+        graph.add_edge(StateGraph.START, "classify")
+        graph.add_conditional_edges("classify", lambda state: state["route"])
+        graph.add_edge("fix", StateGraph.END)
+        result = graph.compile().invoke({"broken": True})
+        self.assertTrue(result.state["fixed"])
+        self.assertEqual(result.trace, ("classify", "fix"))
+
+    def test_retry_is_bounded(self):
+        attempts = []
+        def flaky(_state):
+            attempts.append(1)
+            if len(attempts) < 3:
+                raise RuntimeError("transient")
+            return {"ok": True}
+        graph = StateGraph()
+        graph.add_node("flaky", flaky, retry_policy=RetryPolicy(3))
+        graph.add_edge(StateGraph.START, "flaky").add_edge("flaky", StateGraph.END)
+        result = graph.compile().invoke({})
+        self.assertTrue(result.state["ok"])
+        self.assertEqual(result.events[0].attempts, 3)
+
+    def test_checkpoint_and_resume_after_interrupt(self):
+        store = InMemoryCheckpointStore()
+        graph = StateGraph()
+        graph.add_node("plan", lambda state: {"planned": True})
+        graph.add_node("act", lambda state: {"acted": True})
+        graph.add_edge(StateGraph.START, "plan").add_edge("plan", "act").add_edge("act", StateGraph.END)
+        graph.interrupt_after("plan")
+        with self.assertRaises(GraphInterrupt) as caught:
+            graph.compile().invoke({}, run_id="r1", checkpoint=store)
+        self.assertEqual(caught.exception.next_nodes, ("act",))
+        resumed = graph.compile().invoke({}, run_id="r1", checkpoint=store, resume=True)
+        self.assertTrue(resumed.state["planned"])
+        self.assertTrue(resumed.state["acted"])
+
+    def test_max_steps_prevents_unbounded_loops(self):
+        graph = StateGraph()
+        graph.add_node("loop", lambda state: {"count": state.get("count", 0) + 1})
+        graph.add_edge(StateGraph.START, "loop").add_edge("loop", "loop")
+        with self.assertRaises(RuntimeError):
+            graph.compile().invoke({}, max_steps=3)
+
+
+if __name__ == "__main__":
+    unittest.main()
