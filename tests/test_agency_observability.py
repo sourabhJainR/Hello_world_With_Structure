@@ -58,3 +58,29 @@ def test_execute_emits_trace_id_without_changing_contract(tmp_path: Path):
     assert result.trace_id
     assert result.receipt is not None and result.receipt.passed
     assert "task_quality" in (tmp_path / "traces.jsonl").read_text()
+
+
+def test_execute_correlates_trace_with_regression(tmp_path: Path):
+    tracer = Tracer(LocalExporter(tmp_path / "traces.jsonl", enabled=True))
+    task = TaskProfile("t13", "fix login", evidence_required=("source",))
+
+    def worker(task, assignments):
+        return {
+            "deliverables": ["patch"],
+            "verification": ["tests pass"],
+            "dimensions": {"correctness": 25, "completeness": 15, "evidence": 15, "verification": 15, "scope_discipline": 10, "security_and_safety": 10, "clarity": 5, "maintainability": 5},
+            "hard_gates": {"tests": True},
+            "evidence": [EvidenceItem("test", "tests pass")],
+        }
+
+    regression = run_experiment(
+        Dataset("coding-regression", "13", (DatasetItem("fix login", "ok"),)),
+        lambda value: "ok",
+        lambda item, output: {"correctness": float(output == item.expected)},
+    )
+    result = execute(task, worker, tracer=tracer, regression_id="reg-t13", regression_result=regression)
+    assert result.regression_link is not None
+    assert result.regression_link.trace_id == result.trace_id
+    assert result.regression_link.regression_id == "reg-t13"
+    assert result.regression_link.passed
+    assert "regression_pass" in (tmp_path / "traces.jsonl").read_text()
