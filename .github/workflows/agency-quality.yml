@@ -11,8 +11,8 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with: {python-version: '3.x'}
       - name: Compile agency runtime
         run: python -m py_compile portable/agency_*.py portable/ai_coding_agency_bridge.py portable/context_bound_release.py portable/agency_team_orchestrator.py portable/semantic_addressing.py portable/repository_intelligence.py .ai-harness/runtime/context_pipeline.py .ai-harness/runtime/canary_evaluator.py .ai-harness/runtime/policy_registry.py scripts/sync_agency_agents.py scripts/check_agency_agents.py
