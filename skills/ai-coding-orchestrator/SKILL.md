@@ -13,25 +13,25 @@ Use the repository as the source of truth. Keep work bounded, evidence-backed, d
 
 Every turn should preserve:
 
-`intent -> context -> plan -> evidence -> change -> verification -> artifact -> rollout -> observation`
+`intent -> context -> plan -> evidence -> change -> verification -> review -> artifact -> rollout -> observation`
 
 Carry stable identifiers across stages. Never silently replace evidence or intent after a decision has been made.
 
 ## Context acquisition
 
-Use the executable context pipeline:
-
-1. plan retrieval from phase, risk, uncertainty, and policy
-2. use canonical `RepositoryIntelligence` and `CodebaseIndex`
-3. resolve symbols with `SymbolLocator`
-4. expand relevant graph relationships
-5. rank and budget evidence with `context_planner`
-6. lease selected records through `context_broker`
-7. return one immutable `ContextEvidence` envelope
+Use the executable context pipeline: plan retrieval from phase/risk/uncertainty/policy, use canonical `RepositoryIntelligence` and `CodebaseIndex`, resolve symbols with `SymbolLocator`, expand relevant graph relationships, rank and budget evidence with `context_planner`, lease selected records through `context_broker`, and return one immutable `ContextEvidence` envelope.
 
 The envelope contains intent, context-plan, repository snapshot, selected paths, symbol references, graph paths, bounded evidence items, unknowns, and an evidence digest.
 
 Do not create a second repository index, memory store, capability catalog, or evidence store. Compatibility layers must delegate to the canonical implementation.
+
+## Team decomposition and early gates
+
+For substantial work, split the request into complete `WorkUnit`s with explicit goals, dependencies, specialist roles, read/write resources, and mutation mode. Use `AgentTeamOrchestrator` with the host's real agent spawner. Independent read-only units may run in bounded parallel waves; mutating units are serialized by resource conflict.
+
+After each unit completes, run verification immediately and then independent review. A failed verification/review blocks that unit and its dependents so later agents do not spend tokens on work that is already invalid. Carry the same `ContextEvidence.evidence_digest` into every spawned unit and gate.
+
+The host remains authoritative for model/provider selection, commands, permissions, sandboxing, credentials, and external side effects.
 
 ## Repository-aware retrieval
 
@@ -51,33 +51,36 @@ Keep these established runtime entry points aligned with the orchestration workf
 
 - `portable.task_planner.TaskPlan`
 - `portable.impact_analysis`
+- `portable.agency_execution_plan`
+- `portable.agency_team_orchestrator`
 - `.ai-harness/runtime/tool_runner.py`
 - `.ai-harness/runtime/lsp_server.py`
 - `.ai-harness/runtime/feedback_loop.py`
 - `.ai-harness/runtime/auto_compaction.py`
 - `downgrade=explicit_install_only`
+- `ORCHESTRATION_SPEC.md`
 
-## Evidence and verification
+## Evidence, verification, and review
 
-Evidence must be traceable to a source, bounded by the context plan, and sufficient for the claim. Verification is independent of generation. For implementation tasks, cover changed behavior with focused unit tests and run the relevant existing regression suite.
+Evidence must be traceable to a source, bounded by the context plan, and sufficient for the claim. Verification is independent of generation. Review is a first-class gate: it evaluates the verified artifact against the same evidence and must leave no unresolved material findings before rollout.
 
-For bugs: reproduce -> isolate -> identify owner -> make minimal fix -> add regression test -> verify adjacent behavior.
+For bugs: reproduce -> isolate -> identify owner -> make minimal fix -> add regression test -> verify -> review adjacent behavior.
 
-For review: inspect contract, data flow, ownership, failure paths, security boundaries, concurrency, observability, and tests. Report findings with evidence and impact.
+For review: inspect contract, data flow, ownership, failure paths, security boundaries, concurrency, observability, and tests. Report findings with evidence and impact. Course-correct before dependent work continues.
 
 ## Deployment lifecycle
 
-The same `ContextEvidence` object must flow into rollout evaluation. Do not reconstruct context between execution and deployment.
+The same immutable `ContextEvidence` lineage must flow from research through deployment.
 
-`shadow -> canary -> promote`
+`research -> plan -> implement -> verify -> review -> shadow -> canary -> promote`
 
-or
+or, on a failed rollout gate/observation:
 
-`shadow -> canary -> rollback`
+`research -> plan -> implement -> verify -> review -> shadow -> canary -> rollback`
 
-Pass `context_evidence` to shadow/canary evaluation. Each report and staged canary record carries `context_evidence_digest`. Use `ContextBoundRelease` for executable artifact transitions so `shadow`, `canary`, `promote`, and `rollback` carry the same evidence digest into the release audit trail.
+Use `ContextBoundRelease`. Verification creates a `VerificationReceipt`; review creates a `ReviewReceipt` bound to the same artifact, evidence, and verification. Shadow and canary require that review. Promotion requires matching verification and review receipts and the same artifact already in canary. Release history records evidence, verification, and review digests.
 
-Policy records retain the context evidence digest. If the repository changes and fresh verification is required, acquire a new envelope rather than mutating the old one.
+If the repository changes and fresh verification is required, acquire a new envelope rather than mutating the old one.
 
 ## Safety boundaries
 
@@ -89,9 +92,9 @@ Policy records retain the context evidence digest. If the repository changes and
 
 ## Working sequence
 
-For a normal coding task:
+For normal coding:
 
-`understand intent -> acquire context -> plan -> implement -> test -> review -> verify -> package -> shadow/canary -> promote or rollback`
+`understand intent -> acquire context -> decompose -> implement units -> early verify/review -> integrate -> regression -> artifact -> shadow -> canary -> promote or rollback`
 
 For research/POC:
 
@@ -99,8 +102,8 @@ For research/POC:
 
 For review:
 
-`acquire context -> inspect contracts and graph -> reproduce where needed -> classify findings -> propose minimal safe change -> verify`
+`acquire context -> inspect contracts and graph -> reproduce where needed -> classify findings -> course-correct -> verify -> review`
 
 ## Output discipline
 
-State what changed, why, what was verified, and any remaining uncertainty. Prefer concrete file paths, symbols, tests, evidence identifiers, and lifecycle state over broad claims.
+State what changed, why, what was verified, what was reviewed, evidence identifiers, and remaining uncertainty. Prefer concrete file paths, symbols, tests, receipts, and lifecycle state over broad claims.
