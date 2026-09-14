@@ -1,4 +1,4 @@
-"""Executable artifact lifecycle for AER release decisions."""
+"""Executable, content-addressed artifact lifecycle for AER release decisions."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -37,7 +37,7 @@ class ReleaseState:
 
 
 class ArtifactStore:
-    """Content-addressed immutable artifact store plus channel pointers."""
+    """Content-addressed immutable artifacts plus mutable channel pointers."""
 
     def __init__(self, root: str | Path):
         self.root = Path(root).expanduser().resolve()
@@ -63,6 +63,14 @@ class ArtifactStore:
         else:
             raise FileNotFoundError(str(path))
         return digest.hexdigest()
+
+    def _verify_ref(self, ref: ArtifactRef) -> None:
+        path = Path(ref.path).resolve()
+        expected = (self.artifacts / ref.digest).resolve()
+        if path != expected or not path.is_dir():
+            raise RuntimeError("artifact reference escapes the content-addressed store")
+        if self._digest(path) != ref.digest:
+            raise RuntimeError(f"artifact digest verification failed: {ref.digest}")
 
     def _existing_digest(self, destination: Path, source_was_file: bool) -> str:
         if source_was_file:
@@ -94,22 +102,33 @@ class ArtifactStore:
             temp.replace(destination)
         size = sum(p.stat().st_size for p in destination.rglob("*") if p.is_file())
         ref = ArtifactRef(artifact_id, digest, str(destination), size)
+        self._verify_ref(ref)
         self._write_json(self.artifacts / f"{digest}.json", {"artifact": ref.as_dict()})
         return ref
 
     def _read_channel(self, channel: str) -> ArtifactRef | None:
+        if channel not in {"shadow", "canary", "current"}:
+            raise ValueError(f"unsupported channel: {channel}")
         path = self.channels / f"{channel}.json"
         if not path.is_file():
             return None
-        data = json.loads(path.read_text(encoding="utf-8"))
-        artifact = data.get("artifact")
-        return ArtifactRef(**artifact) if isinstance(artifact, dict) else None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            artifact = data.get("artifact")
+            ref = ArtifactRef(**artifact) if isinstance(artifact, dict) else None
+        except (json.JSONDecodeError, TypeError, KeyError):
+            raise RuntimeError(f"invalid {channel} channel state") from None
+        if ref is None:
+            raise RuntimeError(f"invalid {channel} channel state")
+        self._verify_ref(ref)
+        return ref
 
     def _set_channel(self, channel: str, ref: ArtifactRef | None) -> None:
         path = self.channels / f"{channel}.json"
         if ref is None:
             path.unlink(missing_ok=True)
             return
+        self._verify_ref(ref)
         self._write_json(path, {"artifact": ref.as_dict()})
 
     @staticmethod
@@ -123,13 +142,21 @@ class ArtifactStore:
         shadow = self._read_channel("shadow")
         canary = self._read_channel("canary")
         current = self._read_channel("current")
-        return {"shadow": shadow.as_dict() if shadow else None, "canary": canary.as_dict() if canary else None, "current": current.as_dict() if current else None}
+        return {
+            "shadow": shadow.as_dict() if shadow else None,
+            "canary": canary.as_dict() if canary else None,
+            "current": current.as_dict() if current else None,
+        }
 
     def transition(self, action: str, ref: ArtifactRef | None, reason: str) -> ReleaseState:
         if action not in ACTIONS:
             raise ValueError(f"unsupported release action: {action}")
+        if not reason.strip():
+            raise ValueError("release reason is required")
         if action != "rollback" and ref is None:
             raise ValueError(f"{action} requires an artifact")
+        if ref is not None:
+            self._verify_ref(ref)
         previous = self._read_channel("current")
         if action == "shadow":
             self._set_channel("shadow", ref)
@@ -144,7 +171,10 @@ class ArtifactStore:
                 state = ReleaseState("rollback", None, None, None, datetime.now(timezone.utc).isoformat(), reason + "; no active artifact to replace")
                 self._record(state)
                 return state
-            candidates = [x for x in self._history() if x.get("action") in {"promote", "rollback"} and x.get("artifact_id") and x.get("artifact_id") != previous.artifact_id]
+            candidates = [
+                x for x in self._history()
+                if x.get("action") == "promote" and x.get("artifact_id") and x.get("artifact_id") != previous.artifact_id
+            ]
             if not candidates:
                 state = ReleaseState("rollback", previous.artifact_id, previous.digest, previous.artifact_id, datetime.now(timezone.utc).isoformat(), reason + "; no previous promoted artifact available")
                 self._record(state)
@@ -154,7 +184,14 @@ class ArtifactStore:
             self._set_channel("canary", None)
             self._set_channel("shadow", None)
             ref = target_ref
-        state = ReleaseState(action, ref.artifact_id if ref else None, ref.digest if ref else None, previous.artifact_id if previous else None, datetime.now(timezone.utc).isoformat(), reason)
+        state = ReleaseState(
+            action,
+            ref.artifact_id if ref else None,
+            ref.digest if ref else None,
+            previous.artifact_id if previous else None,
+            datetime.now(timezone.utc).isoformat(),
+            reason,
+        )
         self._record(state)
         return state
 
@@ -185,7 +222,9 @@ class ArtifactStore:
         path = self.artifacts / digest
         if not path.exists():
             raise RuntimeError(f"rollback artifact is missing: {digest}")
-        return ArtifactRef(str(value["artifact_id"]), digest, str(path), int(value.get("size", 0)))
+        ref = ArtifactRef(str(value["artifact_id"]), digest, str(path), int(value.get("size", 0)))
+        self._verify_ref(ref)
+        return ref
 
 
 def apply_promotion_decision(store: ArtifactStore, decision: object, artifact: ArtifactRef | None = None) -> ReleaseState:
