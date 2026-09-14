@@ -10,7 +10,8 @@ class GraphAwareRetrievalTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "service.py").write_text("from repo import Repo\n\nclass Service:\n    def run(self):\n        return Repo().save()\n", encoding="utf-8")
-            (root / "repo.py").write_text("class Repo:\n    def save(self):\n        return True\n", encoding="utf-8")
+            (root / "interface.py").write_text("class IRepository:\n    pass\n", encoding="utf-8")
+            (root / "repo.py").write_text("from interface import IRepository\n\nclass Repo(IRepository):\n    def save(self):\n        return True\n", encoding="utf-8")
             (root / "test_service.py").write_text("from service import Service\n\ndef test_run():\n    return Service().run()\n", encoding="utf-8")
             (root / "config.json").write_text('{"service": "service", "repo": "repo"}', encoding="utf-8")
             index = CodebaseIndex.build(root)
@@ -21,6 +22,7 @@ class GraphAwareRetrievalTests(unittest.TestCase):
             self.assertTrue(any(e.kind == "calls" for e in index.edges))
             self.assertTrue(any(e.kind == "tests" for e in index.edges))
             self.assertTrue(any(e.kind == "configures" for e in index.edges))
+            self.assertTrue(any(e.kind == "implements" and e.target_path == "interface.py" for e in index.edges))
             self.assertTrue(context.graph_trace.seed_paths)
             self.assertTrue(context.graph_trace.edges)
 
