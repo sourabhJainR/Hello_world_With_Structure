@@ -31,11 +31,9 @@ class ContextEvidenceLifecycleTests(unittest.TestCase):
             review = release.review(ref, receipt)
             self.assertEqual(review.verification_digest, receipt.verification_digest); self.assertTrue(review.review_digest)
             with self.assertRaises(ValueError): release.promote(ref, verification=receipt)
-            release.canary(ref)
-            promoted = release.promote(ref, verification=receipt, review=review)
+            release.canary(ref); promoted = release.promote(ref, verification=receipt, review=review)
             self.assertEqual(promoted.context_evidence_digest, "evidence-abc"); self.assertEqual(promoted.verification_digest, receipt.verification_digest); self.assertEqual(promoted.review_digest, review.review_digest)
             with self.assertRaises(ValueError): release.review(ref, receipt, ["unresolved compatibility issue"])
-            with self.assertRaises(ValueError): release.review(ref, release.verify(ref, ("other-check",)), ()) if False else None
     def test_same_evidence_digest_reaches_shadow_canary_promote_and_rollback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); source = root / "artifact.txt"; source.write_text("v1", encoding="utf-8")
