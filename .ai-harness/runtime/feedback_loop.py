@@ -16,17 +16,11 @@ import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterable, Mapping, Sequence
-
+from typing import Callable, Sequence
 
 LOOP_TERMINAL_STATES = (
-    "success",
-    "clean_no_op",
-    "blocked",
-    "approval_required",
-    "exhausted",
-    "no_progress",
-    "error",
+    "success", "clean_no_op", "blocked", "approval_required",
+    "exhausted", "no_progress", "error",
 )
 
 
@@ -41,7 +35,6 @@ class FeedbackPolicy:
 @dataclass(frozen=True)
 class LoopDefinition:
     """Immutable description of one bounded engineering loop."""
-
     name: str
     objective: str
     acceptance_check: str
@@ -77,6 +70,23 @@ class LoopDefinition:
 
 
 @dataclass(frozen=True)
+class LoopAction:
+    """Host-selected action for one pass."""
+    description: str
+    evidence: tuple[str, ...] = ()
+    requires_approval: bool = False
+
+
+@dataclass(frozen=True)
+class VerificationResult:
+    """Verification result returned by the host after an action."""
+    passed: bool
+    complete: bool = False
+    progress: bool = False
+    evidence: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class LoopPass:
     number: int
     observation: str
@@ -84,6 +94,7 @@ class LoopPass:
     evidence: tuple[str, ...]
     verified: bool
     progress: bool
+    complete: bool = False
     next_action: str = ""
     approval_required: bool = False
     error: str = ""
@@ -96,6 +107,7 @@ class LoopPass:
             "evidence": list(self.evidence),
             "verified": self.verified,
             "progress": self.progress,
+            "complete": self.complete,
             "next_action": self.next_action,
             "approval_required": self.approval_required,
             "error": self.error,
@@ -105,7 +117,6 @@ class LoopPass:
 @dataclass(frozen=True)
 class LoopRunReceipt:
     """Compact, replayable result of one bounded loop execution."""
-
     definition_digest: str
     loop_name: str
     scope: str
@@ -145,19 +156,10 @@ class LoopRunReceipt:
         return value
 
 
-@dataclass(frozen=True)
-class LoopAction:
-    """Host-selected action for one pass."""
-
-    description: str
-    evidence: tuple[str, ...] = ()
-    requires_approval: bool = False
-
-
 Observe = Callable[[int], str]
 Choose = Callable[[str, int], LoopAction | None]
 Act = Callable[[LoopAction, int], None]
-Verify = Callable[[LoopAction, int], bool | tuple[bool, Sequence[str]]]
+Verify = Callable[[LoopAction, int], VerificationResult | bool | tuple[bool, Sequence[str]]]
 
 
 class BoundedLoop:
@@ -166,121 +168,98 @@ class BoundedLoop:
     def __init__(self, definition: LoopDefinition) -> None:
         self.definition = definition
 
-    def run(
-        self,
-        *,
-        observe: Observe,
-        choose: Choose,
-        act: Act,
-        verify: Verify,
-    ) -> LoopRunReceipt:
-        passes: list[LoopPass] = []
-        previous_progress = True
+    @staticmethod
+    def _normalize_verification(value: VerificationResult | bool | tuple[bool, Sequence[str]]) -> VerificationResult:
+        if isinstance(value, VerificationResult):
+            return value
+        if isinstance(value, tuple):
+            passed, evidence = value
+            return VerificationResult(
+                passed=bool(passed), progress=bool(passed), evidence=tuple(str(item) for item in evidence)
+            )
+        return VerificationResult(passed=bool(value), progress=bool(value))
 
-        for number in range(1, self.definition.pass_limit + 1):
-            try:
-                observation = str(observe(number))
-                action = choose(observation, number)
-                if action is None:
-                    return LoopRunReceipt(
-                        definition_digest=self.definition.digest(),
-                        loop_name=self.definition.name,
-                        scope=self.definition.scope,
-                        acceptance_check=self.definition.acceptance_check,
-                        boundary=f"max_passes={self.definition.pass_limit}",
-                        result="clean_no_op",
-                        passes=tuple(passes),
-                        next_step="nothing; the scoped work is already complete or no safe action is available",
-                    )
-                if action.requires_approval or action.description in self.definition.approval_actions:
-                    passes.append(
-                        LoopPass(number, observation, action.description, action.evidence, False, False, approval_required=True)
-                    )
-                    return LoopRunReceipt(
-                        definition_digest=self.definition.digest(),
-                        loop_name=self.definition.name,
-                        scope=self.definition.scope,
-                        acceptance_check=self.definition.acceptance_check,
-                        boundary=f"max_passes={self.definition.pass_limit}",
-                        result="approval_required",
-                        passes=tuple(passes),
-                        next_step=f"approve the exact action before continuing: {action.description}",
-                    )
-
-                act(action, number)
-                verification = verify(action, number)
-                if isinstance(verification, tuple):
-                    verified, evidence = verification
-                    evidence_items = tuple(str(item) for item in evidence)
-                else:
-                    verified = bool(verification)
-                    evidence_items = action.evidence
-
-                progress = bool(verified)
-                passes.append(
-                    LoopPass(
-                        number=number,
-                        observation=observation,
-                        action=action.description,
-                        evidence=evidence_items,
-                        verified=bool(verified),
-                        progress=progress,
-                    )
-                )
-                if not verified:
-                    return LoopRunReceipt(
-                        definition_digest=self.definition.digest(),
-                        loop_name=self.definition.name,
-                        scope=self.definition.scope,
-                        acceptance_check=self.definition.acceptance_check,
-                        boundary=f"max_passes={self.definition.pass_limit}",
-                        result="blocked",
-                        passes=tuple(passes),
-                        next_step="verification failed; inspect the evidence before another pass",
-                    )
-                if not previous_progress and self.definition.stop_on_no_progress:
-                    return LoopRunReceipt(
-                        definition_digest=self.definition.digest(),
-                        loop_name=self.definition.name,
-                        scope=self.definition.scope,
-                        acceptance_check=self.definition.acceptance_check,
-                        boundary=f"max_passes={self.definition.pass_limit}",
-                        result="no_progress",
-                        passes=tuple(passes),
-                        next_step="no measurable progress across consecutive passes",
-                    )
-                previous_progress = progress
-            except Exception as exc:  # fail closed; never report an execution error as success
-                passes.append(
-                    LoopPass(
-                        number=number,
-                        observation="",
-                        action="",
-                        evidence=(),
-                        verified=False,
-                        progress=False,
-                        error=f"{type(exc).__name__}: {exc}",
-                    )
-                )
-                return LoopRunReceipt(
-                    definition_digest=self.definition.digest(),
-                    loop_name=self.definition.name,
-                    scope=self.definition.scope,
-                    acceptance_check=self.definition.acceptance_check,
-                    boundary=f"max_passes={self.definition.pass_limit}",
-                    result="error",
-                    passes=tuple(passes),
-                    next_step="inspect the execution error and resume only after the blocker is understood",
-                )
-
+    def _receipt(self, *, result: str, passes: list[LoopPass], next_step: str) -> LoopRunReceipt:
         return LoopRunReceipt(
             definition_digest=self.definition.digest(),
             loop_name=self.definition.name,
             scope=self.definition.scope,
             acceptance_check=self.definition.acceptance_check,
             boundary=f"max_passes={self.definition.pass_limit}",
-            result="exhausted",
+            result=result,
             passes=tuple(passes),
+            next_step=next_step,
+        )
+
+    def run(self, *, observe: Observe, choose: Choose, act: Act, verify: Verify) -> LoopRunReceipt:
+        passes: list[LoopPass] = []
+        for number in range(1, self.definition.pass_limit + 1):
+            try:
+                observation = str(observe(number))
+                action = choose(observation, number)
+                if action is None:
+                    return self._receipt(
+                        result="clean_no_op",
+                        passes=passes,
+                        next_step="nothing; the scoped work is already complete or no safe action is available",
+                    )
+                if action.requires_approval or action.description in self.definition.approval_actions:
+                    passes.append(
+                        LoopPass(number, observation, action.description, action.evidence, False, False, approval_required=True)
+                    )
+                    return self._receipt(
+                        result="approval_required",
+                        passes=passes,
+                        next_step=f"approve the exact action before continuing: {action.description}",
+                    )
+
+                act(action, number)
+                verification = self._normalize_verification(verify(action, number))
+                passes.append(
+                    LoopPass(
+                        number=number,
+                        observation=observation,
+                        action=action.description,
+                        evidence=verification.evidence or action.evidence,
+                        verified=verification.passed,
+                        progress=verification.progress,
+                        complete=verification.complete,
+                    )
+                )
+                if not verification.passed:
+                    return self._receipt(
+                        result="blocked",
+                        passes=passes,
+                        next_step="verification failed; inspect the evidence before another pass",
+                    )
+                if verification.complete:
+                    return self._receipt(
+                        result="success",
+                        passes=passes,
+                        next_step="acceptance criteria met",
+                    )
+                if not verification.progress and self.definition.stop_on_no_progress:
+                    return self._receipt(
+                        result="no_progress",
+                        passes=passes,
+                        next_step="no measurable progress after the latest verified action",
+                    )
+            except Exception as exc:
+                passes.append(
+                    LoopPass(
+                        number=number, observation="", action="", evidence=(), verified=False,
+                        progress=False, error=f"{type(exc).__name__}: {exc}",
+                    )
+                )
+                return self._receipt(
+                    result="error",
+                    passes=passes,
+                    next_step="inspect the execution error and resume only after the blocker is understood",
+                )
+
+        return self._receipt(
+            result="exhausted",
+            passes=passes,
             next_step="run boundary exhausted; review remaining work before another explicit run",
         )
 
@@ -328,10 +307,9 @@ class FeedbackLoop:
 
     def candidate(self, *, strategy: str, proposed_change: str) -> dict:
         evaluation = self.evaluate(strategy=strategy)
-        candidate = {
+        return {
             "candidate_id": hashlib.sha256(f"{strategy}\0{proposed_change}".encode()).hexdigest()[:16],
             "strategy": strategy, "proposed_change": proposed_change,
             "evaluation": evaluation, "active": False,
             "requires": ["deterministic_regression", "safety_gate", "shadow", "canary", "monitoring"],
         }
-        return candidate
