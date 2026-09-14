@@ -7,6 +7,7 @@ from .agency_registry import rank
 from .agency_quality import ReviewFinding, QualityReceipt, evaluate
 from .agency_provenance import ProvenanceLedger
 from .agency_observability import Tracer
+from .agency_trace_export import RegressionLink, apply_regression_score, correlate_trace_with_regression
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,7 @@ class ExecutionResult:
     ledger: list[LedgerEntry] = field(default_factory=list)
     receipt: QualityReceipt | None = None
     trace_id: str | None = None
+    regression_link: RegressionLink | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -85,6 +87,7 @@ class ExecutionResult:
             "ledger": [{"event_id": e.event_id, "event": e.event, "detail": e.detail, "evidence_ids": e.evidence_ids} for e in self.ledger],
             "receipt": self.receipt.as_dict() if self.receipt else None,
             "trace_id": self.trace_id,
+            "regression": self.regression_link.as_dict() if self.regression_link else None,
         }
 
     def provenance(self) -> ProvenanceLedger:
@@ -119,7 +122,14 @@ def _receipt_score(receipt: QualityReceipt | None) -> float:
     return max(0.0, min(1.0, sum(values) / (100 * len(values)))) if values else (1.0 if getattr(receipt, "passed", False) else 0.0)
 
 
-def execute(task: TaskProfile, worker: Callable[[TaskProfile, list[Assignment]], Mapping[str, object]], registry: Mapping[str, object] | None = None, rubric: Mapping[str, object] | None = None, support_limit: int | None = None, tracer: Tracer | None = None) -> ExecutionResult:
+def execute(task: TaskProfile, worker: Callable[[TaskProfile, list[Assignment]], Mapping[str, object]], registry: Mapping[str, object] | None = None, rubric: Mapping[str, object] | None = None, support_limit: int | None = None, tracer: Tracer | None = None, regression_id: str | None = None, regression_result: object | None = None) -> ExecutionResult:
+    """Execute a task and optionally correlate its trace with a regression result.
+
+    The regression is supplied by the caller so existing regression engines remain
+    authoritative. Correlation enriches observability; it never overrides AER gates.
+    """
+    if regression_result is not None and not regression_id:
+        raise ValueError("regression_id is required when regression_result is supplied")
     tracer = tracer or Tracer()
     trace = tracer.start("aer.coding_task", {"task_id": task.task_id, "risk": task.risk, "mutation_mode": task.mutation_mode})
     try:
@@ -158,6 +168,15 @@ def execute(task: TaskProfile, worker: Callable[[TaskProfile, list[Assignment]],
         verify_span.score("quality", score, "normalized quality receipt", "aer")
         verify_span.finish({"passed": bool(getattr(result.receipt, "passed", False)), "quality": score})
         trace.score("task_quality", score, "quality receipt", "aer")
+
+        if regression_result is not None and regression_id:
+            regression_span = trace.span("regression", "evaluation", {"regression_id": regression_id})
+            result.regression_link = correlate_trace_with_regression(trace, regression_id, regression_result)
+            apply_regression_score(trace, result.regression_link)
+            regression_span.score("regression_pass", 1.0 if result.regression_link.passed else 0.0, "linked regression outcome", "regression")
+            regression_span.finish({"passed": result.regression_link.passed, "dataset_digest": result.regression_link.dataset_digest, "failures": result.regression_link.failures})
+            result.ledger.append(LedgerEntry("regression", f"{regression_id}: {'passed' if result.regression_link.passed else 'failed'}"))
+
         tracer.end(trace)
         return result
     except Exception:
