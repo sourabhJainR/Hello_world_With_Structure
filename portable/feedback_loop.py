@@ -3,8 +3,13 @@
 
 This module adapts the strongest implementation concepts from Forward Future's
 Loopy project: fresh observation, one bounded action, explicit verification,
-evidence recording, finite execution boundaries, approval stops, and compact
-receipts. It does not import or depend on Loopy.
+evidence recording, finite execution boundaries, approval stops, compact
+receipts, and explicit terminal states. It does not import or depend on Loopy.
+
+When a :class:`ProvenanceLedger` is supplied, every loop start, bounded pass,
+and terminal outcome is appended to the same append-only execution chain used
+by the wider AER lifecycle. The loop never grants permissions or performs
+external side effects on its own.
 """
 from __future__ import annotations
 
@@ -12,8 +17,10 @@ import hashlib
 import json
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Callable, Sequence
+from typing import TYPE_CHECKING, Callable, Sequence
+
+if TYPE_CHECKING:
+    from .agency_provenance import ProvenanceLedger
 
 LOOP_TERMINAL_STATES = (
     "success", "clean_no_op", "blocked", "approval_required",
@@ -114,6 +121,8 @@ class LoopRunReceipt:
     result: str
     passes: tuple[LoopPass, ...] = field(default_factory=tuple)
     next_step: str = ""
+    context_evidence_digest: str = ""
+    provenance_record_hash: str = ""
     receipt_digest: str = ""
 
     def __post_init__(self) -> None:
@@ -137,10 +146,12 @@ class LoopRunReceipt:
             "result": self.result,
             "passes": [item.as_dict() for item in self.passes],
             "next_step": self.next_step,
+            "context_evidence_digest": self.context_evidence_digest,
         }
 
     def as_dict(self) -> dict[str, object]:
         value = self._unsigned_dict()
+        value["provenance_record_hash"] = self.provenance_record_hash
         value["receipt_digest"] = self.receipt_digest
         return value
 
@@ -158,17 +169,29 @@ class BoundedLoop:
         self.definition = definition
 
     @staticmethod
-    def _normalize_verification(value: VerificationResult | bool | tuple[bool, Sequence[str]]) -> VerificationResult:
+    def _normalize_verification(
+        value: VerificationResult | bool | tuple[bool, Sequence[str]],
+    ) -> VerificationResult:
         if isinstance(value, VerificationResult):
             return value
         if isinstance(value, tuple):
             passed, evidence = value
             return VerificationResult(
-                passed=bool(passed), progress=bool(passed), evidence=tuple(str(item) for item in evidence)
+                passed=bool(passed),
+                progress=bool(passed),
+                evidence=tuple(str(item) for item in evidence),
             )
         return VerificationResult(passed=bool(value), progress=bool(value))
 
-    def _receipt(self, *, result: str, passes: list[LoopPass], next_step: str) -> LoopRunReceipt:
+    def _receipt(
+        self,
+        *,
+        result: str,
+        passes: list[LoopPass],
+        next_step: str,
+        context_evidence_digest: str,
+        provenance_record_hash: str = "",
+    ) -> LoopRunReceipt:
         return LoopRunReceipt(
             definition_digest=self.definition.digest(),
             loop_name=self.definition.name,
@@ -178,78 +201,205 @@ class BoundedLoop:
             result=result,
             passes=tuple(passes),
             next_step=next_step,
+            context_evidence_digest=context_evidence_digest,
+            provenance_record_hash=provenance_record_hash,
         )
 
-    def run(self, *, observe: Observe, choose: Choose, act: Act, verify: Verify) -> LoopRunReceipt:
+    def _finish(
+        self,
+        *,
+        result: str,
+        passes: list[LoopPass],
+        next_step: str,
+        provenance: ProvenanceLedger | None,
+        run_id: str,
+        context_evidence_digest: str,
+        artifact_ids: Sequence[str],
+    ) -> LoopRunReceipt:
+        receipt = self._receipt(
+            result=result,
+            passes=passes,
+            next_step=next_step,
+            context_evidence_digest=context_evidence_digest,
+        )
+        if provenance is None:
+            return receipt
+        record = provenance.append_evidence_event(
+            run_id=run_id,
+            event="loop.completed",
+            context_evidence_digest=context_evidence_digest,
+            detail={
+                "loop_name": self.definition.name,
+                "definition_digest": self.definition.digest(),
+                "receipt_digest": receipt.receipt_digest,
+                "result": result,
+                "pass_count": len(passes),
+                "boundary": f"max_passes={self.definition.pass_limit}",
+            },
+            artifact_ids=artifact_ids,
+        )
+        return self._receipt(
+            result=result,
+            passes=passes,
+            next_step=next_step,
+            context_evidence_digest=context_evidence_digest,
+            provenance_record_hash=record.record_hash,
+        )
+
+    def run(
+        self,
+        *,
+        observe: Observe,
+        choose: Choose,
+        act: Act,
+        verify: Verify,
+        provenance: ProvenanceLedger | None = None,
+        run_id: str | None = None,
+        context_evidence_digest: str = "",
+        artifact_ids: Sequence[str] = (),
+    ) -> LoopRunReceipt:
+        """Execute bounded passes and append the complete run to AER provenance."""
+        if provenance is not None and not str(run_id or "").strip():
+            raise ValueError("run_id is required when provenance is supplied")
+        effective_run_id = str(run_id or self.definition.name)
         passes: list[LoopPass] = []
+        definition_digest = self.definition.digest()
+
+        if provenance is not None:
+            provenance.append_evidence_event(
+                run_id=effective_run_id,
+                event="loop.started",
+                context_evidence_digest=context_evidence_digest,
+                detail={
+                    "loop_name": self.definition.name,
+                    "definition_digest": definition_digest,
+                    "objective": self.definition.objective,
+                    "acceptance_check": self.definition.acceptance_check,
+                    "scope": self.definition.scope,
+                    "boundary": f"max_passes={self.definition.pass_limit}",
+                },
+                artifact_ids=artifact_ids,
+            )
+
         for number in range(1, self.definition.pass_limit + 1):
             try:
                 observation = str(observe(number))
                 action = choose(observation, number)
                 if action is None:
-                    return self._receipt(
-                        result="clean_no_op",
-                        passes=passes,
+                    return self._finish(
+                        result="clean_no_op", passes=passes,
                         next_step="nothing; the scoped work is already complete or no safe action is available",
+                        provenance=provenance, run_id=effective_run_id,
+                        context_evidence_digest=context_evidence_digest, artifact_ids=artifact_ids,
                     )
+
                 if action.requires_approval or action.description in self.definition.approval_actions:
-                    passes.append(
-                        LoopPass(number, observation, action.description, action.evidence, False, False, approval_required=True)
-                    )
-                    return self._receipt(
-                        result="approval_required",
-                        passes=passes,
+                    passes.append(LoopPass(number, observation, action.description, action.evidence, False, False, approval_required=True))
+                    if provenance is not None:
+                        provenance.append_evidence_event(
+                            run_id=effective_run_id,
+                            event="loop.pass.approval_required",
+                            context_evidence_digest=context_evidence_digest,
+                            detail={
+                                "loop_name": self.definition.name,
+                                "definition_digest": definition_digest,
+                                "pass": number,
+                                "observation": observation,
+                                "action": action.description,
+                                "approval_required": True,
+                            },
+                            artifact_ids=artifact_ids,
+                        )
+                    return self._finish(
+                        result="approval_required", passes=passes,
                         next_step=f"approve the exact action before continuing: {action.description}",
+                        provenance=provenance, run_id=effective_run_id,
+                        context_evidence_digest=context_evidence_digest, artifact_ids=artifact_ids,
                     )
 
                 act(action, number)
                 verification = self._normalize_verification(verify(action, number))
-                passes.append(
-                    LoopPass(
-                        number=number,
-                        observation=observation,
-                        action=action.description,
-                        evidence=verification.evidence or action.evidence,
-                        verified=verification.passed,
-                        progress=verification.progress,
-                        complete=verification.complete,
-                    )
+                pass_record = LoopPass(
+                    number=number,
+                    observation=observation,
+                    action=action.description,
+                    evidence=verification.evidence or action.evidence,
+                    verified=verification.passed,
+                    progress=verification.progress,
+                    complete=verification.complete,
                 )
+                passes.append(pass_record)
+
+                if provenance is not None:
+                    provenance.append_evidence_event(
+                        run_id=effective_run_id,
+                        event="loop.pass.completed",
+                        context_evidence_digest=context_evidence_digest,
+                        detail={
+                            "loop_name": self.definition.name,
+                            "definition_digest": definition_digest,
+                            "pass": number,
+                            "observation": observation,
+                            "action": action.description,
+                            "verified": verification.passed,
+                            "progress": verification.progress,
+                            "complete": verification.complete,
+                            "evidence": list(pass_record.evidence),
+                        },
+                        artifact_ids=artifact_ids,
+                    )
+
                 if not verification.passed:
-                    return self._receipt(
-                        result="blocked",
-                        passes=passes,
+                    return self._finish(
+                        result="blocked", passes=passes,
                         next_step="verification failed; inspect the evidence before another pass",
+                        provenance=provenance, run_id=effective_run_id,
+                        context_evidence_digest=context_evidence_digest, artifact_ids=artifact_ids,
                     )
                 if verification.complete:
-                    return self._receipt(
-                        result="success",
-                        passes=passes,
+                    return self._finish(
+                        result="success", passes=passes,
                         next_step="acceptance criteria met",
+                        provenance=provenance, run_id=effective_run_id,
+                        context_evidence_digest=context_evidence_digest, artifact_ids=artifact_ids,
                     )
                 if not verification.progress and self.definition.stop_on_no_progress:
-                    return self._receipt(
-                        result="no_progress",
-                        passes=passes,
+                    return self._finish(
+                        result="no_progress", passes=passes,
                         next_step="no measurable progress after the latest verified action",
+                        provenance=provenance, run_id=effective_run_id,
+                        context_evidence_digest=context_evidence_digest, artifact_ids=artifact_ids,
                     )
             except Exception as exc:
-                passes.append(
-                    LoopPass(
-                        number=number, observation="", action="", evidence=(), verified=False,
-                        progress=False, error=f"{type(exc).__name__}: {exc}",
+                passes.append(LoopPass(
+                    number=number, observation="", action="", evidence=(),
+                    verified=False, progress=False, error=f"{type(exc).__name__}: {exc}",
+                ))
+                if provenance is not None:
+                    provenance.append_evidence_event(
+                        run_id=effective_run_id,
+                        event="loop.pass.error",
+                        context_evidence_digest=context_evidence_digest,
+                        detail={
+                            "loop_name": self.definition.name,
+                            "definition_digest": definition_digest,
+                            "pass": number,
+                            "error": f"{type(exc).__name__}: {exc}",
+                        },
+                        artifact_ids=artifact_ids,
                     )
-                )
-                return self._receipt(
-                    result="error",
-                    passes=passes,
+                return self._finish(
+                    result="error", passes=passes,
                     next_step="inspect the execution error and resume only after the blocker is understood",
+                    provenance=provenance, run_id=effective_run_id,
+                    context_evidence_digest=context_evidence_digest, artifact_ids=artifact_ids,
                 )
 
-        return self._receipt(
-            result="exhausted",
-            passes=passes,
+        return self._finish(
+            result="exhausted", passes=passes,
             next_step="run boundary exhausted; review remaining work before another explicit run",
+            provenance=provenance, run_id=effective_run_id,
+            context_evidence_digest=context_evidence_digest, artifact_ids=artifact_ids,
         )
 
 
@@ -273,8 +423,7 @@ class FeedbackLoop:
     def observe(self, *, task_id: str, outcome: str, verified: bool, strategy: str, evidence: list[str] | None = None) -> dict:
         event = {
             "ts": time.time(), "task_id": task_id, "outcome": outcome,
-            "verified": bool(verified), "strategy": strategy,
-            "evidence": list(evidence or []),
+            "verified": bool(verified), "strategy": strategy, "evidence": list(evidence or []),
         }
         payload = json.dumps(event, sort_keys=True, separators=(",", ":"))
         event["event_digest"] = hashlib.sha256(payload.encode()).hexdigest()[:16]
@@ -297,14 +446,11 @@ class FeedbackLoop:
         verified = sum(1 for e in events if e.get("verified"))
         success_rate = successes / n if n else 0.0
         verification_rate = verified / n if n else 0.0
-        eligible = (
-            n >= self.policy.min_observations
-            and success_rate >= self.policy.min_success_rate
-            and verification_rate >= self.policy.min_verification_rate
-        )
+        eligible = n >= self.policy.min_observations and success_rate >= self.policy.min_success_rate and verification_rate >= self.policy.min_verification_rate
         return {
-            "strategy": strategy, "observations": n, "success_rate": round(success_rate, 4),
-            "verification_rate": round(verification_rate, 4), "candidate_eligible": eligible,
+            "strategy": strategy, "observations": n,
+            "success_rate": round(success_rate, 4), "verification_rate": round(verification_rate, 4),
+            "candidate_eligible": eligible,
             "activation": "blocked_until_regression_and_safety_gates" if eligible else "insufficient_evidence",
         }
 
