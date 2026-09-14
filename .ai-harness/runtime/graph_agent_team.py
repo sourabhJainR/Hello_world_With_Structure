@@ -42,9 +42,9 @@ class SharedTaskMemory:
 
     def publish(self, *, agent: str, role: str, kind: str, text: str,
                 evidence: list[str] | None = None, confidence: float = 0.0) -> str:
-        text = str(text).strip()
         payload = {"intent_digest": self.intent_digest, "agent": agent, "role": role,
-                   "kind": kind, "text": text, "evidence": sorted(set(evidence or [])),
+                   "kind": kind, "text": str(text).strip(),
+                   "evidence": sorted(set(evidence or [])),
                    "confidence": max(0.0, min(1.0, float(confidence))), "created_at": time.time()}
         memory_id = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[:20]
         payload["id"] = memory_id
@@ -80,11 +80,7 @@ class SharedTaskMemory:
         return "\n".join(parts)
 
 class GraphAgentTeam:
-    """Run role agents through one canonical dependency contract and StateGraph executor.
-
-    TaskPlan is the canonical dependency model; StateGraph is only the execution
-    engine projected from it. SharedTaskMemory remains task-scoped and unique.
-    """
+    """Run role agents through one canonical dependency contract and StateGraph executor."""
     def __init__(self, agents: list[AgentSpec], *, max_parallel_read_only: int = 4,
                  max_agents: int = 12) -> None:
         self.agents = {agent.name: agent for agent in agents}
@@ -114,8 +110,7 @@ class GraphAgentTeam:
                 if any(t.status == "pending" for t in plan.tasks.values()):
                     raise ValueError("agent graph could not be scheduled")
                 return levels
-            level = [self.agents[t.id] for t in ready]
-            levels.append(level)
+            levels.append([self.agents[t.id] for t in ready])
             for t in ready:
                 t.status = "done"
 
@@ -133,9 +128,10 @@ class GraphAgentTeam:
             def run(state: Mapping[str, Any], agent: AgentSpec = agent) -> Mapping[str, Any]:
                 deps = [state.get(f"result:{name}") for name in agent.depends_on]
                 if any(not item or item.get("status") != "passed" for item in deps):
-                    result = AgentResult(agent.name, agent.role, "blocked", error="dependency failed")
-                    results[agent.name] = result
-                    return {f"result:{agent.name}": result.__dict__.copy()}
+                    # Preserve the old scheduler contract: dependency-blocked roles
+                    # are represented in graph state for routing but are not exposed
+                    # as executed AgentResults.
+                    return {f"result:{agent.name}": {"status": "blocked", "activated": False}}
                 prompt = f"""# AER graph agent
 
 You are the {agent.role} agent in a shared-memory engineering team.
@@ -171,7 +167,9 @@ Read-only: {agent.read_only}
                                                         evidence=[f"agent:{agent.name}"],
                                                         confidence=0.8 if code == 0 else 0.2))
                 results[agent.name] = result
-                return {f"result:{agent.name}": result.__dict__.copy()}
+                payload = result.__dict__.copy()
+                payload["activated"] = True
+                return {f"result:{agent.name}": payload}
             graph.add_node(agent.name, run)
         roots = [a.name for a in self.agents.values() if not a.depends_on]
         for name in roots:
@@ -190,7 +188,6 @@ Read-only: {agent.read_only}
                 invoke_agent: Callable[[AgentSpec, str], tuple[int, str, float]],
                 checkpoint: CheckpointStore | None = None, resume: bool = False,
                 run_id: str = "graph-agent-team", max_steps: int = 100) -> dict[str, Any]:
-        """Execute with StateGraph while preserving the prior public result contract."""
         self._validate()
         results: dict[str, AgentResult] = {}
         run = self._build_execution_graph(results, task=task, intent_digest=intent_digest,
@@ -201,14 +198,15 @@ Read-only: {agent.read_only}
             max_parallel_nodes=self.max_parallel_read_only)
         for agent in self.agents.values():
             payload = run.state.get(f"result:{agent.name}")
-            if isinstance(payload, dict):
-                results[agent.name] = AgentResult(**payload)
+            if isinstance(payload, dict) and payload.get("activated"):
+                results[agent.name] = AgentResult(**{k: v for k, v in payload.items() if k != "activated"})
+        critical_states = [run.state.get(f"result:{agent.name}") for agent in self.agents.values() if agent.critical]
+        accepted = all(isinstance(payload, dict) and payload.get("status") == "passed" for payload in critical_states)
         return {"graph_digest": self.digest(), "intent_digest": intent_digest,
                 "agents": {name: result.__dict__ for name, result in results.items()},
                 "shared_memory_file": str(memory.path),
                 "shared_memory_entries": len(memory.snapshot(500)),
-                "accepted": all(result.status == "passed" for result in results.values()
-                                 if self.agents[result.name].critical),
+                "accepted": accepted,
                 "execution_trace": list(run.trace), "execution_digest": run.digest}
 
 def team_for_route(route: Mapping[str, Any]) -> GraphAgentTeam:
