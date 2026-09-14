@@ -49,7 +49,11 @@ The canonical cycle is:
 
 `BoundedLoop` requires an immutable `LoopDefinition` with a scope, acceptance check, and finite pass boundary. The host supplies observation, action, and verification callbacks; AER does not grant permissions or execute external effects by itself.
 
-Use `VerificationResult` to distinguish three outcomes that a boolean cannot safely express: `passed=False` blocks the loop; `passed=True, complete=True` succeeds; `passed=True, complete=False, progress=False` stops as `no_progress` when enabled.
+Use `VerificationResult` to distinguish three different outcomes that a boolean cannot safely express:
+
+- `passed=False`: the loop is `blocked` and must not claim success;
+- `passed=True, complete=True`: the loop is `success`;
+- `passed=True, complete=False, progress=False`: the loop is `no_progress` when the definition enables that stop.
 
 Other explicit terminal states are `clean_no_op`, `approval_required`, `exhausted`, and `error`. Execution errors are fail-closed and never become success.
 
