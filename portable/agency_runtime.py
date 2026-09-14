@@ -9,6 +9,7 @@ from .agency_provenance import ProvenanceLedger
 from .agency_observability import Tracer
 from .agency_trace_export import RegressionLink, apply_regression_score, correlate_trace_with_regression
 from .agency_regression_loop import PromotionDecision, PromotionPolicy, RegressionPlan, RegressionRun, run_trace_regression_loop
+from .agency_release_lifecycle import ArtifactRef, ArtifactStore, ReleaseState, apply_promotion_decision
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,7 @@ class ExecutionResult:
     regression_link: RegressionLink | None = None
     regression_run: RegressionRun | None = None
     promotion_decision: PromotionDecision | None = None
+    release_state: ReleaseState | None = None
 
     def as_dict(self) -> dict:
         return {
@@ -93,6 +95,7 @@ class ExecutionResult:
             "regression": self.regression_link.as_dict() if self.regression_link else None,
             "regression_run": self.regression_run.as_dict() if self.regression_run else None,
             "promotion": self.promotion_decision.as_dict() if self.promotion_decision else None,
+            "release": self.release_state.as_dict() if self.release_state else None,
         }
 
     def provenance(self) -> ProvenanceLedger:
@@ -129,18 +132,34 @@ def _receipt_score(receipt: QualityReceipt | None) -> float:
     return 1.0 if getattr(receipt, "passed", False) else 0.0
 
 
-def execute(task: TaskProfile, worker: Callable[[TaskProfile, list[Assignment]], Mapping[str, object]], registry: Mapping[str, object] | None = None, rubric: Mapping[str, object] | None = None, support_limit: int | None = None, tracer: Tracer | None = None, regression_id: str | None = None, regression_result: object | None = None, regression_plan: RegressionPlan | None = None, promotion_policy: PromotionPolicy | None = None) -> ExecutionResult:
-    """Execute a task and optionally close the trace -> regression -> release loop.
+def execute(
+    task: TaskProfile,
+    worker: Callable[[TaskProfile, list[Assignment]], Mapping[str, object]],
+    registry: Mapping[str, object] | None = None,
+    rubric: Mapping[str, object] | None = None,
+    support_limit: int | None = None,
+    tracer: Tracer | None = None,
+    regression_id: str | None = None,
+    regression_result: object | None = None,
+    regression_plan: RegressionPlan | None = None,
+    promotion_policy: PromotionPolicy | None = None,
+    release_store: ArtifactStore | None = None,
+    release_artifact: str | None = None,
+    release_artifact_id: str | None = None,
+) -> ExecutionResult:
+    """Execute a task and optionally close trace -> regression -> release.
 
-    ``regression_result`` remains supported for backwards compatibility. When a
-    ``regression_plan`` is supplied, AER creates the run, executes every dataset
-    case, correlates the result with this trace, and computes a conservative
-    shadow/canary/promote/rollback decision.
+    With ``release_store`` and ``release_artifact`` supplied, AER materializes
+    the decision as a real immutable artifact/channel transition. Shadow and
+    canary stage an artifact without replacing ``current``; promote atomically
+    advances ``current``; rollback selects the prior promoted immutable build.
     """
     if regression_result is not None and not regression_id:
         raise ValueError("regression_id is required when regression_result is supplied")
     if regression_plan is not None and regression_result is not None:
         raise ValueError("regression_plan and regression_result are mutually exclusive")
+    if release_artifact and not release_store:
+        raise ValueError("release_store is required when release_artifact is supplied")
     tracer = tracer or Tracer()
     trace = tracer.start("aer.coding_task", {"task_id": task.task_id, "risk": task.risk, "mutation_mode": task.mutation_mode})
     try:
@@ -199,6 +218,17 @@ def execute(task: TaskProfile, worker: Callable[[TaskProfile, list[Assignment]],
             trace.metadata["promotion"] = decision.as_dict()
             result.ledger.append(LedgerEntry("regression", f"{regression_run.regression_id}: {'passed' if regression_run.passed else 'failed'}"))
             result.ledger.append(LedgerEntry("promotion", f"{decision.action}: {decision.reason}"))
+
+            if release_store is not None:
+                artifact_ref: ArtifactRef | None = None
+                if decision.action != "rollback":
+                    if not release_artifact:
+                        raise ValueError("release_artifact is required for shadow/canary/promote decisions")
+                    artifact_ref = release_store.stage(release_artifact, release_artifact_id or task.task_id)
+                result.release_state = apply_promotion_decision(release_store, decision, artifact_ref)
+                trace.metadata["release"] = result.release_state.as_dict()
+                trace.score("release_applied", 1.0, "release state transition completed", "aer")
+                result.ledger.append(LedgerEntry("release", f"{result.release_state.action}: {result.release_state.artifact_id or 'previous'}"))
         elif regression_result is not None and regression_id:
             regression_span = trace.span("regression", "evaluation", {"regression_id": regression_id})
             result.regression_link = correlate_trace_with_regression(trace, regression_id, regression_result)
