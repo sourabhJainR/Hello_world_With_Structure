@@ -18,6 +18,7 @@ class ArtifactRef:
     digest: str
     path: str
     size: int
+    layout: str = "file"
 
     def as_dict(self) -> dict[str, object]:
         return self.__dict__.copy()
@@ -69,7 +70,11 @@ class ArtifactStore:
         expected = (self.artifacts / ref.digest).resolve()
         if path != expected or not path.is_dir():
             raise RuntimeError("artifact reference escapes the content-addressed store")
-        if self._digest(path) != ref.digest:
+        if ref.layout not in {"file", "directory"}:
+            raise RuntimeError("unsupported artifact layout")
+        files = [p for p in path.rglob("*") if p.is_file()]
+        actual = self._digest(files[0]) if ref.layout == "file" and len(files) == 1 else self._digest(path)
+        if actual != ref.digest:
             raise RuntimeError(f"artifact digest verification failed: {ref.digest}")
 
     def _existing_digest(self, destination: Path, source_was_file: bool) -> str:
@@ -101,7 +106,7 @@ class ArtifactStore:
                 shutil.copy2(source_path, temp / source_path.name)
             temp.replace(destination)
         size = sum(p.stat().st_size for p in destination.rglob("*") if p.is_file())
-        ref = ArtifactRef(artifact_id, digest, str(destination), size)
+        ref = ArtifactRef(artifact_id, digest, str(destination), size, "file" if source_was_file else "directory")
         self._verify_ref(ref)
         self._write_json(self.artifacts / f"{digest}.json", {"artifact": ref.as_dict()})
         return ref
@@ -142,11 +147,7 @@ class ArtifactStore:
         shadow = self._read_channel("shadow")
         canary = self._read_channel("canary")
         current = self._read_channel("current")
-        return {
-            "shadow": shadow.as_dict() if shadow else None,
-            "canary": canary.as_dict() if canary else None,
-            "current": current.as_dict() if current else None,
-        }
+        return {"shadow": shadow.as_dict() if shadow else None, "canary": canary.as_dict() if canary else None, "current": current.as_dict() if current else None}
 
     def transition(self, action: str, ref: ArtifactRef | None, reason: str) -> ReleaseState:
         if action not in ACTIONS:
@@ -171,10 +172,7 @@ class ArtifactStore:
                 state = ReleaseState("rollback", None, None, None, datetime.now(timezone.utc).isoformat(), reason + "; no active artifact to replace")
                 self._record(state)
                 return state
-            candidates = [
-                x for x in self._history()
-                if x.get("action") == "promote" and x.get("artifact_id") and x.get("artifact_id") != previous.artifact_id
-            ]
+            candidates = [x for x in self._history() if x.get("action") == "promote" and x.get("artifact_id") and x.get("artifact_id") != previous.artifact_id]
             if not candidates:
                 state = ReleaseState("rollback", previous.artifact_id, previous.digest, previous.artifact_id, datetime.now(timezone.utc).isoformat(), reason + "; no previous promoted artifact available")
                 self._record(state)
@@ -184,14 +182,7 @@ class ArtifactStore:
             self._set_channel("canary", None)
             self._set_channel("shadow", None)
             ref = target_ref
-        state = ReleaseState(
-            action,
-            ref.artifact_id if ref else None,
-            ref.digest if ref else None,
-            previous.artifact_id if previous else None,
-            datetime.now(timezone.utc).isoformat(),
-            reason,
-        )
+        state = ReleaseState(action, ref.artifact_id if ref else None, ref.digest if ref else None, previous.artifact_id if previous else None, datetime.now(timezone.utc).isoformat(), reason)
         self._record(state)
         return state
 
@@ -219,10 +210,21 @@ class ArtifactStore:
 
     def _ref_from_history(self, value: Mapping[str, object]) -> ArtifactRef:
         digest = str(value["digest"])
+        metadata_path = self.artifacts / f"{digest}.json"
+        if metadata_path.is_file():
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+                artifact = metadata.get("artifact")
+                if isinstance(artifact, dict):
+                    ref = ArtifactRef(**artifact)
+                    self._verify_ref(ref)
+                    return ref
+            except (json.JSONDecodeError, TypeError, KeyError):
+                pass
         path = self.artifacts / digest
         if not path.exists():
             raise RuntimeError(f"rollback artifact is missing: {digest}")
-        ref = ArtifactRef(str(value["artifact_id"]), digest, str(path), int(value.get("size", 0)))
+        ref = ArtifactRef(str(value["artifact_id"]), digest, str(path), int(value.get("size", 0)), "file")
         self._verify_ref(ref)
         return ref
 
