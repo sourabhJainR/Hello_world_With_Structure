@@ -1,6 +1,6 @@
 # Executable context/evidence lifecycle
 
-The coding runtime now acquires one immutable `ContextEvidence` envelope and carries its identity through execution and deployment.
+The coding runtime acquires one immutable `ContextEvidence` envelope and carries its identity through execution and deployment.
 
 ## Pipeline
 
@@ -49,12 +49,18 @@ For artifact rollout, use `portable.context_bound_release.ContextBoundRelease`:
 release = ContextBoundRelease(store, evidence)
 release.shadow(artifact)
 release.canary(artifact)
-release.promote(artifact)
+verification = release.verify(artifact, {
+    "unit_tests": True,
+    "policy_check": True,
+})
+release.promote(artifact, verification=verification)
 # if observations fail:
 release.rollback()
 ```
 
-Each executable transition writes the same evidence digest into the release reason/audit trail. This prevents a rollout decision from being detached from the context that produced it.
+`verify()` creates a content-addressed `VerificationReceipt` from the artifact digest, the same context evidence digest, and the passed checks. `promote()` validates that receipt belongs to both the artifact and evidence before accepting it.
+
+Every executable transition writes the evidence digest as a structured release field. Verification also carries its own digest. This gives the lifecycle a concrete `build -> verify -> ship` gate instead of recording verification only as prose.
 
 Policy records also retain `context_evidence_digest`, so promotion and rollback can be traced back to the evidence envelope.
 
@@ -70,9 +76,13 @@ research/investigate
       v
  ContextEvidence #E
       |
-      +--> implement / review / verify
-      |
-      +--> shadow --same E--> canary --same E--> promote
+      +--> implement / review
+      |          |
+      |          v
+      |       verify #V (artifact + E)
+      |          |
+      |          v
+      +--> shadow --same E--> canary --same E + V--> promote
       |                         |
       |                         +--> failure --same E--> rollback
       |
