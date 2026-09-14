@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Versioned, auditable policy registry with atomic promotion and rollback lineage."""
+"""Versioned, auditable policy registry with rollout evidence lineage."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -19,6 +19,7 @@ class Policy:
     score: float = 0.0
     parent_policy_id: str = ""
     evidence_hash: str = ""
+    context_evidence_digest: str = ""
     promoted_at: int | None = None
     retired_at: int | None = None
     rollout_stage: int = 0
@@ -36,7 +37,6 @@ class PolicyRegistry:
                 row = json.loads(line)
                 if not isinstance(row, dict):
                     continue
-                # Backward-compatible defaults for pre-v2 registry rows.
                 fields = asdict(Policy("", 0, "", ""))
                 fields.update(row)
                 policies.append(Policy(**fields))
