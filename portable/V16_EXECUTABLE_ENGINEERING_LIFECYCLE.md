@@ -1,6 +1,6 @@
 # V16 — executable engineering lifecycle
 
-AER now treats review as a first-class evidence-bound gate and provides a provider-neutral team coordinator for splitting substantial work into independently complete units.
+AER treats review as a first-class evidence-bound gate and provides a provider-neutral team coordinator for splitting substantial work into independently complete units.
 
 ## Complete lifecycle
 
@@ -8,7 +8,7 @@ AER now treats review as a first-class evidence-bound gate and provides a provid
 research
   -> plan
   -> implement
-  -> verify
+  -> bounded feedback loop (observe -> act -> verify -> record)
   -> review
   -> shadow
   -> canary
@@ -16,63 +16,65 @@ research
        \-> rollback on failed observation/gate
 ```
 
-The same `ContextEvidence.evidence_digest` is carried through the engineering and rollout stages. Verification produces a `VerificationReceipt` bound to the artifact and evidence. Review produces a `ReviewReceipt` bound to the same artifact, evidence, and verification. Promotion requires both receipts and requires the artifact to have passed through canary.
+## Loop-to-release evidence continuity
 
-## Early course correction
+A bounded repair, research, or test loop is not an isolated mini-runtime. It uses the same `ProvenanceLedger` as the rest of AER.
 
-`portable.agency_team_orchestrator.AgentTeamOrchestrator` is deliberately a coordinator, not a model runtime. The host supplies `spawn`, `verify`, and `review` callbacks.
+When a `BoundedLoop` receives `provenance`, `run_id`, `context_evidence_digest`, and artifact IDs, it appends:
 
-A team is represented as `WorkUnit`s with:
-
-- a complete unit goal;
-- a specialist/role;
-- read/write resources;
-- explicit dependencies;
-- mutation mode and priority.
-
-The coordinator then:
-
-1. builds the existing conflict-aware execution plan;
-2. spawns independent read-only units in bounded parallel waves;
-3. serializes mutating work;
-4. runs verification immediately after each unit completes;
-5. runs review immediately after verification;
-6. stops failed units and their dependents instead of spending tokens on work that cannot safely continue;
-7. preserves the same evidence digest for every spawned agent;
-8. returns deterministic unit gates and a team digest.
-
-This makes verification and review a feedback mechanism during implementation rather than a final ceremony after all work is finished.
-
-## Host integration boundary
-
-```python
-run = AgentTeamOrchestrator(max_parallel=4).run(
-    units,
-    evidence_digest=context_evidence.evidence_digest,
-    spawn=host.spawn_agent,
-    verify=host.verify_unit,
-    review=host.review_unit,
-)
-if not run.passed:
-    # course-correct the failed unit; do not continue its dependents
-    ...
+```text
+loop.started
+  -> loop.pass.completed (or loop.pass.approval_required / loop.pass.error)
+  -> loop.completed
+  -> shadow.started
+  -> ...
+  -> canary...
+  -> promote | rollback
 ```
 
-The host remains responsible for model/provider selection, command execution, sandboxing, credentials, permissions, and external side effects. AER owns planning, evidence identity, conflict boundaries, gate semantics, and release lineage.
+`LoopRunReceipt` carries:
 
-## Release integration
+- the immutable loop definition digest;
+- the same `ContextEvidence.evidence_digest` used by engineering and rollout;
+- the bounded pass results and evidence;
+- the receipt digest;
+- the final provenance record hash.
 
-```python
-release = bind_release_context(store_root, context_evidence)
-verification = release.verify(artifact, {"unit_tests": True, "static_checks": True})
-review = release.review(artifact, verification)
-release.shadow(artifact, review=review)
-release.canary(artifact, review=review)
-release.promote(artifact, verification=verification, review=review)
+The final provenance record hash points to `loop.completed`. The next lifecycle event, such as `shadow.started`, uses that record as its parent through the ledger's normal hash chain. This makes a later rollout decision traceable back through the bounded work that produced the artifact.
+
+The receipt digest excludes only the provenance pointer itself, so attaching the receipt to the ledger does not change the receipt's content identity. The evidence digest remains part of the receipt identity.
+
+## Complete evidence chain
+
+```text
+ContextEvidence.evidence_digest
+          |
+          v
+      loop.started
+          |
+          v
+   bounded loop passes
+          |
+          v
+    loop.completed
+          |
+          v
+    verification/review
+          |
+          v
+       shadow
+          |
+          v
+       canary
+          |
+       +--+--+
+       |     |
+       v     v
+    promote rollback
 ```
 
-A missing review receipt, mismatched evidence, mismatched verification, unresolved finding, skipped shadow, or skipped canary fails closed. Rollback remains available for failed rollout observations.
+A loop may stop with `success`, `clean_no_op`, `blocked`, `approval_required`, `exhausted`, `no_progress`, or `error`. Loop completion never bypasses verification, review, regression, shadow, canary, promotion, or rollback gates.
 
-## Design intent
+## Existing lifecycle contracts
 
-The implementation reuses the existing `agency_execution_plan`, `ContextEvidence`, `ArtifactStore`, verification, regression, and provenance contracts. It does not introduce a second retrieval engine, memory store, specialist registry, or agent runtime.
+The implementation reuses the existing `agency_execution_plan`, `ContextEvidence`, `ArtifactStore`, verification, regression, provenance, and release contracts. `portable.feedback_loop.BoundedLoop` owns bounded loop execution; `.ai-harness/runtime/loop_engine.py` retains planning/scoring helpers and delegates execution to the canonical portable implementation.
