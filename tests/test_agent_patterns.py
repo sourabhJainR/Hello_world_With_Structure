@@ -11,23 +11,56 @@ from portable.agent_patterns import (
 
 
 def test_router_uses_least_privilege_tool_boundary():
-    router = SpecialistRouter(
-        [
-            Specialist("researcher", ("research",), ("fetch", "search"), priority=1),
-            Specialist("security", ("security", "review"), ("github", "fetch"), priority=1),
-        ]
-    )
+    router = SpecialistRouter([
+        Specialist("researcher", ("research",), ("fetch", "search"), priority=1),
+        Specialist("security", ("security", "review"), ("github", "fetch"), priority=1),
+    ])
     decision = router.route(RouteRequest("research repository", ("research",), ("fetch",)))
     assert decision.specialist == "researcher"
     assert decision.tools == ("fetch",)
     assert decision.coverage == 1.0
 
 
-def test_research_planner_creates_one_bounded_parallel_wave():
-    plan = ResearchPlanner().build(["find API contract", "find deployment constraints"])
-    assert len(plan.tasks) == 2
-    assert plan.waves == (("research-1", "research-2"),)
+def test_router_fails_closed_on_partial_single_specialist_coverage():
+    router = SpecialistRouter([
+        Specialist("research", ("research",), ("search",)),
+        Specialist("security", ("security",), ("review",)),
+    ])
+    try:
+        router.route(RouteRequest("research and security", ("research", "security")))
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("partial capability coverage must not be silently accepted")
+
+
+def test_router_many_uses_bounded_set_cover():
+    router = SpecialistRouter([
+        Specialist("research", ("research", "search"), ("web",), priority=1),
+        Specialist("security", ("security",), ("review",), priority=1),
+        Specialist("general", ("research", "security"), ("web", "review"), priority=0),
+    ])
+    decisions = router.route_many(RouteRequest("research security", ("research", "security")))
+    assert [item.specialist for item in decisions] == ["general"]
+    assert decisions[0].coverage == 1.0
+
+
+def test_research_planner_creates_dependency_aware_waves():
+    plan = ResearchPlanner().build(
+        ["find API contract", "find deployment constraints", "compare alternatives"],
+        dependencies={"compare alternatives": ("research-1", "research-2")},
+    )
+    assert plan.waves == (("research-1", "research-2"), ("compare alternatives",))
     assert plan.digest
+
+
+def test_research_planner_rejects_cycles():
+    try:
+        ResearchPlanner().build(["a", "b"], dependencies={"a": ("research-2",), "b": ("research-1",)})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("cyclic research dependencies must fail")
 
 
 def test_mixture_of_agents_requires_explicit_judge():
@@ -40,6 +73,15 @@ def test_mixture_of_agents_requires_explicit_judge():
     assert result.selected == (1,)
     assert result.agreement == 0.75
     assert result.evidence[0].source == "docs"
+
+
+def test_evidence_validates_confidence():
+    try:
+        EvidenceItem("docs", "claim", 1.1)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("invalid evidence confidence must fail")
 
 
 def test_one_change_optimizer_keeps_only_improving_change():
