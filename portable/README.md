@@ -4,7 +4,7 @@ AER is a **machine-scoped, repository-isolated, version-pinned engineering contr
 
 ## Distribution unit
 
-The bundle contains the current provider-neutral AER runtime and canonical Agent Skill, including routing, bounded context, context cache, learning, policy registry, rollback controls, regression corpus, shadow/canary evaluation, verification, capability planning, provider-native capability discovery, lifecycle hooks, and optional-extension contracts.
+The bundle contains the current provider-neutral AER runtime and canonical Agent Skill, including routing, bounded context, context cache, learning, policy registry, rollback controls, regression corpus, shadow/canary evaluation, verification, capability planning, provider-native capability discovery, lifecycle hooks, observability, evaluation, and optional-extension contracts.
 
 Mutable machine/session state is excluded from the bundle: execution journals, telemetry, learned task logs, worktrees, caches, and Python caches.
 
@@ -37,6 +37,87 @@ The retriever first builds a lightweight index of file hashes, symbols and impor
 When `CodingTask.workspace_root` is supplied, `run_coding_task()` performs this retrieval before the worker runs and exposes the immutable `CodebaseContext` through `TaskProfile.context`. Unreadable files, unmatched queries and budget omissions are recorded as unknowns rather than inferred.
 
 `portable.agency_ragas_eval` measures retrieval precision, retrieval recall, expected-path coverage, response relevance, evidence faithfulness and optional reference correctness. It follows the useful Ragas separation between retriever quality and answer quality without adding a Ragas or LLM dependency to the portable runtime.
+
+## Agent observability, evaluation and prompt lifecycle
+
+AER now includes a dependency-free observability layer inspired by the useful parts of modern LLM observability platforms such as Opik: trace trees, spans, scores, datasets, experiments, versioned prompts, and local telemetry. Opik itself is not required at runtime. The goal is to give AER the same engineering feedback loop without coupling the portable bundle to a hosted service.
+
+Each coding task can produce a trace containing:
+
+```text
+AER coding task
+  -> planning span
+  -> agent execution span
+  -> evidence/retrieval span
+  -> verification span
+  -> quality score
+```
+
+`ExecutionResult.trace_id` links the engineering state ledger and the observability record. Scores are normalized to `0..1` and can carry a reason and source, which allows system checks, human review, or an external judge to be distinguished.
+
+Observability is disabled by default. To enable local traces:
+
+```bash
+export AER_OBSERVABILITY=1
+```
+
+Traces are written to the machine-scoped location `~/.aer/observability/traces.jsonl`, never to the target repository. Inputs and outputs are bounded and common secret fields are redacted before persistence.
+
+### Versioned prompts
+
+`PromptRegistry` keeps prompt versions explicit and supports promotion of a known version:
+
+```python
+from portable.agency_observability import PromptRegistry
+
+prompts = PromptRegistry()
+prompts.register("planner", "1", "Plan this task: {task}")
+prompts.register("planner", "2", "Plan this task safely: {task}")
+prompts.promote("planner", "2")
+```
+
+Every prompt version has a deterministic digest. AER can therefore associate an agent run with the exact prompt version used and replay it during evaluation.
+
+### Datasets and experiments
+
+Datasets are versioned and content-addressed. Experiments execute a function over the dataset and use a deterministic or LLM-backed judge supplied by the caller. This supports regression suites, RAG retrieval tests, coding-task acceptance sets, and model/prompt comparisons without forcing an LLM dependency into AER.
+
+```python
+from portable.agency_observability import Dataset, DatasetItem, run_experiment
+
+dataset = Dataset("coding-regression", "1", (
+    DatasetItem("fix login", "expected result"),
+))
+
+result = run_experiment(
+    dataset,
+    run_agent,
+    lambda item, output: {"correctness": judge(item, output)},
+)
+```
+
+A failed experiment reports the exact dataset item and metric below the threshold. The dataset digest is retained so a result cannot silently refer to changed test data.
+
+### Retrieval quality
+
+`retrieval_scores()` provides explicit precision and recall for expected versus selected repository paths. This complements the existing evidence-first retrieval layer and makes context selection measurable instead of relying only on the final answer.
+
+### What this adds to the AER control loop
+
+```text
+Intent / Contract
+      -> Repository evidence
+      -> Trace + retrieval context
+      -> Capability plan
+      -> Agent execution
+      -> Evaluation scores
+      -> Verification / review
+      -> Regression experiment
+      -> Shadow / canary
+      -> Promote / monitor / rollback
+```
+
+The important distinction is that observability records what happened, evaluation measures whether it was good, and AER policy decides whether the behavior is allowed to proceed. Telemetry and learned recommendations cannot weaken safety, security, or promotion gates.
 
 ## Provider-native capabilities
 
@@ -154,7 +235,7 @@ switch user-level current pointer
       |
 discover native capabilities + hooks
       |
-observe -> learn -> regression -> shadow -> canary -> promote -> monitor
+trace -> evaluate -> learn -> regression -> shadow -> canary -> promote -> monitor
       |
     rollback / recover from checkpoint
 ```
