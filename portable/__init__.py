@@ -14,6 +14,24 @@ from .output_quality import OutputQualityGate, QualityResult
 from .feedback_loop import BoundedLoop, LoopAction, LoopDefinition, LoopPass, LoopRunReceipt, VerificationResult
 from .agency_provenance import ProvenanceLedger, ProvenanceRecord
 from .engineering_design_guard import DesignDimension, DesignFinding, DesignReviewReceipt, EngineeringDesignGuard, FindingSeverity
+from .agent_patterns import (
+    ConsensusResult,
+    EvidenceItem,
+    MixtureOfAgents,
+    OneChangeOptimizer,
+    OptimizationResult,
+    OptimizationRound,
+    ResearchPlan,
+    ResearchPlanner,
+    ResearchTask,
+    RouteDecision,
+    RouteRequest,
+    ScopeChecker,
+    ScopeFinding,
+    ScopeReport,
+    Specialist,
+    SpecialistRouter,
+)
 
 __all__ = [
     "main", "AdaptiveRuntime", "HookBus", "HookDecision", "HookEvent", "HookPhase", "HookedExecution",
@@ -23,5 +41,7 @@ __all__ = [
     "MemoryRecord", "PersistentMemory", "AutomationScheduler", "Schedule", "OutputQualityGate", "QualityResult",
     "BoundedLoop", "LoopAction", "LoopDefinition", "LoopPass", "LoopRunReceipt", "VerificationResult",
     "ProvenanceLedger", "ProvenanceRecord", "DesignDimension", "DesignFinding", "DesignReviewReceipt",
-    "EngineeringDesignGuard", "FindingSeverity",
+    "EngineeringDesignGuard", "FindingSeverity", "Specialist", "SpecialistRouter", "RouteRequest", "RouteDecision",
+    "ResearchTask", "ResearchPlan", "ResearchPlanner", "EvidenceItem", "ConsensusResult", "MixtureOfAgents",
+    "OptimizationRound", "OptimizationResult", "OneChangeOptimizer", "ScopeFinding", "ScopeReport", "ScopeChecker",
 ]
