@@ -18,6 +18,26 @@ AER is installed under `~/.aer/versions/v<version>/` and selected through `~/.ae
 
 The Agent Skill is installed only in user-level locations. The installer accepts no target-repository path.
 
+## Evidence-first codebase context
+
+Agency Runtime v11 adds a dependency-free, Ragas-inspired evaluation and retrieval layer for coding tasks.
+
+```python
+from portable.agency_codebase_context import retrieve_from_path
+
+context = retrieve_from_path(
+    ".",
+    "find the execution plan and specialist scheduling logic",
+    token_budget=4000,
+)
+```
+
+The retriever first builds a lightweight index of file hashes, symbols and imports. It ranks paths before reading content, selects bounded line windows, and stops at the caller's token budget. The result records the snapshot digest, exact source ranges, selected paths, estimated tokens and explicit unknowns.
+
+When `CodingTask.workspace_root` is supplied, `run_coding_task()` performs this retrieval before the worker runs and exposes the immutable `CodebaseContext` through `TaskProfile.context`. Unreadable files, unmatched queries and budget omissions are recorded as unknowns rather than inferred.
+
+`portable.agency_ragas_eval` measures retrieval precision, retrieval recall, expected-path coverage, response relevance, evidence faithfulness and optional reference correctness. It follows the useful Ragas separation between retriever quality and answer quality without adding a Ragas or LLM dependency to the portable runtime.
+
 ## Provider-native capabilities
 
 AER now discovers capabilities exposed by local coding-agent providers and prefers a native capability when evidence is available. If no provider exposes the requested capability, AER uses its own provider-neutral fallback.
