@@ -18,7 +18,7 @@ RUNTIME_PATHS = (
     ROOT / ".ai-harness" / "runtime" / "tool_runner.py",
     ROOT / ".ai-harness" / "runtime" / "lsp_server.py",
     ROOT / ".ai-harness" / "runtime" / "feedback_loop.py",
-    ROOT / ".ai-harness" / "runtime" / "auto_compaction.py",
+    ROOT / ".ai-harness" / runtime" / "auto_compaction.py",
 )
 COMPOSED_SKILLS = (
     ROOT / "skills" / "engineering" / "retro" / "SKILL.md",
@@ -95,7 +95,7 @@ class ContractAlignmentTests(unittest.TestCase):
     def test_plugin_versions_are_aligned(self) -> None:
         plugin = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
         marketplace = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
-        self.assertEqual(plugin["version"], "22.0.0")
+        self.assertEqual(plugin["version"], "22.1.0")
         self.assertEqual(marketplace["plugins"][0]["version"], plugin["version"])
 
     def test_artifact_contract_matches_explicit_install_semantics(self) -> None:
