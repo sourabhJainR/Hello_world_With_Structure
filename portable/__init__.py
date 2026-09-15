@@ -9,6 +9,9 @@ from .session_state import SessionCheckpoint, SessionStore
 from .task_planner import PRIORITIES, STATUSES, Task, TaskPlan
 from .capability_fabric import CAPABILITIES, Capability, CapabilityFabric, ProviderAdapter, ProviderAdapterRegistry
 from .persistent_memory import MemoryRecord, PersistentMemory
+from .agent_memory import AgentMemory
+from .context_engine import ContextEngine, ContextItem, ContextPolicy, Handoff, handoff_from_output
+from .dream_memory import DreamMemory
 from .automation_scheduler import AutomationScheduler, Schedule
 from .output_quality import OutputQualityGate, QualityResult
 from .feedback_loop import BoundedLoop, LoopAction, LoopDefinition, LoopPass, LoopRunReceipt, VerificationResult
@@ -39,7 +42,8 @@ __all__ = [
     "CapabilityRequest", "ProviderCapability", "ProviderFabric", "RoutingDecision", "SessionCheckpoint", "SessionStore",
     "ImpactRecord", "ImpactReport", "analyze", "Task", "TaskPlan", "STATUSES", "PRIORITIES",
     "CAPABILITIES", "Capability", "CapabilityFabric", "ProviderAdapter", "ProviderAdapterRegistry",
-    "MemoryRecord", "PersistentMemory", "AutomationScheduler", "Schedule", "OutputQualityGate", "QualityResult",
+    "MemoryRecord", "PersistentMemory", "AgentMemory", "ContextEngine", "ContextItem", "ContextPolicy",
+    "Handoff", "handoff_from_output", "DreamMemory", "AutomationScheduler", "Schedule", "OutputQualityGate", "QualityResult",
     "BoundedLoop", "LoopAction", "LoopDefinition", "LoopPass", "LoopRunReceipt", "VerificationResult",
     "ProvenanceLedger", "ProvenanceRecord", "DesignDimension", "DesignFinding", "DesignReviewReceipt",
     "EngineeringDesignGuard", "FindingSeverity", "Checkpoint", "CompiledStateGraph", "GraphEvent",
