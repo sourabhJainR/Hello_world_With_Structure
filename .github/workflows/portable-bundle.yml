@@ -35,22 +35,25 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
-      - name: Prepare CI artifacts
-        run: |
-          rm -rf ci-artifacts dist/aer-portable
-          mkdir -p ci-artifacts dist/aer-portable
       - name: Run portable bundle tests
         run: |
-          set -o pipefail
-          PYTHONPATH=.:.ai-harness python -m unittest tests.test_portable_aer tests.test_task_planner tests.test_impact_analysis tests.test_bidirectional_install tests.test_contract_alignment tests.test_graph_agent_team tests.test_engineering_design_guard -v 2>&1 | tee ci-artifacts/portable-tests.log
-      - name: Build bundle
+          PYTHONPATH=.:.ai-harness python -m unittest tests.test_portable_aer tests.test_task_planner tests.test_impact_analysis tests.test_bidirectional_install tests.test_contract_alignment tests.test_graph_agent_team tests.test_engineering_design_guard -v
+      - name: Read AER version
+        id: version
+        run: |
+          VERSION=$(python -c "import json; print(json.load(open('.claude-plugin/plugin.json', encoding='utf-8'))['version'])")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Build canonical portable bundle
         run: python aer_cli.py build --output aer-portable.zip
-      - name: Verify bundle
+      - name: Verify canonical portable bundle
         run: python aer_cli.py verify aer-portable.zip
-      - name: Verify Claude plugin payload
+      - name: Verify canonical payload and version
+        env:
+          EXPECTED_VERSION: ${{ steps.version.outputs.version }}
         run: |
           python - <<'PY'
           import json
+          import os
           import zipfile
           with zipfile.ZipFile('aer-portable.zip') as z:
               names = set(z.namelist())
@@ -59,103 +62,32 @@ jobs:
                   'payload/.claude-plugin/marketplace.json',
                   'payload/skills/ai-coding-orchestrator/SKILL.md',
                   'payload/skills/ai-coding-orchestrator/hooks/aer_prompt.py',
+                  'aer_cli.py',
+                  'aer-bundle.json',
               }
               missing = sorted(required - names)
               if missing:
-                  raise SystemExit('missing Claude integration payload: ' + ', '.join(missing))
+                  raise SystemExit('missing canonical AER payload: ' + ', '.join(missing))
+              expected = os.environ['EXPECTED_VERSION']
               plugin = json.loads(z.read('payload/.claude-plugin/plugin.json'))
-              assert plugin['version'] == '21.0.0', plugin
+              manifest = json.loads(z.read('aer-bundle.json'))
+              assert plugin['version'] == expected, plugin
+              assert manifest['version'] == expected, manifest
               assert 'UserPromptSubmit' in plugin['hooks'], plugin
               contract = json.loads(z.read('payload/.ai-harness/ARTIFACT_UPGRADE_CONTRACT.json'))
               assert contract['downgrade'] == 'explicit_install_only', contract
               assert contract['automatic_update_downgrade'] == 'forbidden', contract
-              manifest = json.loads(z.read('aer-bundle.json'))
               recorded = {item['path'] for item in manifest['files']}
               assert '.claude-plugin/plugin.json' in recorded, 'plugin manifest is not integrity-covered'
               assert '.ai-harness/ARTIFACT_UPGRADE_CONTRACT.json' in recorded, 'artifact policy is not integrity-covered'
-          print('Claude integration and artifact policy are payloaded and integrity-covered')
+          print(f'Canonical AER portable bundle verified: {expected}')
           PY
-      - name: Assemble directly runnable AER distribution
-        run: |
-          rm -rf dist/aer-portable dist/aer-portable-staging
-          mkdir -p dist/aer-portable dist/aer-portable-staging
-          python - <<'PY'
-          import shutil, zipfile
-          from pathlib import Path
-          bundle = Path('aer-portable.zip')
-          staging = Path('dist/aer-portable-staging')
-          destination = Path('dist/aer-portable')
-          with zipfile.ZipFile(bundle) as z:
-              z.extractall(staging)
-          payload = staging / 'payload'
-          for name in ('.ai-harness', 'portable', 'skills', '.claude-plugin', '.claude'):
-              source = payload / name
-              if source.exists():
-                  shutil.copytree(source, destination / name, dirs_exist_ok=True)
-          for name in ('aer_cli.py', 'aer-bundle.json'):
-              source = staging / name
-              if source.is_file():
-                  shutil.copy2(source, destination / name)
-          required = (
-              destination / 'aer-bundle.json',
-              destination / 'aer_cli.py',
-              destination / 'portable' / 'aer_runtime.py',
-              destination / 'portable' / 'orchestration.py',
-          )
-          missing = [str(path) for path in required if not path.is_file()]
-          if missing:
-              raise SystemExit('Missing directly runnable distribution files: ' + ', '.join(missing))
-          shutil.rmtree(staging, ignore_errors=True)
-          print('Directly runnable AER distribution assembled')
-          PY
-      - name: Smoke-test directly runnable AER distribution
-        run: |
-          python dist/aer-portable/aer_cli.py verify aer-portable.zip > ci-artifacts/extracted-cli-smoke.log
-          grep -q '"portable": true' ci-artifacts/extracted-cli-smoke.log
-      - name: Stage portable bundle
-        if: always()
-        run: |
-          if [ -f aer-portable.zip ]; then cp aer-portable.zip ci-artifacts/aer-portable.zip; fi
-          if [ -f aer_cli.py ]; then cp aer_cli.py ci-artifacts/aer_cli.py; fi
-      - name: Verify published artifact layout
-        if: always()
-        run: |
-          test -f ci-artifacts/aer-portable.zip
-          test -f ci-artifacts/aer_cli.py
-          test -f dist/aer-portable/aer_cli.py
-          test -f dist/aer-portable/aer-bundle.json
-          test -f dist/aer-portable/portable/aer_runtime.py
-          python - <<'PY'
-          from pathlib import Path
-          import zipfile
-          artifact = Path('ci-artifacts/aer-portable.zip')
-          launcher = Path('ci-artifacts/aer_cli.py')
-          if not launcher.is_file() or launcher.stat().st_size == 0:
-              raise SystemExit('published artifact is missing a usable aer_cli.py launcher')
-          with zipfile.ZipFile(artifact) as outer:
-              names = {name.rstrip('/') for name in outer.namelist()}
-          if 'aer_cli.py' not in names:
-              raise SystemExit('portable bundle is missing aer_cli.py')
-          print('Published artifact layout verified: aer_cli.py + aer-portable.zip + extracted distribution')
-          PY
-      - name: Collect CI metadata
-        if: always()
-        run: |
-          {
-            printf 'commit=%s\n' "$GITHUB_SHA"
-            printf 'run_id=%s\n' "$GITHUB_RUN_ID"
-            printf 'workflow=%s\n' "$GITHUB_WORKFLOW"
-            printf 'ref=%s\n' "$GITHUB_REF"
-          } > ci-artifacts/run-metadata.txt
-      - name: Publish CI artifacts
-        if: always()
+      - name: Smoke-test single-file distribution
+        run: python aer_cli.py verify aer-portable.zip
+      - name: Publish single AER distribution
         uses: actions/upload-artifact@v7
         with:
           name: aer-portable
-          path: |
-            ci-artifacts/
-            dist/aer-portable/
-            aer-portable.zip
+          path: aer-portable.zip
           if-no-files-found: error
           retention-days: '30'
-          include-hidden-files: true
