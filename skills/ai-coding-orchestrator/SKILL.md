@@ -9,6 +9,33 @@ description: Repository-aware AI coding workflow for research, implementation, r
 
 Use the repository as the source of truth. Keep work bounded, evidence-backed, deterministic where possible, and easy to verify. The orchestration layer is a facilitator, not a second intelligence layer: prefer the provider's strongest native agent loop and add control only where it produces measurable value.
 
+## Repository map first
+
+Before broad repository reading, prefer the dependency-free repository map when the task is structural, cross-file, unfamiliar, or risk-sensitive:
+
+```bash
+python -m portable.repo_intelligence . --for="<task in plain language>" --token-budget=4000
+```
+
+Use the same map for focused questions:
+
+```bash
+python -m portable.repo_intelligence . --mode=callers --symbol="<symbol>"
+python -m portable.repo_intelligence . --mode=callees --symbol="<symbol>"
+python -m portable.repo_intelligence . --mode=impact --symbol="<symbol>" --graph-depth=1
+python -m portable.repo_intelligence . --mode=tests --symbol="<symbol>"
+python -m portable.repo_intelligence . --mode=situ --base=HEAD
+python -m portable.repo_intelligence . --mode=pack-task --for="<task>" --token-budget=4000
+```
+
+The map is a bounded evidence accelerator, not a proof oracle. Its output carries a stable snapshot digest, confidence on graph edges, skipped-file inventory, parse-error disclosure, and explicit unknowns. A zero result means no evidence was found, not that the thing does not exist. Do not convert candidate test relationships into claims of execution coverage.
+
+Repository context should follow a detail ladder:
+
+`map -> ranked files/symbols -> signatures/windows -> full bodies only for selected items`
+
+Avoid similarity-only snippet dumping and avoid whole-repository prompts. If the map cannot answer a question completely, preserve its unknowns and acquire the smallest additional evidence needed.
+
 ## Single-agent-first execution
 
 Start with one capable agent unless evidence shows decomposition will improve the result.
@@ -43,7 +70,7 @@ Only decompose when the single-agent-first decision says it has expected value. 
 
 ## Retrieval and feedback
 
-Prefer semantic and symbol-aware retrieval over whole-repository prompts. Use bounded Repomix-style packing when useful. Respect ignore files, secret filtering, deterministic ordering, file-size limits, and token budgets.
+Prefer semantic and symbol-aware retrieval over whole-repository prompts. Use bounded deterministic packing when useful. Respect ignore files, secret filtering, deterministic ordering, file-size limits, and token budgets.
 
 Use `.ai-harness/runtime/feedback_loop.py` only when repeated evidence can change the next action:
 
@@ -64,6 +91,7 @@ Prefer the smallest change that satisfies intent and preserves contracts. Before
 Keep these aligned with the workflow:
 
 - `portable.task_planner.TaskPlan`
+- `portable.repo_intelligence.RepositoryMap`
 - `portable.impact_analysis`
 - `portable.agency_execution_plan`
 - `portable.agency_team_orchestrator`
@@ -102,7 +130,7 @@ or, after a failed rollout gate, replace promote with rollback. Use `ContextBoun
 
 Normal coding:
 
-`understand intent -> acquire context -> choose single-agent or team from evidence -> implement -> verify -> review -> integrate -> regression -> bounded feedback where useful -> artifact -> shadow -> canary -> promote or rollback`
+`understand intent -> repository map -> acquire bounded context -> choose single-agent or team from evidence -> implement -> verify -> review -> integrate -> regression -> bounded feedback where useful -> artifact -> shadow -> canary -> promote or rollback`
 
 Research/POC:
 
@@ -114,4 +142,4 @@ Review:
 
 ## Output discipline
 
-State what changed, why, what was verified/reviewed, evidence identifiers, receipts when applicable, and remaining uncertainty. Prefer concrete paths, symbols, tests, receipts, and lifecycle state over broad claims.
+State what changed, why, what was verified/reviewed, evidence identifiers, receipts when applicable, and remaining uncertainty. Prefer concrete paths, symbols, tests, receipts, graph edges, snapshot digests, and lifecycle state over broad claims.
