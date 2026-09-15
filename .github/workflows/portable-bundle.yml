@@ -12,6 +12,7 @@ on:
       - '.claude-plugin/**'
       - '.claude/skills/ai-coding-orchestrator/**'
       - 'skills/ai-coding-orchestrator/**'
+      - 'skills/engineering/**'
       - 'portable/**'
       - 'aer_cli.py'
       - 'tests/test_portable_aer.py'
@@ -59,12 +60,14 @@ jobs:
                   'payload/.claude-plugin/marketplace.json',
                   'payload/skills/ai-coding-orchestrator/SKILL.md',
                   'payload/skills/ai-coding-orchestrator/hooks/aer_prompt.py',
+                  'payload/skills/engineering/interactive-documentation/SKILL.md',
+                  'payload/skills/engineering/interactive-documentation/render_document.py',
               }
               missing = sorted(required - names)
               if missing:
                   raise SystemExit('missing Claude integration payload: ' + ', '.join(missing))
               plugin = json.loads(z.read('payload/.claude-plugin/plugin.json'))
-              assert plugin['version'] == '21.0.0', plugin
+              assert plugin['version'] == '22.1.0', plugin
               assert 'UserPromptSubmit' in plugin['hooks'], plugin
               contract = json.loads(z.read('payload/.ai-harness/ARTIFACT_UPGRADE_CONTRACT.json'))
               assert contract['downgrade'] == 'explicit_install_only', contract
