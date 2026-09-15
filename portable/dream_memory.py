@@ -1,22 +1,22 @@
-"""Post-run dreaming for safe, portable long-term learning.
+"""Post-run dreaming for safe, portable collective learning.
 
-Dreaming is deliberately outside the execution graph. It reads the durable
-observation ledger, clusters repeated outcomes, and writes only curated,
-versioned learnings back through the memory API. Execution agents never carry
+Dreaming is deliberately outside the execution graph. It reads durable
+observations, detects repeated successes and failures, and creates a verified
+revision only when independent runs agree. The execution agents never carry
 this analysis in their working context.
 """
 from __future__ import annotations
 
-import hashlib
+import json
 import time
 from pathlib import Path
 from typing import Any
 
-from runtime.task_memory import _connect, _db_path, _process_lock, record
+from runtime.task_memory import _connect, _db_path, _process_lock, revise
 
 
 class DreamMemory:
-    """Curate observations after a run without polluting execution context."""
+    """Curate observations into reusable patterns after execution."""
 
     MIN_REPEAT = 2
 
@@ -30,70 +30,84 @@ class DreamMemory:
         with _process_lock(dbp.with_name("task-memory.lock")):
             with _connect(self.root) as db:
                 rows = db.execute(
-                    """SELECT id,task,category,outcome,detail,command,approach,evidence_ids,
-                              run_id,promotion,learning_version,revision,source_agent
-                       FROM observations
-                       WHERE task=? AND promotion IN ('candidate','verified')
+                    """SELECT * FROM observations
+                       WHERE task=? AND promotion='candidate'
                        ORDER BY recorded_at DESC""",
                     (str(task).strip(),),
                 ).fetchall()
-        for row in rows:
-            key = hashlib.sha256(
-                "|".join(str(x or "").strip().lower() for x in (row[1], row[2], row[3], row[5], row[6])).encode("utf-8")
-            ).hexdigest()
+        for raw in rows:
+            # The logical key deliberately ignores detail/evidence. This lets
+            # independent observations of the same approach accumulate without
+            # copying every execution's transcript into the learning store.
+            key = str(raw[20] or "")
+            if not key:
+                key = f"legacy:{raw[2]}|{raw[3]}|{raw[6] or ''}|{raw[7] or ''}"
             groups.setdefault(key, []).append({
-                "id": row[0], "task": row[1], "category": row[2], "outcome": row[3],
-                "detail": row[4], "command": row[5], "approach": row[6], "evidence_ids": row[7],
-                "run_id": row[8], "promotion": row[9], "learning_version": row[10],
-                "revision": row[11], "source_agent": row[12],
+                "id": raw[0], "task": raw[2], "category": raw[3], "outcome": raw[4],
+                "detail": raw[5], "command": raw[6], "approach": raw[7],
+                "construct_refs": json.loads(raw[8] or "[]"), "run_id": raw[9],
+                "evidence_ids": json.loads(raw[10] or "[]"), "promotion": raw[12],
+                "revision": raw[15], "learning_key": key,
             })
         return list(groups.items())
+
+    @staticmethod
+    def _independent_runs(observations: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Only count distinct runs; retries in one run are not new evidence."""
+        by_run: dict[str, dict[str, Any]] = {}
+        for observation in observations:
+            run = str(observation.get("run_id") or observation.get("id"))
+            by_run.setdefault(run, observation)
+        return list(by_run.values())
 
     @staticmethod
     def _evidence(observations: list[dict[str, Any]]) -> list[str]:
         values: set[str] = set()
         for observation in observations:
-            raw = observation.get("evidence_ids") or "[]"
-            try:
-                import json
-                parsed = json.loads(raw) if isinstance(raw, str) else raw
-                values.update(str(x).strip() for x in parsed if str(x).strip())
-            except (TypeError, ValueError):
-                values.update(x.strip() for x in str(raw).split(",") if x.strip())
+            values.update(str(x).strip() for x in observation.get("evidence_ids", []) if str(x).strip())
         return sorted(values)
 
     def dream(self, task: str) -> list[dict[str, Any]]:
-        """Promote repeated, evidence-backed observations into durable learning.
+        """Promote repeated independent observations into collective knowledge.
 
-        A lesson becomes reusable only after independent observations agree on
-        the outcome. Mixed outcomes stay candidates so one bad promotion cannot
-        poison future runs. Promotion is idempotent: a group with no new
-        candidate observations is not promoted again.
+        Successes become reusable patterns. Repeated failures/regressions become
+        explicit anti-patterns that future agents see first. Mixed outcomes are
+        deliberately left as candidates. Promotion creates a new immutable
+        revision and supersedes the observations it consolidates, preserving the
+        full history for audit and future re-evaluation.
         """
-        promoted: list[dict[str, Any]] = []
+        curated: list[dict[str, Any]] = []
         for _, observations in self._candidate_groups(task):
-            candidates = [x for x in observations if x["promotion"] == "candidate"]
-            if len(candidates) < self.min_repeat:
+            independent = self._independent_runs(observations)
+            if len(independent) < self.min_repeat:
                 continue
-            outcomes = {str(x["outcome"]) for x in candidates}
+            outcomes = {str(item["outcome"]) for item in independent}
             if outcomes == {"worked"}:
                 outcome = "worked"
-                lesson = "Repeated success across {} observations: {}".format(len(candidates), candidates[0]["detail"])
+                prefix = "VERIFIED PATTERN"
+                lesson = f"Repeated success across {len(independent)} independent runs: {independent[0]['detail']}"
             elif outcomes.issubset({"failed", "regressed"}):
                 outcome = "regressed" if "regressed" in outcomes else "failed"
-                lesson = "Repeated unsuccessful approach across {} observations: {}".format(len(candidates), candidates[0]["detail"])
+                prefix = "VERIFIED ANTI-PATTERN"
+                lesson = f"Repeated unsuccessful approach across {len(independent)} independent runs. Avoid unless current evidence disproves it: {independent[0]['detail']}"
             else:
+                # Conflicting evidence must never be promoted automatically.
                 continue
-            representative = candidates[0]
-            promoted.append(record(
-                self.root,
-                task=representative["task"], category=representative["category"],
-                outcome=outcome, detail=lesson, command=representative["command"],
-                approach=representative["approach"], run_id=representative["run_id"],
-                evidence_ids=self._evidence(candidates), source_agent="dream-cycle",
-                promotion="verified",
-            ))
-        return promoted
+            representative = independent[0]
+            try:
+                curated.append(revise(
+                    self.root,
+                    representative["id"],
+                    outcome=outcome,
+                    detail=f"{prefix}: {lesson}",
+                    promotion="verified",
+                    evidence_ids=self._evidence(independent),
+                    source_agent="dream-cycle",
+                ))
+            except KeyError:
+                # Another process may have curated the same group first.
+                continue
+        return curated
 
     def status(self) -> dict[str, Any]:
         dbp = _db_path(self.root)
