@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dependency-aware multi-agent team execution with task-scoped shared memory."""
+"""Dependency-aware multi-agent execution with bounded context handoffs."""
 from __future__ import annotations
 
 import hashlib
@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from portable.agency_state_graph import CheckpointStore, StateGraph
+from portable.context_engine import ContextEngine, ContextItem, ContextPolicy, handoff_from_output
 from portable.task_planner import Task, TaskPlan
 
 
@@ -38,19 +39,17 @@ class AgentResult:
 
 
 class SharedTaskMemory:
-    """Bounded append-only memory for one graph run.
+    """Bounded task memory; durable project memory remains a separate store."""
 
-    This is deliberately task-scoped working memory, not durable project memory;
-    durable memory remains owned by ``portable.agent_capabilities.PersistentMemory``.
-    """
-
-    def __init__(self, path: Path, intent_digest: str, *, max_entries: int = 256, max_chars: int = 200_000) -> None:
+    def __init__(self, path: Path, intent_digest: str, *, max_entries: int = 256, max_chars: int = 200_000,
+                 context_policy: ContextPolicy | None = None) -> None:
         if max_entries < 1 or max_chars < 1:
             raise ValueError("memory budgets must be positive")
         self.path = Path(path)
         self.intent_digest = intent_digest
         self.max_entries = max_entries
         self.max_chars = max_chars
+        self.context = ContextEngine(context_policy)
         self._lock = threading.RLock()
         self.path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -67,8 +66,8 @@ class SharedTaskMemory:
         payload["id"] = memory_id
         line = json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n"
         with self._lock:
-            existing = self.snapshot(self.max_entries)
-            used = sum(len(json.dumps(row, ensure_ascii=False, sort_keys=True)) + 1 for row in existing)
+            rows = self.snapshot(self.max_entries)
+            used = sum(len(json.dumps(row, ensure_ascii=False, sort_keys=True)) + 1 for row in rows)
             if used + len(line) > self.max_chars:
                 raise ValueError("shared task memory budget exceeded")
             with self.path.open("a", encoding="utf-8") as handle:
@@ -90,33 +89,27 @@ class SharedTaskMemory:
                         rows.append(row)
             return rows[-int(limit):]
 
-    def compact_text(self, limit: int = 6000) -> str:
-        if limit < 1:
-            return ""
-        rows = self.snapshot()
-        if not rows:
-            return "No shared task memory yet."
-        parts: list[str] = []
-        used = 0
-        for row in reversed(rows):
-            line = f"[{row.get('role')}] {row.get('kind')}: {row.get('text', '')}"
-            if used + len(line) + 1 > limit:
-                break
-            parts.append(line)
-            used += len(line) + 1
-        return "\n".join(reversed(parts))
+    def compact_text(self, *, relevant_agents: set[str] | None = None, limit: int | None = None) -> str:
+        rows = self.snapshot(self.max_entries)
+        if relevant_agents is not None:
+            rows = [row for row in rows if str(row.get("agent", "")) in relevant_agents]
+        items = self.context.from_memory(rows)
+        if limit is not None:
+            return self.context.pack(items, required=[])[-limit:]
+        return self.context.pack(items)
 
 
 class GraphAgentTeam:
-    """Run role agents through one canonical dependency contract and StateGraph executor."""
+    """Run role agents through one canonical dependency contract and StateGraph."""
     def __init__(self, agents: list[AgentSpec], *, max_parallel_read_only: int = 4,
-                 max_agents: int = 12) -> None:
+                 max_agents: int = 12, context_policy: ContextPolicy | None = None) -> None:
         self.agents = {agent.name: agent for agent in agents}
         if not self.agents:
             raise ValueError("graph agent team requires at least one agent")
         if len(self.agents) > max_agents:
             raise ValueError("graph agent team exceeds agent budget")
         self.max_parallel_read_only = max(1, int(max_parallel_read_only))
+        self.context_policy = context_policy or ContextPolicy()
         self._plan = self._build_task_plan()
 
     def _build_task_plan(self) -> TaskPlan:
@@ -157,11 +150,17 @@ class GraphAgentTeam:
                 deps = [state.get(f"result:{name}") for name in agent.depends_on]
                 if any(not item or item.get("status") != "passed" for item in deps):
                     return {f"result:{agent.name}": {"status": "blocked", "activated": False}}
+
+                # Context is assembled per receiver. A downstream agent gets the
+                # task contract plus direct-dependency handoffs, not the whole run.
+                relevant = set(agent.depends_on)
+                relevant.add("planner")
+                shared_context = memory.compact_text(relevant_agents=relevant)
                 prompt = f"""# AER graph agent
 
 You are the {agent.role} agent in a shared-memory engineering team.
 
-Task:
+## Task contract
 {task}
 
 Intent digest: {intent_digest}
@@ -170,16 +169,16 @@ Role: {agent.role}
 Focus: {agent.focus or 'Use the task contract and repository evidence to perform your role.'}
 Read-only: {agent.read_only}
 
-## Shared task memory
-{memory.compact_text()}
+## Selected context
+{shared_context}
 
-## Team contract
-- Work only on the current task.
-- Inspect repository evidence before making claims.
-- Do not repeat work already established in shared memory unless verifying it.
-- Publish useful findings, decisions, evidence and unresolved risks in your response.
+## Handoff rules
+- Treat the task contract as authoritative.
+- Use only selected, task-relevant context; do not ask for or reconstruct the entire prior conversation.
+- Verify inherited claims against repository evidence when they matter.
+- Do not repeat completed dependency work unless verification requires it.
+- Return concise findings, decisions, evidence, unresolved risks and the next action.
 - {'Do not modify files.' if agent.read_only else 'You may modify files only within the task scope.'}
-- Downstream agents will receive your output through shared memory.
 
 ## Base instructions
 {base_prompt}
@@ -187,8 +186,12 @@ Read-only: {agent.read_only}
                 code, output, duration = invoke_agent(agent, prompt)
                 result = AgentResult(agent.name, agent.role, "passed" if code == 0 else "failed",
                                      exit_code=code, duration_seconds=duration, output=output)
+                handoff = handoff_from_output(task_id=intent_digest, sender=agent.name,
+                                              receiver="downstream", objective=agent.focus or task,
+                                              output=output, success=code == 0,
+                                              max_chars=memory.context.policy.output_chars)
                 result.memory_ids.append(memory.publish(agent=agent.name, role=agent.role,
-                                                        kind="agent_output", text=output[-12000:],
+                                                        kind="handoff", text=handoff.render(memory.context.policy.output_chars),
                                                         evidence=[f"agent:{agent.name}"],
                                                         confidence=0.8 if code == 0 else 0.2))
                 results[agent.name] = result
