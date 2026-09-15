@@ -73,9 +73,10 @@ jobs:
               recorded = {item['path'] for item in manifest['files']}
               assert '.claude-plugin/plugin.json' in recorded, 'plugin manifest is not integrity-covered'
               assert '.ai-harness/ARTIFACT_UPGRADE_CONTRACT.json' in recorded, 'artifact policy is not integrity-covered'
-          print('Claude integration and artifact policy are payloaded and integrity-covered')
+              assert 'aer_cli.py' in recorded, 'launcher is not integrity-covered'
+          print('Claude integration, artifact policy and launcher are payloaded and integrity-covered')
           PY
-      - name: Assemble directly runnable AER distribution
+      - name: Assemble extracted distribution for validation
         run: |
           rm -rf dist/aer-portable dist/aer-portable-staging
           mkdir -p dist/aer-portable dist/aer-portable-staging
@@ -104,39 +105,54 @@ jobs:
           )
           missing = [str(path) for path in required if not path.is_file()]
           if missing:
-              raise SystemExit('Missing directly runnable distribution files: ' + ', '.join(missing))
+              raise SystemExit('Missing extracted distribution files: ' + ', '.join(missing))
           shutil.rmtree(staging, ignore_errors=True)
-          print('Directly runnable AER distribution assembled')
+          print('Extracted AER distribution validated')
           PY
-      - name: Smoke-test directly runnable AER distribution
+      - name: Smoke-test embedded launcher
         run: |
-          python dist/aer-portable/aer_cli.py verify aer-portable.zip > ci-artifacts/extracted-cli-smoke.log
-          grep -q '"portable": true' ci-artifacts/extracted-cli-smoke.log
-      - name: Stage portable bundle
+          rm -rf /tmp/aer-embedded-smoke
+          mkdir -p /tmp/aer-embedded-smoke
+          cd /tmp/aer-embedded-smoke
+          python "$GITHUB_WORKSPACE/aer_cli.py" verify "$GITHUB_WORKSPACE/aer-portable.zip" > "$GITHUB_WORKSPACE/ci-artifacts/embedded-cli-smoke.log"
+          grep -q '"portable": true' "$GITHUB_WORKSPACE/ci-artifacts/embedded-cli-smoke.log"
+      - name: Stage unified portable artifact
         if: always()
         run: |
-          if [ -f aer-portable.zip ]; then cp aer-portable.zip ci-artifacts/aer-portable.zip; fi
-          if [ -f aer_cli.py ]; then cp aer_cli.py ci-artifacts/aer_cli.py; fi
-      - name: Verify published artifact layout
+          rm -rf ci-artifacts/publish
+          mkdir -p ci-artifacts/publish
+          if [ -f aer-portable.zip ]; then cp aer-portable.zip ci-artifacts/publish/aer-portable.zip; fi
+          cat > ci-artifacts/publish/README.txt <<'EOF'
+AER Portable Distribution
+
+Download aer-portable.zip. It is the single distributable artifact.
+
+The ZIP contains the AER launcher, runtime, skills, plugin metadata, and integrity manifest.
+
+Use:
+  python aer_cli.py aer-portable.zip
+
+Or extract the ZIP and run:
+  python aer_cli.py install
+EOF
+      - name: Verify unified artifact layout
         if: always()
         run: |
-          test -f ci-artifacts/aer-portable.zip
-          test -f ci-artifacts/aer_cli.py
-          test -f dist/aer-portable/aer_cli.py
-          test -f dist/aer-portable/aer-bundle.json
-          test -f dist/aer-portable/portable/aer_runtime.py
+          test -f ci-artifacts/publish/aer-portable.zip
+          test ! -f ci-artifacts/publish/aer_cli.py
+          test ! -f ci-artifacts/aer-portable.zip
+          test ! -f ci-artifacts/aer_cli.py
           python - <<'PY'
           from pathlib import Path
           import zipfile
-          artifact = Path('ci-artifacts/aer-portable.zip')
-          launcher = Path('ci-artifacts/aer_cli.py')
-          if not launcher.is_file() or launcher.stat().st_size == 0:
-              raise SystemExit('published artifact is missing a usable aer_cli.py launcher')
-          with zipfile.ZipFile(artifact) as outer:
-              names = {name.rstrip('/') for name in outer.namelist()}
-          if 'aer_cli.py' not in names:
-              raise SystemExit('portable bundle is missing aer_cli.py')
-          print('Published artifact layout verified: aer_cli.py + aer-portable.zip + extracted distribution')
+          artifact = Path('ci-artifacts/publish/aer-portable.zip')
+          with zipfile.ZipFile(artifact) as archive:
+              names = {name.rstrip('/') for name in archive.namelist()}
+          required = {'aer-bundle.json', 'aer_cli.py', 'payload/portable/aer_runtime.py'}
+          missing = sorted(required - names)
+          if missing:
+              raise SystemExit('unified AER artifact is missing: ' + ', '.join(missing))
+          print('Unified artifact verified: one aer-portable.zip containing launcher + runtime + manifest')
           PY
       - name: Collect CI metadata
         if: always()
@@ -146,16 +162,13 @@ jobs:
             printf 'run_id=%s\n' "$GITHUB_RUN_ID"
             printf 'workflow=%s\n' "$GITHUB_WORKFLOW"
             printf 'ref=%s\n' "$GITHUB_REF"
-          } > ci-artifacts/run-metadata.txt
-      - name: Publish CI artifacts
+          } > ci-artifacts/publish/run-metadata.txt
+      - name: Publish unified AER artifact
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: aer-portable
-          path: |
-            ci-artifacts/
-            dist/aer-portable/
-            aer-portable.zip
+          path: ci-artifacts/publish/
           if-no-files-found: error
           retention-days: '30'
           include-hidden-files: true
