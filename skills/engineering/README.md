@@ -6,7 +6,7 @@ They are deliberately thin orchestration documents. Runtime execution, context r
 
 ## Flows
 
-`ask-matt` routes work to the smallest useful capability.
+`engineering-router` routes work to the smallest useful capability.
 
 `grill-with-docs -> research -> to-spec -> to-tickets -> implement -> tdd -> code-review` is the normal evidence-to-ship path when the work warrants the full flow.
 
