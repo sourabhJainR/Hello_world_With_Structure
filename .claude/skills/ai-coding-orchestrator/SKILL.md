@@ -1,6 +1,6 @@
 ---
 name: ai-coding-orchestrator
-description: Repository-aware AI coding workflow for research, implementation, review, verification, and safe rollout.
+description: Repository-aware AI coding workflow for research, implementation, review, verification, visual documentation, and safe rollout.
 ---
 
 # AI Coding Orchestrator
@@ -80,6 +80,7 @@ Use `.ai-harness/ENGINEERING_DESIGN_POLICY.md` as the canonical synthesis of eng
 - Use `research` for evidence acquisition before implementation when uncertainty is external, architectural or technological.
 - Use `prototype` when a bounded experiment can resolve uncertainty faster than production implementation.
 - Use `resolving-merge-conflicts` only for an active merge/rebase conflict; it must preserve intent and end with verification.
+- Use `interactive-documentation` when architecture, workflow, sequence, data-flow, or lifecycle evidence needs a portable visual HTML artifact.
 - Use `retro` after meaningful sessions to convert observed failures into small, durable environment improvements.
 
 These skills are orchestration surfaces. They reuse the canonical repository/context/evidence/provenance stores and never create parallel ownership.
@@ -135,6 +136,10 @@ Normal coding:
 Research/POC:
 
 `define question -> acquire bounded evidence -> research -> prototype when useful -> measure -> decide -> record unknowns -> implement through normal gates`
+
+Visual documentation:
+
+`define audience -> repository map -> context/evidence -> author typed topology -> validate -> render standalone HTML -> inspect -> publish/share`
 
 Review:
 
