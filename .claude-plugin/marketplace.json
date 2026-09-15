@@ -4,18 +4,18 @@
   "version": "1.0.1",
   "description": "Repository-aware AI engineering control plane with adaptive routing, bounded context, specialist planning, durable execution history, verification, and optional extensions.",
   "owner": {
-    "name": "Sourabh Jain",
-    "url": "https://github.com/sourabhJainR"
+    "name": "AER Engineering",
+    "url": "https://github.com/sourabhJainR/Hello_world_With_Structure"
   },
   "plugins": [
     {
       "name": "adaptive-ai-coding-orchestrator",
       "source": "./",
-      "version": "22.0.0",
-      "description": "Adaptive coding orchestration for implementation, debugging, research, POCs, reviews, Jira tasks, safe repository changes, and evidence-backed learning.",
+      "version": "22.1.0",
+      "description": "Adaptive coding orchestration for implementation, debugging, research, POCs, visual documentation, Jira tasks, safe repository changes, and evidence-backed learning.",
       "author": {
-        "name": "Sourabh Jain",
-        "url": "https://github.com/sourabhJainR"
+        "name": "AER Engineering",
+        "url": "https://github.com/sourabhJainR/Hello_world_With_Structure"
       },
       "license": "MIT",
       "homepage": "https://github.com/sourabhJainR/Hello_world_With_Structure",
@@ -31,7 +31,8 @@
         "evals",
         "context-engineering",
         "durable-execution",
-        "regression-intelligence"
+        "regression-intelligence",
+        "interactive-documentation"
       ],
       "skills": [
         "./skills/ai-coding-orchestrator/SKILL.md"
