@@ -1,6 +1,6 @@
 ---
 name: improve-codebase-architecture
-description: Survey recent or high-friction areas for deepening opportunities, render a visual report, and route a selected candidate through the existing engineering flow.
+description: Survey recent or high-friction areas for deepening opportunities, render evidence-backed visual documentation, and route a selected candidate through the existing engineering flow.
 disable-model-invocation: true
 ---
 
@@ -29,74 +29,29 @@ Do not re-litigate an ADR unless there is concrete friction worth reopening.
 
 Create a bounded JSON candidate file in the OS temp directory. Do not mutate repository source during this phase.
 
-Shape:
-
-```json
-{
-  "repository": "repo-name",
-  "generated_at": "ISO timestamp",
-  "candidates": [
-    {
-      "id": "stable-id",
-      "title": "Short deepening title",
-      "strength": "Strong|Worth exploring|Speculative",
-      "dependency": "in-process|local-substitutable|ports-and-adapters|mock",
-      "files": ["path.py::Symbol"],
-      "problem": "One sentence",
-      "solution": "One sentence",
-      "wins": ["short gain"],
-      "before_mermaid": "flowchart LR ...",
-      "after_mermaid": "flowchart LR ...",
-      "adr": "optional ADR warning",
-      "evidence_ids": ["..."],
-      "context_evidence_digest": "..."
-    }
-  ],
-  "top_recommendation": "stable-id"
-}
-```
-
 Each candidate must be backed by repository evidence. Keep the set small and ranked. Do not invent a deepening merely because a pattern exists in an external framework.
 
-## 3. Render the visual report
+## 3. Render interactive documentation
 
-Render the candidate file with:
+For a visual artifact, hand the evidence-backed candidate data to `interactive-documentation`.
+
+Use:
 
 ```bash
-python skills/engineering/improve-codebase-architecture/render_report.py <input.json> <tmp-report.html>
+python skills/engineering/interactive-documentation/render_document.py <input.json> <tmp-report.html>
 ```
 
-The renderer produces a self-contained report with side-by-side before/after diagrams, recommendation badges, affected files, problem/solution, wins, and ADR warnings. Mermaid is used for graph-shaped relationships and the report layout stays intentionally lightweight.
+The input should contain stable node IDs, authored edges, source paths/symbols, evidence IDs, snapshot digest, unknowns, and optional named views. The renderer produces one self-contained HTML file with search, focus, relationship tracing, theme switching, evidence details, keyboard navigation, and print-friendly output.
 
-Resolve the temp directory from `$TMPDIR`, falling back to `/tmp` (or `%TEMP%` on Windows). Never write the generated report into the repository unless the user explicitly asks.
+The artifact must not depend on CDN scripts, remote fonts, telemetry, or a hosted viewer. Resolve the temp directory from `$TMPDIR`, falling back to `/tmp` (or `%TEMP%` on Windows). Never write the generated report into the repository unless the user explicitly asks.
 
-Open the report for the user with the platform-native command when available. The report is evidence for selection, not an execution instruction.
+The report is evidence for selection, not an execution instruction. Visual proximity is not runtime reachability and an authored graph edge is not test coverage.
 
 ## 4. Select and hand off
 
 Do not implement directly from a survey candidate. When a candidate is selected, use the existing phase-boundary contract in `skills/engineering/PHASE_BOUNDARIES.md`.
 
-Create the handoff with the canonical collaboration fabric:
-
-```python
-from .ai_harness.runtime.collaboration import build_handoff, persist_handoff
-```
-
-The handoff must carry:
-
-- `intent_digest`
-- current and requested phase
-- scope and non-goals
-- evidence-backed findings
-- accepted decisions
-- unresolved risks/questions
-- repository snapshot
-- context evidence digest
-- artifact and verification/review receipt IDs
-- parent provenance hash
-- exact next action and stopping condition
-
-Use `record_handoff(...)` with the existing `ProvenanceLedger` so the transition becomes a `phase.handoff` event in the same evidence chain. Never create another ledger.
+Create the handoff with the canonical collaboration fabric and existing provenance ledger. The handoff must carry intent, phase, scope, non-goals, evidence-backed findings, accepted decisions, unresolved risks, repository snapshot, context evidence digest, artifact and receipt IDs, parent provenance hash, exact next action, and stopping condition.
 
 If the repository changed since the candidate report, acquire fresh context before design or implementation. The report is not a substitute for current context.
 
@@ -120,4 +75,4 @@ This skill is a survey plus a selection/handoff mechanism. It must not:
 - treat an HTML report as proof of correctness;
 - bypass verification, review, security, approval, or rollout gates.
 
-The report identifies leverage. The canonical runtime executes the change.
+The visual document explains the evidence. The canonical runtime executes the change.
