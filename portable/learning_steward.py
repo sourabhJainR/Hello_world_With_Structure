@@ -1,10 +1,14 @@
 """Cross-agent learning extraction kept outside task execution."""
 from __future__ import annotations
-import re
+import re,sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
-from runtime.task_memory import record
+try:
+    from runtime.task_memory import record
+except ModuleNotFoundError:
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]/".ai-harness"))
+    from runtime.task_memory import record
 @dataclass(frozen=True)
 class Learning:
     outcome:str; detail:str; approach:str=""; command:str=""
@@ -39,6 +43,6 @@ Return a short `## LEARNINGS` section using exactly:
 - partial | <approach> | <what remains unsafe or incomplete>
 - regressed | <approach> | <regression and evidence>
 
-Keep the full useful detail within the memory guardrail. Record only evidence-backed observations. Do not turn guesses, generic advice, full logs, transcripts, or one-off task details into team memory. Execution agents stay focused on execution; you own learning and peripheral records.
+Keep useful detail within the hard memory guardrail. Record only evidence-backed observations. Do not turn guesses, generic advice, full logs, transcripts, or one-off task details into team memory. Execution agents stay focused on execution; you own learning and peripheral records.
 """
 __all__=["Learning","LearningSteward"]
