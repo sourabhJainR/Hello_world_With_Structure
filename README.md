@@ -31,6 +31,38 @@ research -> plan -> implement -> verify -> review -> shadow -> canary -> promote
 
 The broader runtime also supports bounded Plan / Act / Observe / Evaluate loops, regression replay, learning candidates, and guarded promotion. Learned recommendations remain advisory until replay, confidence, and canary gates pass.
 
+### AER Portable Distribution
+
+The published GitHub Actions artifact is intentionally unified: **download one `aer-portable.zip`**. There is no second `aer_cli.py` download alongside it.
+
+The ZIP contains the launcher, runtime, skills, plugin metadata, and integrity manifest:
+
+```text
+aer-portable.zip
+├── aer_cli.py
+├── aer-bundle.json
+└── payload/
+    ├── .ai-harness/
+    ├── .claude-plugin/
+    ├── portable/
+    └── skills/
+        └── ai-coding-orchestrator/
+```
+
+Use the single downloaded file:
+
+```bash
+python aer_cli.py aer-portable.zip
+```
+
+Or extract the ZIP and run its embedded launcher:
+
+```bash
+python aer_cli.py install
+```
+
+The artifact version, exact source commit, and bundle SHA-256 are recorded in the manifest. Installation remains machine-scoped and repository-isolated.
+
 ## Graph orchestration
 
 AER includes a dependency-free `StateGraph` runtime inspired by useful durable-agent-graph patterns without importing LangGraph. It provides:
@@ -99,27 +131,15 @@ The graph-specific CI workflow compiles the AER runtime, runs the graph and resi
 
 ## AER CLI and portable distribution
 
-The **GitHub Actions `aer-portable` artifact is self-contained**. The downloaded artifact contains both the user-facing launcher **`aer_cli.py`** and the distribution bundle **`aer-portable.zip`** at the artifact root.
+The **GitHub Actions `aer-portable` artifact contains one distributable file: `aer-portable.zip`**. The launcher is embedded inside that ZIP rather than published as a second artifact file.
 
-Bootstrap from a downloaded artifact:
+Bootstrap from the downloaded artifact:
 
 ```bash
 python aer_cli.py aer-portable.zip
 ```
 
-On success, AER is installed under the user-level `~/.aer` location.
-
-Published artifact layout:
-
-```text
-aer-portable/
-├── aer_cli.py
-├── aer-portable.zip
-├── portable-tests.log
-└── run-metadata.txt
-```
-
-The portable ZIP is also self-contained and includes its launcher:
+The portable ZIP is self-contained and includes its launcher:
 
 ```bash
 python aer_cli.py install
@@ -149,7 +169,7 @@ AER remains provider-neutral when Claude Code is not installed.
 
 ## Verify the installation
 
-From the published artifact directory:
+From the directory containing the downloaded artifact:
 
 ```bash
 python aer_cli.py aer-portable.zip
@@ -174,8 +194,6 @@ The installed skill is:
 /adaptive-ai-coding-orchestrator:ai-coding-orchestrator
 ```
 
-The plugin's prompt hook provides a small AER control-plane reminder, while the detailed skill drives repository-aware engineering work.
-
 ## Upgrade, rollback, and provenance
 
 Use the installed CLI rather than manually copying runtime files into projects:
@@ -193,7 +211,7 @@ python ~/.aer/current/aer_cli.py check-update --ref main
 python ~/.aer/current/aer_cli.py update --ref main
 ```
 
-The installation records a provenance chain:
+An installation records a provenance chain:
 
 ```text
 semantic version -> exact source Git commit -> bundle SHA-256
@@ -211,51 +229,6 @@ python aer_cli.py verify aer-portable.zip
 ```
 
 CI verifies the portable distribution, including the Claude plugin manifest, marketplace metadata, AER skill, prompt hook, runtime payload, and bundle integrity.
-
-## What is inside the portable ZIP
-
-```text
-aer-portable.zip
-|
-+-- aer_cli.py
-+-- payload/
-    +-- portable/aer_runtime.py
-    +-- portable/agency_state_graph.py
-    +-- .claude-plugin/
-    |   +-- plugin.json
-    |   +-- marketplace.json
-    +-- skills/
-        +-- ai-coding-orchestrator/
-            +-- SKILL.md
-            +-- hooks/aer_prompt.py
-```
-
-The extracted GitHub Actions artifact places the outer `aer_cli.py` beside `aer-portable.zip` so the bootstrap command works without opening the nested ZIP first. Do not copy `payload` files into the target project.
-
-## Installed machine state
-
-AER stores active installation state under:
-
-```text
-~/.aer/versions/v<version>/
-~/.aer/current
-~/.aer/current/install.json
-~/.aer/active.json
-```
-
-Execution journals, telemetry, learned task logs, caches, worktrees, and Python caches remain outside the portable distribution.
-
-## Repository isolation and safety
-
-Installing, updating, or rolling back AER does not:
-
-- add AER files to the target repository;
-- modify project source, tests, manifests, or configuration merely to install AER;
-- modify `.git/config`, hooks, remotes, branches, or ignore files;
-- silently modify MCP configuration, credentials, permissions, production access, or merge authority;
-- allow learned behavior to weaken immutable safety or security controls.
-
-When AER performs a user-requested engineering task, project changes are the requested engineering changes, not AER distribution artifacts.
 
 ## Engineering State Ledger
 
@@ -321,32 +294,6 @@ observe
 ```
 
 Learned recommendations remain advisory until the required evidence and regression gates pass. Safety and security policy remain authoritative.
-
-## Typical requests
-
-**Bug fixing**
-
-```text
-Fix the failing login test. Inspect repository instructions and the existing authentication flow first. Identify the root cause with evidence, make the smallest compatible change, run the relevant tests, and report what changed and what was verified.
-```
-
-**Feature development**
-
-```text
-Add retry handling to the outbound payment client. Preserve current API behavior, inspect existing retry and timeout patterns, implement the smallest safe change, add regression coverage, verify it, and report open risks.
-```
-
-**RCA**
-
-```text
-Investigate why the nightly import occasionally drops records. Do not modify code. Trace the data flow and return facts, inferences, unknowns, root-cause confidence, and evidence.
-```
-
-**Code review**
-
-```text
-Review this change for correctness, compatibility, security, regression risk, observability, and missing verification. Do not rewrite unrelated code.
-```
 
 ## Repository map
 
