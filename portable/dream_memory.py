@@ -41,15 +41,12 @@ class DreamMemory:
             key = hashlib.sha256(
                 "|".join(str(x or "").strip().lower() for x in (row[1], row[2], row[3], row[5], row[6])).encode("utf-8")
             ).hexdigest()
-            groups.setdefault(key, []).append(
-                {
-                    "id": row[0], "task": row[1], "category": row[2],
-                    "outcome": row[3], "detail": row[4], "command": row[5],
-                    "approach": row[6], "evidence_ids": row[7], "run_id": row[8],
-                    "promotion": row[9], "learning_version": row[10],
-                    "revision": row[11], "source_agent": row[12],
-                }
-            )
+            groups.setdefault(key, []).append({
+                "id": row[0], "task": row[1], "category": row[2], "outcome": row[3],
+                "detail": row[4], "command": row[5], "approach": row[6], "evidence_ids": row[7],
+                "run_id": row[8], "promotion": row[9], "learning_version": row[10],
+                "revision": row[11], "source_agent": row[12],
+            })
         return list(groups.items())
 
     @staticmethod
@@ -70,29 +67,30 @@ class DreamMemory:
 
         A lesson becomes reusable only after independent observations agree on
         the outcome. Mixed outcomes stay candidates so one bad promotion cannot
-        poison future runs. The operation is idempotent through the ledger's
-        fingerprinting and concurrency transaction.
+        poison future runs. Promotion is idempotent: a group with no new
+        candidate observations is not promoted again.
         """
         promoted: list[dict[str, Any]] = []
         for _, observations in self._candidate_groups(task):
-            if len(observations) < self.min_repeat:
+            candidates = [x for x in observations if x["promotion"] == "candidate"]
+            if len(candidates) < self.min_repeat:
                 continue
-            outcomes = {str(x["outcome"]) for x in observations}
+            outcomes = {str(x["outcome"]) for x in candidates}
             if outcomes == {"worked"}:
                 outcome = "worked"
-                lesson = "Repeated success across {} observations: {}".format(len(observations), observations[0]["detail"])
+                lesson = "Repeated success across {} observations: {}".format(len(candidates), candidates[0]["detail"])
             elif outcomes.issubset({"failed", "regressed"}):
                 outcome = "regressed" if "regressed" in outcomes else "failed"
-                lesson = "Repeated unsuccessful approach across {} observations: {}".format(len(observations), observations[0]["detail"])
+                lesson = "Repeated unsuccessful approach across {} observations: {}".format(len(candidates), candidates[0]["detail"])
             else:
                 continue
-            representative = observations[0]
+            representative = candidates[0]
             promoted.append(record(
                 self.root,
                 task=representative["task"], category=representative["category"],
                 outcome=outcome, detail=lesson, command=representative["command"],
                 approach=representative["approach"], run_id=representative["run_id"],
-                evidence_ids=self._evidence(observations), source_agent="dream-cycle",
+                evidence_ids=self._evidence(candidates), source_agent="dream-cycle",
                 promotion="verified",
             ))
         return promoted
