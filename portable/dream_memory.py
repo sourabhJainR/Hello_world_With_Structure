@@ -8,7 +8,6 @@ this analysis in their working context.
 from __future__ import annotations
 
 import hashlib
-import sqlite3
 import time
 from pathlib import Path
 from typing import Any
@@ -40,7 +39,7 @@ class DreamMemory:
                 ).fetchall()
         for row in rows:
             key = hashlib.sha256(
-                "|".join(str(x or "").strip().lower() for x in row[1:7]).encode("utf-8")
+                "|".join(str(x or "").strip().lower() for x in (row[1], row[2], row[3], row[5], row[6])).encode("utf-8")
             ).hexdigest()
             groups.setdefault(key, []).append(
                 {
@@ -53,37 +52,47 @@ class DreamMemory:
             )
         return list(groups.items())
 
+    @staticmethod
+    def _evidence(observations: list[dict[str, Any]]) -> list[str]:
+        values: set[str] = set()
+        for observation in observations:
+            raw = observation.get("evidence_ids") or "[]"
+            try:
+                import json
+                parsed = json.loads(raw) if isinstance(raw, str) else raw
+                values.update(str(x).strip() for x in parsed if str(x).strip())
+            except (TypeError, ValueError):
+                values.update(x.strip() for x in str(raw).split(",") if x.strip())
+        return sorted(values)
+
     def dream(self, task: str) -> list[dict[str, Any]]:
         """Promote repeated, evidence-backed observations into durable learning.
 
-        This is intentionally deterministic. A future model may improve the
-        analysis, but memory safety and promotion rules do not depend on model
-        quality or provider-specific behavior.
+        A lesson becomes reusable only after independent observations agree on
+        the outcome. Mixed outcomes stay candidates so one bad promotion cannot
+        poison future runs. The operation is idempotent through the ledger's
+        fingerprinting and concurrency transaction.
         """
         promoted: list[dict[str, Any]] = []
         for _, observations in self._candidate_groups(task):
             if len(observations) < self.min_repeat:
                 continue
             outcomes = {str(x["outcome"]) for x in observations}
-            if outcomes != {"worked"}:
+            if outcomes == {"worked"}:
+                outcome = "worked"
+                lesson = "Repeated success across {} observations: {}".format(len(observations), observations[0]["detail"])
+            elif outcomes.issubset({"failed", "regressed"}):
+                outcome = "regressed" if "regressed" in outcomes else "failed"
+                lesson = "Repeated unsuccessful approach across {} observations: {}".format(len(observations), observations[0]["detail"])
+            else:
                 continue
-            evidence = sorted({e for x in observations for e in str(x["evidence_ids"] or "").split(",") if e.strip()})
             representative = observations[0]
-            detail = (
-                f"Repeated success across {len(observations)} observations: "
-                f"{representative['detail']}"
-            )
             promoted.append(record(
                 self.root,
-                task=representative["task"],
-                category=representative["category"],
-                outcome="worked",
-                detail=detail,
-                command=representative["command"],
-                approach=representative["approach"],
-                run_id=representative["run_id"],
-                evidence_ids=evidence,
-                source_agent="dream-cycle",
+                task=representative["task"], category=representative["category"],
+                outcome=outcome, detail=lesson, command=representative["command"],
+                approach=representative["approach"], run_id=representative["run_id"],
+                evidence_ids=self._evidence(observations), source_agent="dream-cycle",
                 promotion="verified",
             ))
         return promoted
@@ -92,9 +101,7 @@ class DreamMemory:
         dbp = _db_path(self.root)
         with _process_lock(dbp.with_name("task-memory.lock")):
             with _connect(self.root) as db:
-                counts = dict(db.execute(
-                    "SELECT promotion,COUNT(*) FROM observations GROUP BY promotion"
-                ).fetchall())
+                counts = dict(db.execute("SELECT promotion,COUNT(*) FROM observations GROUP BY promotion").fetchall())
         return {"counts": counts, "generated_at": int(time.time()), "min_repeat": self.min_repeat}
 
 
