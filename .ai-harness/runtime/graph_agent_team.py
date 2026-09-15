@@ -9,6 +9,7 @@ from typing import Any,Callable,Iterator,Mapping
 from portable.agency_state_graph import CheckpointStore,StateGraph
 from portable.agent_memory import AgentMemory
 from portable.context_engine import ContextEngine,ContextPolicy,handoff_from_output
+from portable.dream_memory import DreamMemory
 from portable.learning_steward import LearningSteward
 from portable.task_planner import Task,TaskPlan
 from runtime.task_memory import guidance
@@ -146,6 +147,7 @@ Read-only: {agent.read_only}
 - Durable learning is evidence-backed, versioned and append-only; verify it against current repository state.
 - Do not copy the full transcript, logs or speculative reasoning into memory.
 - Do not repeat completed dependency work unless verification requires it.
+- Candidate lessons are hints, not truth; verified lessons require independent supporting observations.
 
 ## Handoff rules
 - Treat the task contract as authoritative.
@@ -180,7 +182,11 @@ Read-only: {agent.read_only}
             payload=run.state.get(f"result:{agent.name}")
             if isinstance(payload,dict) and payload.get("activated"): results[agent.name]=AgentResult(**{k:v for k,v in payload.items() if k!="activated"})
         critical=[run.state.get(f"result:{a.name}") for a in self.agents.values() if a.critical]
-        return {"graph_digest":self.digest(),"intent_digest":intent_digest,"agents":{n:r.__dict__ for n,r in results.items()},"shared_memory_file":str(memory.path),"shared_memory_entries":len(memory.snapshot(500)),"accepted":all(isinstance(x,dict) and x.get("status")=="passed" for x in critical),"execution_trace":list(run.trace),"execution_digest":run.digest}
+        # Dreaming happens after execution, outside the graph and outside every
+        # execution-agent context. It can therefore grow richer without making
+        # the next task prompt grow with it. Promotion remains deterministic.
+        dream=DreamMemory(memory.project_root).dream(task)
+        return {"graph_digest":self.digest(),"intent_digest":intent_digest,"agents":{n:r.__dict__ for n,r in results.items()},"shared_memory_file":str(memory.path),"shared_memory_entries":len(memory.snapshot(500)),"accepted":all(isinstance(x,dict) and x.get("status")=="passed" for x in critical),"execution_trace":list(run.trace),"execution_digest":run.digest,"dreamed_learning":dream}
 
 def team_for_route(route):
     mode=str(route.get("mode","implement")); caps=set(route.get("capabilities",[])); agents=[AgentSpec("planner","planner",focus="Turn the task contract into a small dependency-aware execution plan."),AgentSpec("explorer","explorer",depends_on=("planner",),focus="Trace relevant repository structure, callers, tests and protected behavior.")]
