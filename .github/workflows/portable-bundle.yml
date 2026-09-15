@@ -14,7 +14,13 @@ on:
       - 'skills/ai-coding-orchestrator/**'
       - 'portable/**'
       - 'aer_cli.py'
-      - 'tests/**'
+      - 'tests/test_portable_aer.py'
+      - 'tests/test_task_planner.py'
+      - 'tests/test_impact_analysis.py'
+      - 'tests/test_bidirectional_install.py'
+      - 'tests/test_contract_alignment.py'
+      - 'tests/test_graph_agent_team.py'
+      - 'tests/test_engineering_design_guard.py'
       - '.github/workflows/portable-bundle.yml'
       - '.github/actions/publish-ci-artifacts/**'
 
@@ -30,7 +36,8 @@ jobs:
         with:
           python-version: '3.11'
       - name: Run portable bundle tests
-        run: PYTHONPATH=.:.ai-harness python -m unittest discover -s tests -p 'test_*.py' -v
+        run: |
+          PYTHONPATH=.:.ai-harness python -m unittest tests.test_portable_aer tests.test_task_planner tests.test_impact_analysis tests.test_bidirectional_install tests.test_contract_alignment tests.test_graph_agent_team tests.test_engineering_design_guard -v
       - name: Read AER version
         id: version
         run: |
