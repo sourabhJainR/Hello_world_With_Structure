@@ -18,7 +18,7 @@ RUNTIME_PATHS = (
     ROOT / ".ai-harness" / "runtime" / "tool_runner.py",
     ROOT / ".ai-harness" / "runtime" / "lsp_server.py",
     ROOT / ".ai-harness" / "runtime" / "feedback_loop.py",
-    ROOT / ".ai-harness" / runtime" / "auto_compaction.py",
+    ROOT / ".ai-harness" / "runtime" / "auto_compaction.py",
 )
 COMPOSED_SKILLS = (
     ROOT / "skills" / "engineering" / "retro" / "SKILL.md",
@@ -61,10 +61,7 @@ class ContractAlignmentTests(unittest.TestCase):
         for path in COMPOSED_SKILLS:
             content = path.read_text(encoding="utf-8")
             self.assertIn("canonical", content.lower(), str(path))
-            self.assertTrue(
-                any(token in content for token in ("evidence", "verification", "provenance")),
-                str(path),
-            )
+            self.assertTrue(any(token in content for token in ("evidence", "verification", "provenance")), str(path))
 
     def test_interactive_renderer_is_standalone(self) -> None:
         renderer = ROOT / "skills" / "engineering" / "interactive-documentation" / "render_document.py"
