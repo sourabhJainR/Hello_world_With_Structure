@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -22,6 +25,7 @@ COMPOSED_SKILLS = (
     ROOT / "skills" / "engineering" / "research" / "SKILL.md",
     ROOT / "skills" / "engineering" / "prototype" / "SKILL.md",
     ROOT / "skills" / "engineering" / "resolving-merge-conflicts" / "SKILL.md",
+    ROOT / "skills" / "engineering" / "interactive-documentation" / "SKILL.md",
 )
 
 
@@ -42,6 +46,7 @@ class ContractAlignmentTests(unittest.TestCase):
             ".ai-harness/runtime/lsp_server.py",
             ".ai-harness/runtime/feedback_loop.py",
             ".ai-harness/runtime/auto_compaction.py",
+            "interactive-documentation",
             "downgrade=explicit_install_only",
         ):
             self.assertIn(token, canonical)
@@ -60,6 +65,32 @@ class ContractAlignmentTests(unittest.TestCase):
                 any(token in content for token in ("evidence", "verification", "provenance")),
                 str(path),
             )
+
+    def test_interactive_renderer_is_standalone(self) -> None:
+        renderer = ROOT / "skills" / "engineering" / "interactive-documentation" / "render_document.py"
+        self.assertTrue(renderer.is_file())
+        sample = {
+            "title": "Test map",
+            "repository": "test",
+            "snapshot_digest": "abc",
+            "generated_at": "2026-09-16T00:00:00Z",
+            "nodes": [
+                {"id": "a", "label": "A", "kind": "service", "sources": ["a.py::A"], "evidence_ids": ["ev-1"]},
+                {"id": "b", "label": "B", "kind": "store", "sources": ["b.py::B"], "evidence_ids": ["ev-2"]},
+            ],
+            "edges": [{"source": "a", "target": "b", "label": "writes"}],
+            "views": [{"id": "overview", "label": "Overview", "nodes": ["a", "b"]}],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "map.json"
+            output = Path(tmp) / "map.html"
+            source.write_text(json.dumps(sample), encoding="utf-8")
+            subprocess.run([sys.executable, str(renderer), str(source), str(output)], check=True)
+            html = output.read_text(encoding="utf-8")
+        self.assertIn("Interactive system map", html)
+        self.assertIn("Snapshot", html)
+        self.assertNotIn("cdn.", html.lower())
+        self.assertNotIn("https://", html.lower())
 
     def test_plugin_versions_are_aligned(self) -> None:
         plugin = json.loads((ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
