@@ -75,6 +75,15 @@ Use `.ai-harness/runtime/feedback_loop.py` only when repeated evidence can chang
 
 Use `.ai-harness/ENGINEERING_DESIGN_POLICY.md` as the canonical synthesis of engineering design sources. Before substantial implementation, use `portable.engineering_design_guard.EngineeringDesignGuard.review(...)` for relevant dimensions.
 
+## Skill composition
+
+- Use `research` for evidence acquisition before implementation when uncertainty is external, architectural or technological.
+- Use `prototype` when a bounded experiment can resolve uncertainty faster than production implementation.
+- Use `resolving-merge-conflicts` only for an active merge/rebase conflict; it must preserve intent and end with verification.
+- Use `retro` after meaningful sessions to convert observed failures into small, durable environment improvements.
+
+These skills are orchestration surfaces. They reuse the canonical repository/context/evidence/provenance stores and never create parallel ownership.
+
 ## Minimal safe change
 
 Prefer the smallest change that satisfies intent and preserves contracts. Do not introduce parallel stores or duplicate ownership.
@@ -125,7 +134,7 @@ Normal coding:
 
 Research/POC:
 
-`define question -> acquire bounded evidence -> investigate -> record unknowns -> prototype -> measure -> decide`
+`define question -> acquire bounded evidence -> research -> prototype when useful -> measure -> decide -> record unknowns -> implement through normal gates`
 
 Review:
 
