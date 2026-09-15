@@ -1,8 +1,8 @@
 # Composable Engineering Skills
 
-These skills adapt useful process ideas from `mattpocock/skills` to this repository's existing AER architecture.
+These skills adapt useful engineering workflow patterns to this repository's existing AER architecture.
 
-They are deliberately thin orchestration documents. Runtime execution, context retrieval, capability selection, bounded loops, provenance, verification, and rollout remain owned by the existing AI Coding Orchestrator and `.ai-harness` contracts.
+They are deliberately thin orchestration documents. Runtime execution, context retrieval, capability selection, bounded loops, provenance, verification, rollout, and visual documentation remain owned by the existing canonical contracts.
 
 ## Flows
 
@@ -18,9 +18,17 @@ They are deliberately thin orchestration documents. Runtime execution, context r
 
 `improve-codebase-architecture` and `codebase-design` handle architecture health and module-shape decisions.
 
+`interactive-documentation` turns repository-backed architecture, workflows, sequences, data flows, and lifecycles into a portable interactive HTML document. It reuses canonical repository intelligence and evidence instead of creating a second graph.
+
 `domain-modeling` keeps domain language and durable decisions coherent.
 
 `retro` turns observed session failures into small, verifiable improvements to the engineering environment.
+
+## Visual architecture reviews
+
+`improve-codebase-architecture` produces bounded candidate data and can hand the selected evidence to `interactive-documentation` for a richer reader experience. The visual artifact is evidence for selection, not an execution instruction.
+
+`interactive-documentation` produces a self-contained HTML artifact with search, focus, relationship tracing, theme switching, accessible keyboard navigation, curated views, evidence/source details, and print-friendly output. It has no CDN, telemetry, hosted viewer, or runtime service dependency.
 
 ## Phase boundaries and handoffs
 
@@ -30,12 +38,6 @@ The canonical handoff implementation remains `.ai-harness/runtime/collaboration.
 
 Handoffs are persisted under `.ai-harness/state/handoffs/` and must be validated against the expected intent and requested phase before consumption. Repository mutation requires fresh context after a stale snapshot is detected.
 
-## Visual architecture reviews
-
-`improve-codebase-architecture` produces a bounded candidate JSON and renders a self-contained HTML report with before/after diagrams using `skills/engineering/improve-codebase-architecture/render_report.py`.
-
-The report is evidence for selection. A selected candidate does not execute directly; it is handed into the normal design/spec/ticket/implementation/verification/review flow through the same provenance chain.
-
 ## Ownership rule
 
-Do not duplicate the repository's planner, memory, context, repository graph, capability registry, feedback loop, provenance ledger, verification receipts, or release state inside these skills. Skills select and constrain work; the canonical runtime executes it.
+Do not duplicate the repository's planner, memory, context, repository graph, capability registry, feedback loop, provenance ledger, verification receipts, or release state inside these skills. Skills select and constrain work; canonical runtime contracts execute and document it.
