@@ -8,11 +8,27 @@ this analysis in their working context.
 from __future__ import annotations
 
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Any
 
-from runtime.task_memory import _connect, _db_path, _process_lock, revise
+
+def _ledger_api(root: Path):
+    """Load the harness ledger without making ``portable`` depend on cwd/PYTHONPATH.
+
+    The durable ledger intentionally lives under ``.ai-harness/runtime`` while
+    this portable module is imported by tests, tools, and applications that may
+    not have that directory on ``sys.path``.  Loading it lazily keeps importing
+    any ``portable.*`` module side-effect free and preserves the repository's
+    existing single ledger implementation.
+    """
+    runtime_root = Path(root) / ".ai-harness"
+    if str(runtime_root) not in sys.path:
+        sys.path.insert(0, str(runtime_root))
+    from runtime.task_memory import _connect, _db_path, _process_lock, revise
+
+    return _connect, _db_path, _process_lock, revise
 
 
 class DreamMemory:
@@ -25,6 +41,7 @@ class DreamMemory:
         self.min_repeat = max(2, int(min_repeat))
 
     def _candidate_groups(self, task: str) -> list[tuple[str, list[dict[str, Any]]]]:
+        _connect, _db_path, _process_lock, _ = _ledger_api(self.root)
         dbp = _db_path(self.root)
         groups: dict[str, list[dict[str, Any]]] = {}
         with _process_lock(dbp.with_name("task-memory.lock")):
@@ -76,6 +93,7 @@ class DreamMemory:
         revision and supersedes the observations it consolidates, preserving the
         full history for audit and future re-evaluation.
         """
+        _, _db_path, _, revise = _ledger_api(self.root)
         curated: list[dict[str, Any]] = []
         for _, observations in self._candidate_groups(task):
             independent = self._independent_runs(observations)
@@ -110,6 +128,7 @@ class DreamMemory:
         return curated
 
     def status(self) -> dict[str, Any]:
+        _, _db_path, _process_lock, _ = _ledger_api(self.root)
         dbp = _db_path(self.root)
         with _process_lock(dbp.with_name("task-memory.lock")):
             with _connect(self.root) as db:
