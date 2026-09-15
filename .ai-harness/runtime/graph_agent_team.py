@@ -11,8 +11,11 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from portable.agency_state_graph import CheckpointStore, StateGraph
-from portable.context_engine import ContextEngine, ContextItem, ContextPolicy, handoff_from_output
+from portable.agent_memory import AgentMemory
+from portable.context_engine import ContextEngine, ContextPolicy, handoff_from_output
+from portable.learning_steward import LearningSteward
 from portable.task_planner import Task, TaskPlan
+from runtime.task_memory import guidance
 
 
 @dataclass(frozen=True)
@@ -39,7 +42,7 @@ class AgentResult:
 
 
 class SharedTaskMemory:
-    """Bounded task memory; durable project memory remains a separate store."""
+    """Bounded task memory; durable project learning remains a separate store."""
 
     def __init__(self, path: Path, intent_digest: str, *, max_entries: int = 256, max_chars: int = 200_000,
                  context_policy: ContextPolicy | None = None) -> None:
@@ -52,6 +55,10 @@ class SharedTaskMemory:
         self.context = ContextEngine(context_policy)
         self._lock = threading.RLock()
         self.path.parent.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def project_root(self) -> Path:
+        return self.path.parent.parent
 
     def publish(self, *, agent: str, role: str, kind: str, text: str,
                 evidence: list[str] | None = None, confidence: float = 0.0) -> str:
@@ -69,7 +76,14 @@ class SharedTaskMemory:
             rows = self.snapshot(self.max_entries)
             used = sum(len(json.dumps(row, ensure_ascii=False, sort_keys=True)) + 1 for row in rows)
             if used + len(line) > self.max_chars:
-                raise ValueError("shared task memory budget exceeded")
+                # Working memory is expendable. Keep the newest useful window instead of
+                # failing the task because old handoffs consumed the local budget.
+                rows.append(payload)
+                rows = rows[-self.max_entries:]
+                while rows and sum(len(json.dumps(row, ensure_ascii=False, sort_keys=True)) + 1 for row in rows) > self.max_chars:
+                    rows.pop(0)
+                self.path.write_text("\n".join(json.dumps(row, ensure_ascii=False, sort_keys=True) for row in rows) + "\n", encoding="utf-8")
+                return memory_id
             with self.path.open("a", encoding="utf-8") as handle:
                 handle.write(line)
         return memory_id
@@ -94,9 +108,26 @@ class SharedTaskMemory:
         if relevant_agents is not None:
             rows = [row for row in rows if str(row.get("agent", "")) in relevant_agents]
         items = self.context.from_memory(rows)
-        if limit is not None:
-            return self.context.pack(items, required=[])[-limit:]
-        return self.context.pack(items)
+        packed = self.context.pack(items)
+        if limit is not None and limit > 0 and len(packed) > limit:
+            return packed[: max(200, limit - 40)] + "\n...[context compacted]"
+        return packed
+
+
+def _private_memory(output: str) -> str:
+    """Read an optional agent-private section without promoting it to team memory."""
+    in_section = False
+    lines: list[str] = []
+    for raw in str(output).splitlines():
+        line = raw.strip()
+        if line.lower().startswith("## private memory"):
+            in_section = True
+            continue
+        if in_section and line.startswith("## "):
+            break
+        if in_section and line:
+            lines.append(line)
+    return "\n".join(lines).strip()
 
 
 class GraphAgentTeam:
@@ -151,11 +182,16 @@ class GraphAgentTeam:
                 if any(not item or item.get("status") != "passed" for item in deps):
                     return {f"result:{agent.name}": {"status": "blocked", "activated": False}}
 
-                # Context is assembled per receiver. A downstream agent gets the
-                # task contract plus direct-dependency handoffs, not the whole run.
                 relevant = set(agent.depends_on)
                 relevant.add("planner")
                 shared_context = memory.compact_text(relevant_agents=relevant)
+                historical_learning = guidance(memory.project_root, task, limit=2400)
+                private = AgentMemory(memory.project_root, agent.name).read(limit=2200)
+                if agent.name == "learning-steward":
+                    steward = LearningSteward(memory.project_root, run_id=intent_digest, task=task)
+                    focus_context = steward.prompt()
+                else:
+                    focus_context = ""
                 prompt = f"""# AER graph agent
 
 You are the {agent.role} agent in a shared-memory engineering team.
@@ -172,7 +208,16 @@ Read-only: {agent.read_only}
 ## Selected context
 {shared_context}
 
+## Reusable lessons from earlier runs
+{historical_learning}
+
+## Your private session memory
+{private or 'No private memory yet.'}
+
 ## Handoff rules
+- The execution agent owns execution only. Do not spend task time maintaining team learning or peripheral records.
+- You may maintain concise private memory when useful. Put only durable personal working notes in `## PRIVATE MEMORY`.
+- Team-wide learnings are not yours to curate; the learning steward owns that job.
 - Treat the task contract as authoritative.
 - Use only selected, task-relevant context; do not ask for or reconstruct the entire prior conversation.
 - Verify inherited claims against repository evidence when they matter.
@@ -180,10 +225,15 @@ Read-only: {agent.read_only}
 - Return concise findings, decisions, evidence, unresolved risks and the next action.
 - {'Do not modify files.' if agent.read_only else 'You may modify files only within the task scope.'}
 
+{focus_context}
+
 ## Base instructions
 {base_prompt}
 """
                 code, output, duration = invoke_agent(agent, prompt)
+                private_note = _private_memory(output)
+                if private_note:
+                    AgentMemory(memory.project_root, agent.name).remember(private_note)
                 result = AgentResult(agent.name, agent.role, "passed" if code == 0 else "failed",
                                      exit_code=code, duration_seconds=duration, output=output)
                 handoff = handoff_from_output(task_id=intent_digest, sender=agent.name,
@@ -194,6 +244,9 @@ Read-only: {agent.read_only}
                                                         kind="handoff", text=handoff.render(memory.context.policy.output_chars),
                                                         evidence=[f"agent:{agent.name}"],
                                                         confidence=0.8 if code == 0 else 0.2))
+                if agent.name == "learning-steward":
+                    LearningSteward(memory.project_root, run_id=intent_digest, task=task).persist(
+                        output, evidence_ids=[f"agent:{name}" for name in self.agents if name != agent.name])
                 results[agent.name] = result
                 payload = result.__dict__.copy()
                 payload["activated"] = True
@@ -260,10 +313,17 @@ def team_for_route(route: Mapping[str, Any]) -> GraphAgentTeam:
         review_dep = ("builder", "verifier")
     else:
         review_dep = tuple(a.name for a in agents)
+
+    # One dedicated peripheral agent owns cross-agent learning. Execution agents
+    # only produce task handoffs; they do not curate the shared learning ledger.
+    learning_sources = tuple(a.name for a in agents if a.name not in {"planner"})
+    agents.append(AgentSpec("learning-steward", "learning steward", depends_on=learning_sources,
+                            read_only=True, focus="Extract only evidence-backed reusable lessons from completed work and record them for current and future agents."))
+    review_dep = tuple(a.name for a in agents if a.name in {"builder", "verifier", "researcher", "rca", "learning-steward"})
     agents.append(AgentSpec("correctness-reviewer", "correctness reviewer", depends_on=review_dep, read_only=True, focus="Check correctness, compatibility, edge cases and test coverage."))
     if str(route.get("risk", "low")) in {"high", "critical"}:
         agents.append(AgentSpec("security-reviewer", "security reviewer", depends_on=review_dep, read_only=True, focus="Check trust boundaries, permissions, injection, secrets and unsafe defaults."))
         agents.append(AgentSpec("architecture-reviewer", "architecture reviewer", depends_on=review_dep, read_only=True, focus="Check coupling, dependency direction, maintainability and unnecessary complexity."))
-    final_deps = tuple(a.name for a in agents if a.name.endswith("reviewer"))
-    agents.append(AgentSpec("synthesizer", "team synthesizer", depends_on=final_deps, read_only=True, focus="Synthesize team evidence, unresolved risks and the recommended next action."))
+    final_deps = tuple(a.name for a in agents if a.name.endswith("reviewer")) + ("learning-steward",)
+    agents.append(AgentSpec("synthesizer", "team synthesizer", depends_on=final_deps, read_only=True, focus="Synthesize team evidence, reusable learning, unresolved risks and the recommended next action."))
     return GraphAgentTeam(agents)
