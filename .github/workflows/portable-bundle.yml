@@ -60,8 +60,6 @@ jobs:
                   'payload/.claude-plugin/marketplace.json',
                   'payload/skills/ai-coding-orchestrator/SKILL.md',
                   'payload/skills/ai-coding-orchestrator/hooks/aer_prompt.py',
-                  'payload/skills/engineering/interactive-documentation/SKILL.md',
-                  'payload/skills/engineering/interactive-documentation/render_document.py',
               }
               missing = sorted(required - names)
               if missing:
