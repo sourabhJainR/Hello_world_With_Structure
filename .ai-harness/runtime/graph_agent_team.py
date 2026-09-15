@@ -112,7 +112,11 @@ class GraphAgentTeam:
         for agent in self.agents.values():
             def run(state,agent=agent):
                 deps=[state.get(f"result:{n}") for n in agent.depends_on]
-                if any(not x or x.get("status")!="passed" for x in deps): return {f"result:{agent.name}":{"status":"blocked","activated":False}}
+                # The learning steward is intentionally best-effort. It must be
+                # allowed to inspect failed/blocked paths so that a frustrating
+                # execution is not lost and can become an anti-pattern later.
+                if agent.name!="learning-steward" and any(not x or x.get("status")!="passed" for x in deps):
+                    return {f"result:{agent.name}":{"status":"blocked","activated":False}}
                 relevant=set(agent.depends_on); relevant.add("planner")
                 shared_context=memory.compact_text(relevant_agents=relevant)
                 historical=guidance(memory.project_root,task,limit=2400)
@@ -148,6 +152,7 @@ Read-only: {agent.read_only}
 - Do not copy the full transcript, logs or speculative reasoning into memory.
 - Do not repeat completed dependency work unless verification requires it.
 - Candidate lessons are hints, not truth; verified lessons require independent supporting observations.
+- For the learning steward, failed and blocked agent paths are valuable evidence; capture what should not be repeated.
 
 ## Handoff rules
 - Treat the task contract as authoritative.
@@ -183,8 +188,8 @@ Read-only: {agent.read_only}
             if isinstance(payload,dict) and payload.get("activated"): results[agent.name]=AgentResult(**{k:v for k,v in payload.items() if k!="activated"})
         critical=[run.state.get(f"result:{a.name}") for a in self.agents.values() if a.critical]
         # Dreaming happens after execution, outside the graph and outside every
-        # execution-agent context. It can therefore grow richer without making
-        # the next task prompt grow with it. Promotion remains deterministic.
+        # execution-agent context. It can grow richer without making the next
+        # task prompt grow with it. Promotion remains deterministic.
         dream=DreamMemory(memory.project_root).dream(task)
         return {"graph_digest":self.digest(),"intent_digest":intent_digest,"agents":{n:r.__dict__ for n,r in results.items()},"shared_memory_file":str(memory.path),"shared_memory_entries":len(memory.snapshot(500)),"accepted":all(isinstance(x,dict) and x.get("status")=="passed" for x in critical),"execution_trace":list(run.trace),"execution_digest":run.digest,"dreamed_learning":dream}
 
