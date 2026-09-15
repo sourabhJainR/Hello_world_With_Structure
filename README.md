@@ -14,8 +14,35 @@ The important ownership boundaries are:
 - **`portable.agent_capabilities` / `CapabilityFabric`** owns capability semantics, risk, fallback, sandbox/network requirements, and provider selection.
 - **`portable.agent_capabilities.PersistentMemory`** owns durable memory semantics; compatibility memory APIs adapt to it rather than creating a second store.
 - **`portable.agency_codebase_context.CodebaseIndex`** owns semantic repository retrieval, while `RepositoryIntelligence` provides broader bounded repository packing.
+- **`portable.repo_intelligence.RepositoryMap`** owns the deterministic repository snapshot and structural question surface: ranked search, callers/callees, impact, affected-test candidates, situational changes, and bounded task packs.
 
-See [`docs/CAPABILITY_MEMORY_OWNERSHIP.md`](docs/CAPABILITY_MEMORY_OWNERSHIP.md) for the explicit ownership contract.
+See [`docs/CAPABILITY_MEMORY_OWNERSHIP.md`](docs/CAPABILITY_MEMORY_OWNERSHIP.md) for the explicit ownership contract and [`docs/RIPWIRE_INTEGRATION.md`](docs/RIPWIRE_INTEGRATION.md) for the repository-intelligence design lineage.
+
+## Deterministic repository intelligence
+
+AER now has a dependency-free repository map designed for the first minutes of an engineering task. It builds one deterministic snapshot and reuses that model for multiple questions instead of making each feature invent its own index.
+
+```bash
+python -m portable.repo_intelligence . --for="Fix the authentication timeout regression" --token-budget=4000
+python -m portable.repo_intelligence . --mode=callers --symbol="authenticate"
+python -m portable.repo_intelligence . --mode=impact --symbol="authenticate" --graph-depth=1
+python -m portable.repo_intelligence . --mode=tests --symbol="authenticate"
+python -m portable.repo_intelligence . --mode=situ --base=HEAD
+python -m portable.repo_intelligence . --mode=pack-task --for="Add retry handling to the payment client"
+```
+
+The output is deliberately evidence-oriented:
+
+- deterministic file ordering and SHA-256 snapshot identity;
+- lightweight symbol/import/call relationships without external services;
+- bounded graph expansion with confidence on ambiguous edges;
+- explicit token budgets and whole evidence windows rather than arbitrary truncation;
+- affected-test candidates without pretending they prove coverage;
+- skipped-file and parser-error disclosure;
+- explicit unknowns whenever context was omitted or the graph could not establish a relationship;
+- compact output suitable for coding-agent handoff, plus JSON for programmatic use.
+
+The map is an accelerator, not a verification oracle. Verification, policy, permissions, review, regression, and release gates remain authoritative.
 
 ## Executable engineering lifecycle
 
@@ -221,6 +248,7 @@ aer-portable.zip
 +-- payload/
     +-- portable/aer_runtime.py
     +-- portable/agency_state_graph.py
+    +-- portable/repo_intelligence.py
     +-- .claude-plugin/
     |   +-- plugin.json
     |   +-- marketplace.json
@@ -296,13 +324,14 @@ Independent read-only work can be parallelized. Mutating agents are serialized b
 
 AER uses a layered repository-context model:
 
-1. symbol and relationship-aware retrieval for code structure;
-2. text retrieval for free-form questions and non-code material;
-3. bounded repository packing when broader context is needed.
+1. deterministic snapshot and structural repository map;
+2. symbol and relationship-aware retrieval;
+3. text retrieval for free-form questions and non-code material;
+4. bounded repository packing when broader context is needed.
 
-The implementation incorporates useful patterns from Serena-style semantic addressing and Repomix-style deterministic, git-aware packing without requiring either project as a runtime dependency.
+The repository map is intentionally dependency-free and records uncertainty instead of hiding it. For small edits, normal text and patch tools remain preferred. Structural retrieval is most useful for symbol discovery, callers/callees, impact, hierarchy, cross-file changes, affected-test candidates, and bounded task context.
 
-For small edits, normal text and patch tools remain preferred. Semantic retrieval is most useful for symbol discovery, references, hierarchy, cross-file changes, and bounded structural context.
+See [`docs/RIPWIRE_INTEGRATION.md`](docs/RIPWIRE_INTEGRATION.md) for the adopted design principles and explicit non-adoptions.
 
 ## Learning and self-improvement
 
@@ -370,6 +399,7 @@ The repository intentionally contains compatibility and historical documentation
 ## Reference documentation
 
 - [`docs/CAPABILITY_MEMORY_OWNERSHIP.md`](docs/CAPABILITY_MEMORY_OWNERSHIP.md) — canonical capability, memory, and retrieval ownership.
+- [`docs/RIPWIRE_INTEGRATION.md`](docs/RIPWIRE_INTEGRATION.md) — deterministic repository-intelligence design lineage and boundaries.
 - [`portable/LANGGRAPH_PATTERN_ALIGNMENT.md`](portable/LANGGRAPH_PATTERN_ALIGNMENT.md) — mapping of state-graph patterns to AER constructs.
 - [`portable/README.md`](portable/README.md) — portable distribution and machine-scoped lifecycle.
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — deployment and runtime integration.
