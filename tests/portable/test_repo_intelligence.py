@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from portable.repo_intelligence import RepositoryMap, render_compact
+from portable.repository_intelligence import RepositoryMap, render_compact
 
 
 def _repo(tmp_path: Path) -> Path:
@@ -38,7 +38,7 @@ def test_task_answer_is_budgeted_and_honest(tmp_path):
 def test_callers_and_affected_tests(tmp_path):
     repo = RepositoryMap.build(_repo(tmp_path))
     callers = repo.callers("process")
-    assert any(edge.source == "app.py" for edge in callers)
+    assert any(edge.source_path == "app.py" for edge in callers)
     tests = repo.affected_tests(["app.py"])
     assert "test_app.py" in tests
 
