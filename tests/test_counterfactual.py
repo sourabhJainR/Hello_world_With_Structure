@@ -49,9 +49,13 @@ class CounterfactualTests(unittest.TestCase):
             causal.record(CausalLink("l1", "a", "b", "step", "test", 0.8, ("e1",)))
             causal.record(CausalLink("l2", "b", "a", "step", "test", 0.8, ("e2",)))
             engine = CounterfactualEngine(causal)
-            result = engine.evaluate(CounterfactualQuery(("a",), ("c",), max_hops=4))
+            result = engine.evaluate(CounterfactualQuery(("a",), ("c",), max_hops=4, max_paths=2))
             self.assertFalse(result.reaches_target)
             self.assertEqual(result.paths, ())
+
+    def test_path_budget_is_positive(self) -> None:
+        with self.assertRaises(ValueError):
+            CounterfactualQuery(("a",), ("b",), max_paths=0)
 
 
 if __name__ == "__main__":
