@@ -127,7 +127,7 @@ Evidence must be traceable and sufficient for the claim. Verification is indepen
 
 For bugs: `reproduce -> isolate -> identify owner -> minimal fix -> regression test -> verify -> review adjacent behavior`.
 
-Deployment lineage is `research -> plan -> verify -> review -> integrate -> regression -> shadow -> canary -> promote`, or rollback after a failed gate. Never bypass security, permission, scope, or regression gates. Require explicit approval for destructive, irreversible, production, financial, privacy-sensitive, or external-message actions.
+Deployment lineage is `research -> plan -> implement -> verify -> review -> integrate -> regression -> shadow -> canary -> promote`, or rollback after a failed gate. Never bypass security, permission, scope, or regression gates. Require explicit approval for destructive, irreversible, production, financial, privacy-sensitive, or external-message actions.
 
 ## Working sequence
 
