@@ -4,7 +4,7 @@
 
 **Goal:** Add a durable, provenance-aware context graph using the existing AER memory database so future context can accumulate relationships without creating a second orchestration or memory owner.
 
-**Architecture:** Extend `PersistentMemory` with canonical graph tables and a small `ContextGraph` facade. `StateGraph`, `TaskPlan`, `CapabilityFabric`, and existing context packing remain unchanged. The graph is a bounded projection of durable context, not an execution engine.
+**Architecture:** Add a small `ContextGraph` facade over the SQLite database already owned by `PersistentMemory`. `StateGraph`, `TaskPlan`, `CapabilityFabric`, and existing context packing remain unchanged. The graph is a bounded projection of durable context, not an execution engine.
 
 **Tech Stack:** Python standard library, SQLite/WAL, pytest, existing AER portable runtime.
 
@@ -20,105 +20,54 @@
 
 ---
 
-### Task 1: Define graph contracts and regression tests
+### Task 1: Durable Context Graph
 
 **Files:**
-- Create: `tests/test_context_graph.py`
-- Modify: `portable/agent_capabilities.py`
 - Create: `portable/context_graph.py`
+- Create: `tests/test_context_graph.py`
 
 **Interfaces:**
 - `ContextNode(node_id, kind, label, source, confidence, properties)` is immutable.
 - `ContextEdge(edge_id, source_id, relation, target_id, source, confidence, properties)` is immutable.
 - `ContextGraph(memory, project)` exposes `upsert_node`, `get_node`, `link`, `neighbors`, and `digest`.
-- `PersistentMemory` provides private canonical SQLite access to graph tables through its existing connection/lock ownership.
+- `ContextGraph` uses `PersistentMemory.path` and the same SQLite database; it does not create a separate database or replace memory semantics.
 
-- [ ] **Step 1: Write the failing tests**
-
-```python
-from pathlib import Path
-
-from portable.agent_capabilities import PersistentMemory
-from portable.context_graph import ContextEdge, ContextGraph, ContextNode
-
-
-def test_node_and_edge_round_trip(tmp_path: Path):
-    memory = PersistentMemory(tmp_path / "memory.sqlite", require_approval=False)
-    graph = ContextGraph(memory, "project")
-    graph.upsert_node(ContextNode("task:1", "task", "Fix timeout", "test", 0.9))
-    graph.upsert_node(ContextNode("file:1", "file", "client.py", "repo", 1.0))
-    graph.link("task:1", "touches", "file:1", source="test", confidence=0.8)
-    assert graph.get_node("task:1").label == "Fix timeout"
-    assert graph.neighbors("task:1")[0].target_id == "file:1"
-    memory.close()
-
-
-def test_duplicate_writes_are_idempotent(tmp_path: Path):
-    memory = PersistentMemory(tmp_path / "memory.sqlite", require_approval=False)
-    graph = ContextGraph(memory, "project")
-    node = ContextNode("task:1", "task", "Fix timeout", "test", 0.9)
-    graph.upsert_node(node)
-    graph.upsert_node(node)
-    graph.link("task:1", "relates", "task:1b", source="test") if False else None
-    assert graph.get_node("task:1") == node
-    memory.close()
-
-
-def test_neighbors_are_deterministic_and_bounded(tmp_path: Path):
-    memory = PersistentMemory(tmp_path / "memory.sqlite", require_approval=False)
-    graph = ContextGraph(memory, "project")
-    graph.upsert_node(ContextNode("a", "task", "A", "test", 1.0))
-    for node_id in ("c", "b", "d"):
-        graph.upsert_node(ContextNode(node_id, "file", node_id, "test", 1.0))
-        graph.link("a", "touches", node_id, source="test")
-    assert [edge.target_id for edge in graph.neighbors("a", limit=2)] == ["b", "c"]
-    memory.close()
-
-
-def test_digest_is_stable(tmp_path: Path):
-    memory = PersistentMemory(tmp_path / "memory.sqlite", require_approval=False)
-    graph = ContextGraph(memory, "project")
-    graph.upsert_node(ContextNode("a", "task", "A", "test", 1.0))
-    graph.upsert_node(ContextNode("b", "file", "B", "test", 1.0))
-    graph.link("a", "touches", "b", source="test", confidence=0.7)
-    assert graph.digest() == graph.digest()
-    memory.close()
-```
-
-- [ ] **Step 2: Run the focused test and confirm it fails**
-
-Run: `pytest -q tests/test_context_graph.py`
-Expected: FAIL because `portable.context_graph` does not yet exist.
-
-- [ ] **Step 3: Implement the minimal graph contracts**
-
-Use dataclasses with validation for non-empty identifiers/kinds/labels, confidence in `[0, 1]`, and mapping properties. Add SQLite tables to `PersistentMemory` using the same `_lock` and `_connect()` path. Store JSON properties canonically with sorted keys.
-
-- [ ] **Step 4: Run the focused test and confirm it passes**
-
-Run: `pytest -q tests/test_context_graph.py`
-Expected: PASS.
-
-- [ ] **Step 5: Run the existing memory tests**
-
-Run: `pytest -q tests/test_agency_agent_capabilities.py tests/test_aer_core_runtime_services.py`
-Expected: PASS with no behavioral regressions.
-
-- [ ] **Step 6: Commit the implementation**
-
-```bash
-git add portable/agent_capabilities.py portable/context_graph.py tests/test_context_graph.py
-git commit -m "feat: add durable context graph"
-```
+- [x] Define immutable node/edge contracts with validation.
+- [x] Add relationship tables and indexes to the existing SQLite database.
+- [x] Add deterministic, bounded neighbor traversal for outgoing, incoming, and both directions.
+- [x] Preserve node creation timestamps across updates.
+- [x] Make relationship identifiers deterministic for the default edge identity.
+- [x] Add stable graph digesting and persistence coverage.
+- [x] Add budget, direction, relation-filter, duplicate-write, and persistence regression tests.
 
 ### Task 2: Review, CI, and merge Slice 1
 
 **Files:**
 - Review: PR diff and CI results only unless findings require source changes.
 
-- [ ] **Step 1: Open the PR against `main`.**
-- [ ] **Step 2: Review the diff for ownership, determinism, bounds, security, and compatibility.**
-- [ ] **Step 3: Fix every actionable finding on the same branch.**
-- [ ] **Step 4: Wait for every required GitHub check to finish; do not stop at the first green check.**
-- [ ] **Step 5: Merge only after all checks are green and review findings are resolved.**
-- [ ] **Step 6: Start the next backlog slice from the newly merged `main`.**
+- [x] Open the PR against `main`.
+- [x] Review the diff for ownership, determinism, bounds, security, and compatibility.
+- [x] Fix actionable findings before merge.
+- [ ] Wait for every required GitHub check to finish; do not stop at the first green check.
+- [ ] Merge only after all checks are green and review findings are resolved.
+- [ ] Start the next backlog slice from the newly merged `main`.
+
+### Task 3: Context Resolver (next slice)
+
+- Resolve task, workspace, memory, evidence, repository relationships, and prior run outcomes into the existing bounded `ContextPack`.
+- Preserve token budgets and explicitly report omitted context.
+- Do not bypass existing repository intelligence or verification boundaries.
+
+### Task 4: Trigger / Background Run Contract (next slice)
+
+- Generalize existing scheduler/event primitives into a durable trigger contract with event identity, deduplication, concurrency claims, bounded retries, and a handoff into the normal AER execution lifecycle.
+
+### Task 5: Run Journal to Context Graph (next slice)
+
+- Persist selected execution outcomes, decisions, discovered facts, verification receipts, review outcomes, and unresolved risks as graph facts with provenance.
+- Keep learning candidates advisory until existing regression/shadow/canary gates approve them.
+
+### Task 6: Workspace Collaboration Context (next slice)
+
+- Add a bounded workspace scope over shared task context and graph relationships.
+- Keep private context isolated unless explicitly promoted as an evidence-backed summary.

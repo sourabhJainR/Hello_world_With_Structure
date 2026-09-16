@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
-from pathlib import Path
 import sqlite3
 from typing import Any, Mapping, Sequence
 
@@ -40,7 +39,7 @@ class ContextNode:
     label: str
     source: str
     confidence: float = 1.0
-    properties: Mapping[str, Any] = None  # type: ignore[assignment]
+    properties: Mapping[str, Any] | None = None
     created_at: str = ""
 
     def __post_init__(self) -> None:
@@ -69,7 +68,7 @@ class ContextEdge:
     target_id: str
     source: str
     confidence: float = 1.0
-    properties: Mapping[str, Any] = None  # type: ignore[assignment]
+    properties: Mapping[str, Any] | None = None
     created_at: str = ""
 
     def __post_init__(self) -> None:
@@ -96,7 +95,7 @@ class ContextGraph:
     def __init__(self, memory: PersistentMemory, project: str, *, max_nodes: int = 50_000, max_edges: int = 200_000) -> None:
         if not isinstance(memory, PersistentMemory):
             raise TypeError("memory must be a PersistentMemory instance")
-        if not project.strip():
+        if not isinstance(project, str) or not project.strip():
             raise ValueError("project is required")
         if max_nodes < 1 or max_edges < 1:
             raise ValueError("graph bounds must be positive")
@@ -144,19 +143,21 @@ class ContextGraph:
 
     def upsert_node(self, node: ContextNode) -> ContextNode:
         with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
             row = db.execute(
                 "SELECT kind,label,source,confidence,properties,created_at FROM context_nodes WHERE project=? AND node_id=?",
                 (self.project, node.node_id),
             ).fetchone()
             if row:
                 existing = self._node(node.node_id, row)
-                if existing != node:
-                    db.execute(
-                        "UPDATE context_nodes SET kind=?,label=?,source=?,confidence=?,properties=? WHERE project=? AND node_id=?",
-                        (node.kind, node.label, node.source, node.confidence, _json(node.properties), self.project, node.node_id),
-                    )
-                    return node
-                return existing
+                if existing == node:
+                    return existing
+                updated = ContextNode(node.node_id, node.kind, node.label, node.source, node.confidence, node.properties, existing.created_at)
+                db.execute(
+                    "UPDATE context_nodes SET kind=?,label=?,source=?,confidence=?,properties=? WHERE project=? AND node_id=?",
+                    (updated.kind, updated.label, updated.source, updated.confidence, _json(updated.properties), self.project, updated.node_id),
+                )
+                return updated
             count = db.execute("SELECT COUNT(*) FROM context_nodes WHERE project=?", (self.project,)).fetchone()[0]
             if count >= self.max_nodes:
                 raise ValueError("context graph node budget exceeded")
@@ -185,12 +186,12 @@ class ContextGraph:
             raise ValueError("confidence must be between 0 and 1")
         if self.get_node(source_id) is None or self.get_node(target_id) is None:
             raise KeyError("both graph endpoints must exist")
-        properties = dict(properties or {})
         if edge_id is None:
             seed = f"{self.project}|{source_id}|{relation}|{target_id}"
             edge_id = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:24]
         edge = ContextEdge(edge_id, source_id, relation, target_id, source, confidence, properties)
         with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
             row = db.execute(
                 "SELECT edge_id,source_id,relation,target_id,source,confidence,properties,created_at FROM context_edges WHERE project=? AND source_id=? AND relation=? AND target_id=?",
                 (self.project, source_id, relation, target_id),
@@ -215,15 +216,20 @@ class ContextGraph:
         clauses: list[str] = []
         params: list[Any] = [self.project]
         if direction in {"out", "both"}:
-            clauses.append("source_id=?")
+            clause = "source_id=?"
             params.append(node_id)
+            if relation:
+                clause += " AND relation=?"
+                params.append(relation)
+            clauses.append(f"({clause})")
         if direction in {"in", "both"}:
-            clauses.append("target_id=?")
+            clause = "target_id=?"
             params.append(node_id)
-        relation_clause = " AND relation=?" if relation else ""
-        if relation:
-            params.append(relation)
-        where = " OR ".join(f"({clause}{relation_clause})" for clause in clauses)
+            if relation:
+                clause += " AND relation=?"
+                params.append(relation)
+            clauses.append(f"({clause})")
+        where = " OR ".join(clauses)
         params.append(limit)
         with self._connect() as db:
             rows = db.execute(
