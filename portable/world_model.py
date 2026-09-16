@@ -1,9 +1,9 @@
 """Durable, provenance-aware world-model primitives for AER.
 
 The world model is a semantic layer over the existing canonical AER memory
-SQLite database. It records observations, entities and state facts without
-becoming a second orchestration engine. Facts are append-only observations;
-the current state is derived deterministically from the latest observation.
+SQLite database. It records observations and state facts without becoming a
+second orchestration engine. Facts are append-only observations; current state
+is derived deterministically from the latest observation.
 """
 from __future__ import annotations
 
@@ -32,6 +32,18 @@ def _props(value: str) -> dict[str, Any]:
     return decoded
 
 
+def _timestamp(value: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("observed_at must be a non-empty ISO-8601 timestamp")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("observed_at must be an ISO-8601 timestamp") from exc
+    if parsed.tzinfo is None:
+        raise ValueError("observed_at must include a timezone")
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
 @dataclass(frozen=True)
 class Observation:
     observation_id: str
@@ -53,6 +65,8 @@ class Observation:
             raise ValueError("confidence must be between 0 and 1")
         if not self.observed_at:
             object.__setattr__(self, "observed_at", _utc())
+        else:
+            object.__setattr__(self, "observed_at", _timestamp(self.observed_at))
         if self.properties is None:
             object.__setattr__(self, "properties", {})
         if not isinstance(self.properties, Mapping):
@@ -150,9 +164,7 @@ class WorldModel:
             params.append(predicate)
         with self._connect() as db:
             rows = db.execute(
-                f"SELECT entity_id,predicate,value,source,confidence,observed_at,observation_id,evidence,properties "
-                f"FROM world_observations WHERE {clause} "
-                "ORDER BY predicate,observed_at DESC,observation_id DESC",
+                f"SELECT entity_id,predicate,value,source,confidence,observed_at,observation_id,evidence,properties FROM world_observations WHERE {clause} ORDER BY predicate,observed_at DESC,observation_id DESC",
                 tuple(params),
             ).fetchall()
         latest: dict[str, WorldFact] = {}
@@ -175,8 +187,7 @@ class WorldModel:
         params.append(limit)
         with self._connect() as db:
             rows = db.execute(
-                f"SELECT observation_id,entity_id,predicate,value,source,confidence,observed_at,evidence,properties "
-                f"FROM world_observations WHERE {clause} ORDER BY observed_at DESC,observation_id DESC LIMIT ?",
+                f"SELECT observation_id,entity_id,predicate,value,source,confidence,observed_at,evidence,properties FROM world_observations WHERE {clause} ORDER BY observed_at DESC,observation_id DESC LIMIT ?",
                 tuple(params),
             ).fetchall()
         return tuple(Observation(row[0], row[1], row[2], json.loads(row[3]), row[4], float(row[5]), row[6],
@@ -185,8 +196,7 @@ class WorldModel:
     def digest(self) -> str:
         with self._connect() as db:
             rows = db.execute(
-                "SELECT observation_id,entity_id,predicate,value,source,confidence,observed_at,evidence,properties "
-                "FROM world_observations WHERE project=? ORDER BY observation_id",
+                "SELECT observation_id,entity_id,predicate,value,source,confidence,observed_at,evidence,properties FROM world_observations WHERE project=? ORDER BY observation_id",
                 (self.project,),
             ).fetchall()
         return hashlib.sha256(_json({"project": self.project, "observations": rows}).encode("utf-8")).hexdigest()[:16]
