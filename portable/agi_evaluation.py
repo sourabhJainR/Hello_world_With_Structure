@@ -29,7 +29,7 @@ class CapabilityCase:
                 raise ValueError(f"{name} must be non-empty")
         if self.kind not in KINDS:
             raise ValueError("unknown capability evaluation kind")
-        if any(not item.strip() for item in self.evidence):
+        if any(not isinstance(item, str) or not item.strip() for item in self.evidence):
             raise ValueError("evidence must contain non-empty identifiers")
 
 
@@ -52,6 +52,10 @@ class EvaluationReport:
     @property
     def pass_rate(self) -> float:
         return self.passed / self.total if self.total else 0.0
+
+    @property
+    def missing_kinds(self) -> tuple[str, ...]:
+        return tuple(sorted(KINDS.difference(self.coverage)))
 
 
 class CapabilityEvaluator:
