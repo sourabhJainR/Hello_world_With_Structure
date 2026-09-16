@@ -131,30 +131,13 @@ class GraphRun:
 
     @property
     def digest(self) -> str:
-        return state_digest({
-            "run_id": self.run_id,
-            "state": self.state,
-            "events": [event.__dict__ for event in self.events],
-            "trace": list(self.trace),
-            "steps": self.steps,
-            "interrupted": self.interrupted,
-        })
+        return state_digest({"run_id": self.run_id, "state": self.state, "events": [event.__dict__ for event in self.events], "trace": list(self.trace), "steps": self.steps, "interrupted": self.interrupted})
 
     def as_dict(self) -> dict[str, object]:
-        return {
-            "run_id": self.run_id,
-            "state": self.state,
-            "events": [event.__dict__ for event in self.events],
-            "trace": list(self.trace),
-            "steps": self.steps,
-            "interrupted": self.interrupted,
-            "digest": self.digest,
-        }
+        return {"run_id": self.run_id, "state": self.state, "events": [event.__dict__ for event in self.events], "trace": list(self.trace), "steps": self.steps, "interrupted": self.interrupted, "digest": self.digest}
 
 
 class InMemoryCheckpointStore:
-    """Minimal checkpoint store suitable for tests and host adapters."""
-
     def __init__(self) -> None:
         self._items: dict[str, Checkpoint] = {}
 
@@ -166,8 +149,6 @@ class InMemoryCheckpointStore:
 
 
 class StateGraph:
-    """Deterministic stateful graph executor."""
-
     START = "__start__"
     END = "__end__"
     EFFECTS = {"pure", "idempotent", "external"}
@@ -183,74 +164,51 @@ class StateGraph:
         self._after: set[str] = set()
 
     def add_node(self, name: str, node: Node, *, retry_policy: RetryPolicy | None = None, effect: str = "pure") -> "StateGraph":
-        if not name.strip() or name in {self.START, self.END}:
-            raise ValueError("invalid node name")
-        if name in self._nodes:
-            raise ValueError(f"duplicate node: {name}")
-        if effect not in self.EFFECTS:
-            raise ValueError(f"unsupported node effect: {effect}")
-        if retry_policy and retry_policy.max_attempts > 1 and effect == "external":
-            raise ValueError("external nodes require idempotent or pure effects before retry is enabled")
-        self._nodes[name] = node
-        self._effects[name] = effect
-        if retry_policy:
-            self._retry[name] = retry_policy
+        if not name.strip() or name in {self.START, self.END}: raise ValueError("invalid node name")
+        if name in self._nodes: raise ValueError(f"duplicate node: {name}")
+        if effect not in self.EFFECTS: raise ValueError(f"unsupported node effect: {effect}")
+        if retry_policy and retry_policy.max_attempts > 1 and effect == "external": raise ValueError("external nodes are not retryable; model the operation as idempotent before enabling retry")
+        self._nodes[name] = node; self._effects[name] = effect
+        if retry_policy: self._retry[name] = retry_policy
         return self
 
     def add_edge(self, source: str, target: str) -> "StateGraph":
-        self._validate_source(source)
-        self._validate_target(target)
-        self._edges[source] = self._edges.get(source, ()) + (target,)
-        return self
+        self._validate_source(source); self._validate_target(target)
+        self._edges[source] = self._edges.get(source, ()) + (target,); return self
 
     def add_conditional_edges(self, source: str, router: Router) -> "StateGraph":
-        if source not in self._nodes:
-            raise ValueError(f"unknown source node: {source}")
-        self._routers[source] = router
-        return self
+        if source not in self._nodes: raise ValueError(f"unknown source node: {source}")
+        self._routers[source] = router; return self
 
     def interrupt_before(self, *nodes: str) -> "StateGraph":
-        for node in nodes:
-            self._validate_target(node, allow_end=False)
-        self._before.update(nodes)
-        return self
+        for node in nodes: self._validate_target(node, allow_end=False)
+        self._before.update(nodes); return self
 
     def interrupt_after(self, *nodes: str) -> "StateGraph":
-        for node in nodes:
-            self._validate_target(node, allow_end=False)
-        self._after.update(nodes)
-        return self
+        for node in nodes: self._validate_target(node, allow_end=False)
+        self._after.update(nodes); return self
 
     def compile(self) -> "CompiledStateGraph":
-        if not self._nodes:
-            raise ValueError("graph must contain at least one node")
-        if self.START not in self._edges:
-            raise ValueError("graph must define an entry edge from START")
+        if not self._nodes: raise ValueError("graph must contain at least one node")
+        if self.START not in self._edges: raise ValueError("graph must define an entry edge from START")
         return CompiledStateGraph(self)
 
     def _validate_source(self, source: str) -> None:
-        if source != self.START and source not in self._nodes:
-            raise ValueError(f"unknown source node: {source}")
+        if source != self.START and source not in self._nodes: raise ValueError(f"unknown source node: {source}")
 
     def _validate_target(self, target: str, *, allow_end: bool = True) -> None:
-        if target != self.END and target not in self._nodes:
-            raise ValueError(f"unknown graph node: {target}")
-        if not allow_end and target == self.END:
-            raise ValueError("END is not a node")
+        if target != self.END and target not in self._nodes: raise ValueError(f"unknown graph node: {target}")
+        if not allow_end and target == self.END: raise ValueError("END is not a node")
 
 
 class CompiledStateGraph:
-    def __init__(self, graph: StateGraph) -> None:
-        self._g = graph
+    def __init__(self, graph: StateGraph) -> None: self._g = graph
 
     def invoke(self, state: Mapping[str, Any], *, run_id: str = "run", checkpoint: CheckpointStore | None = None, resume: bool = False, max_steps: int = 100, parallel_nodes: Callable[[str], bool] | None = None, max_parallel_nodes: int = 1, node_timeout_seconds: float | None = None) -> GraphRun:
         validate_state(state)
-        if max_steps < 1:
-            raise ValueError("max_steps must be positive")
-        if max_parallel_nodes < 1:
-            raise ValueError("max_parallel_nodes must be positive")
-        if node_timeout_seconds is not None and node_timeout_seconds <= 0:
-            raise ValueError("node_timeout_seconds must be positive")
+        if max_steps < 1: raise ValueError("max_steps must be positive")
+        if max_parallel_nodes < 1: raise ValueError("max_parallel_nodes must be positive")
+        if node_timeout_seconds is not None and node_timeout_seconds <= 0: raise ValueError("node_timeout_seconds must be positive")
         existing = checkpoint.load(run_id) if resume and checkpoint else None
         current: dict[str, Any] = dict(existing.state if existing else state)
         next_nodes = list(existing.next_nodes if existing else self._g._edges[StateGraph.START])
@@ -259,10 +217,8 @@ class CompiledStateGraph:
         step = existing.step if existing else 0
         skip_before_once = existing is not None
         while next_nodes:
-            if step >= max_steps:
-                raise RuntimeError(f"graph exceeded max_steps={max_steps}")
-            step += 1
-            snapshot = dict(current)
+            if step >= max_steps: raise RuntimeError(f"graph exceeded max_steps={max_steps}")
+            step += 1; snapshot = dict(current)
             if not skip_before_once:
                 for name in next_nodes:
                     if name != StateGraph.END and name in self._g._before:
@@ -273,83 +229,69 @@ class CompiledStateGraph:
             sequential = [name for name in next_nodes if name != StateGraph.END and name not in parallel]
             results_by_name: dict[str, tuple[Mapping[str, Any], int]] = {}
             if parallel:
-                with ThreadPoolExecutor(max_workers=min(max_parallel_nodes, len(parallel))) as pool:
-                    futures = {name: pool.submit(self._run_node, name, snapshot) for name in parallel}
+                executor = ThreadPoolExecutor(max_workers=min(max_parallel_nodes, len(parallel)))
+                futures = {name: executor.submit(self._run_node, name, snapshot) for name in parallel}
+                try:
                     for name in parallel:
-                        try:
-                            results_by_name[name] = futures[name].result(timeout=node_timeout_seconds)
-                        except FutureTimeoutError as exc:
-                            raise TimeoutError(f"node {name} exceeded timeout") from exc
-            for name in sequential:
-                results_by_name[name] = self._run_node_with_timeout(name, snapshot, node_timeout_seconds)
+                        results_by_name[name] = futures[name].result(timeout=node_timeout_seconds)
+                except FutureTimeoutError as exc:
+                    for future in futures.values(): future.cancel()
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    raise TimeoutError("parallel node exceeded timeout") from exc
+                else:
+                    executor.shutdown(wait=True)
+            for name in sequential: results_by_name[name] = self._run_node_with_timeout(name, snapshot, node_timeout_seconds)
             for name in next_nodes:
-                if name == StateGraph.END:
-                    continue
+                if name == StateGraph.END: continue
                 output, attempts = results_by_name[name]
-                self._merge(current, output)
-                events.append(GraphEvent(step, name, "completed", attempts))
-                trace.append(name)
+                self._merge(current, output); events.append(GraphEvent(step, name, "completed", attempts)); trace.append(name)
                 if name in self._g._after:
-                    next_after = self._next(name, current)
-                    self._checkpoint(checkpoint, run_id, step, current, next_after, trace)
+                    next_after = self._next(name, current); self._checkpoint(checkpoint, run_id, step, current, next_after, trace)
                     raise GraphInterrupt(run_id, step, dict(current), tuple(next_after), f"interrupted after {name}")
             next_set: list[str] = []
             for name in next_nodes:
-                if name != StateGraph.END:
-                    next_set.extend(self._next(name, current))
-            next_nodes = list(dict.fromkeys(next_set))
-            self._checkpoint(checkpoint, run_id, step, current, next_nodes, trace)
-            if StateGraph.END in next_nodes:
-                next_nodes = []
+                if name != StateGraph.END: next_set.extend(self._next(name, current))
+            next_nodes = list(dict.fromkeys(next_set)); self._checkpoint(checkpoint, run_id, step, current, next_nodes, trace)
+            if StateGraph.END in next_nodes: next_nodes = []
         return GraphRun(run_id, dict(current), tuple(events), tuple(trace), step)
 
     def _checkpoint(self, store: CheckpointStore | None, run_id: str, step: int, state: Mapping[str, Any], next_nodes: Sequence[str], trace: Sequence[str]) -> None:
-        if store:
-            store.save(Checkpoint(run_id, step, dict(state), tuple(next_nodes), tuple(trace)))
+        if store: store.save(Checkpoint(run_id, step, dict(state), tuple(next_nodes), tuple(trace)))
 
     def _run_node_with_timeout(self, name: str, state: Mapping[str, Any], timeout: float | None) -> tuple[Mapping[str, Any], int]:
-        if timeout is None:
-            return self._run_node(name, state)
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(self._run_node, name, state)
-            try:
-                return future.result(timeout=timeout)
-            except FutureTimeoutError as exc:
-                raise TimeoutError(f"node {name} exceeded timeout") from exc
+        if timeout is None: return self._run_node(name, state)
+        executor = ThreadPoolExecutor(max_workers=1); future = executor.submit(self._run_node, name, state)
+        try:
+            result = future.result(timeout=timeout)
+        except FutureTimeoutError as exc:
+            future.cancel(); executor.shutdown(wait=False, cancel_futures=True)
+            raise TimeoutError(f"node {name} exceeded timeout") from exc
+        else:
+            executor.shutdown(wait=True); return result
 
     def _run_node(self, name: str, state: Mapping[str, Any]) -> tuple[Mapping[str, Any], int]:
-        policy = self._g._retry.get(name, RetryPolicy())
-        last: BaseException | None = None
+        policy = self._g._retry.get(name, RetryPolicy()); last: BaseException | None = None
         for attempt in range(1, policy.max_attempts + 1):
             try:
                 output = self._g._nodes[name](dict(state))
-                if not isinstance(output, Mapping):
-                    raise TypeError(f"node {name} must return a mapping")
+                if not isinstance(output, Mapping): raise TypeError(f"node {name} must return a mapping")
                 validate_state(output, label=f"node {name} output")
                 return dict(output), attempt
             except BaseException as exc:
                 last = exc
-                if attempt >= policy.max_attempts or not policy.allows(exc):
-                    raise
-        assert last is not None
-        raise last
+                if attempt >= policy.max_attempts or not policy.allows(exc): raise
+        assert last is not None; raise last
 
     def _next(self, name: str, state: Mapping[str, Any]) -> tuple[str, ...]:
-        if name in self._routers:
-            routed = self._g._routers[name](dict(state))
-            values = (routed,) if isinstance(routed, str) else tuple(routed)
-        else:
-            values = self._g._edges.get(name, ())
-        for value in values:
-            self._g._validate_target(value)
+        if name in self._g._routers:
+            routed = self._g._routers[name](dict(state)); values = (routed,) if isinstance(routed, str) else tuple(routed)
+        else: values = self._g._edges.get(name, ())
+        for value in values: self._g._validate_target(value)
         return tuple(values)
 
     def _merge(self, state: MutableMapping[str, Any], update: Mapping[str, Any]) -> None:
         for key, value in update.items():
-            if key in state and key in self._g._reducers:
-                state[key] = self._g._reducers[key](state[key], value)
-            else:
-                state[key] = value
+            state[key] = self._g._reducers[key](state[key], value) if key in state and key in self._g._reducers else value
             validate_state({key: state[key]}, label=f"state.{key}")
 
 
