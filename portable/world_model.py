@@ -1,9 +1,9 @@
-"""Durable, provenance-aware world-model primitives for AER.
+"""Durable, provenance-aware predictive world-model primitives for AER.
 
-The world model is a semantic layer over the existing canonical AER memory
-SQLite database. It records observations and state facts without becoming a
-second orchestration engine. Facts are append-only observations; current state
-is derived deterministically from the latest observation.
+The world model stores observations in the canonical AER memory database. In
+addition to deterministic current-state queries, it learns bounded empirical
+state transitions conditioned on actions and can score predictions against
+later observations.
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ import hashlib
 import json
 import sqlite3
 from typing import Any, Mapping
+from uuid import uuid4
 
 from .persistent_memory import PersistentMemory
 
@@ -23,6 +24,14 @@ def _utc() -> str:
 
 def _json(value: Mapping[str, Any]) -> str:
     return json.dumps(dict(value), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def _value_json(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+
+
+def _value_digest(value: Any) -> str:
+    return hashlib.sha256(_value_json(value).encode("utf-8")).hexdigest()
 
 
 def _props(value: str) -> dict[str, Any]:
@@ -72,7 +81,7 @@ class Observation:
         if not isinstance(self.properties, Mapping):
             raise TypeError("properties must be a mapping")
         try:
-            json.dumps(self.value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+            _value_json(self.value)
             json.dumps(dict(self.properties), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
         except (TypeError, ValueError) as exc:
             raise TypeError("value and properties must be JSON-compatible") from exc
@@ -91,8 +100,31 @@ class WorldFact:
     properties: Mapping[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class WorldPrediction:
+    prediction_id: str
+    entity_id: str
+    predicate: str
+    action: str
+    from_value: Any
+    predicted_value: Any
+    confidence: float
+    evidence_observation_ids: tuple[str, ...]
+    created_at: str
+
+
+@dataclass(frozen=True)
+class PredictionError:
+    prediction_id: str
+    predicted_value: Any
+    actual_value: Any
+    absolute_match: bool
+    error_digest: str
+    measured_at: str
+
+
 class WorldModel:
-    """Bounded durable observations and deterministic current-state queries."""
+    """Bounded durable observations plus empirical action-conditioned prediction."""
 
     def __init__(self, memory: PersistentMemory, project: str, *, max_observations: int = 100_000) -> None:
         if not isinstance(memory, PersistentMemory):
@@ -128,9 +160,23 @@ class WorldModel:
                     PRIMARY KEY(project, observation_id))"""
             )
             db.execute("CREATE INDEX IF NOT EXISTS idx_world_observation_fact ON world_observations(project, entity_id, predicate, observed_at, observation_id)")
+            db.execute(
+                """CREATE TABLE IF NOT EXISTS world_predictions(
+                    project TEXT NOT NULL,
+                    prediction_id TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    predicate TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    from_value TEXT NOT NULL,
+                    predicted_value TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    evidence_ids TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY(project, prediction_id))"""
+            )
 
     def observe(self, observation: Observation) -> Observation:
-        value_json = json.dumps(observation.value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        value_json = _value_json(observation.value)
         evidence_json = json.dumps(sorted(set(observation.evidence)), separators=(",", ":"), ensure_ascii=True)
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -193,6 +239,64 @@ class WorldModel:
         return tuple(Observation(row[0], row[1], row[2], json.loads(row[3]), row[4], float(row[5]), row[6],
                                   tuple(json.loads(row[7])), _props(row[8])) for row in rows)
 
+    def predict_next(self, entity_id: str, predicate: str, action: str, *, current_value: Any | None = None,
+                     min_samples: int = 1) -> WorldPrediction | None:
+        if not action.strip() or min_samples < 1:
+            raise ValueError("action and min_samples must be valid")
+        history = list(self.history(entity_id, predicate, limit=self.max_observations))
+        if len(history) < 2:
+            return None
+        history.reverse()
+        if current_value is None:
+            current = history[-1].value
+        else:
+            current = current_value
+        transitions: dict[str, list[Observation]] = {}
+        current_digest = _value_digest(current)
+        for previous, following in zip(history, history[1:]):
+            if str((following.properties or {}).get("action", "")) != action:
+                continue
+            if _value_digest(previous.value) != current_digest:
+                continue
+            transitions.setdefault(_value_digest(following.value), []).append(following)
+        candidates = [(items[0].value, items) for items in transitions.values() if len(items) >= min_samples]
+        if not candidates:
+            return None
+        predicted_value, evidence = max(candidates, key=lambda pair: (len(pair[1]), _value_digest(pair[0])))
+        total = sum(len(items) for _, items in candidates)
+        confidence = len(evidence) / total if total else 0.0
+        prediction = WorldPrediction(
+            prediction_id=uuid4().hex,
+            entity_id=entity_id,
+            predicate=predicate,
+            action=action,
+            from_value=current,
+            predicted_value=predicted_value,
+            confidence=confidence,
+            evidence_observation_ids=tuple(item.observation_id for item in evidence),
+            created_at=_utc(),
+        )
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO world_predictions VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (self.project, prediction.prediction_id, prediction.entity_id, prediction.predicate,
+                 prediction.action, _value_json(prediction.from_value), _value_json(prediction.predicted_value),
+                 prediction.confidence, json.dumps(prediction.evidence_observation_ids, separators=(",", ":")),
+                 prediction.created_at),
+            )
+        return prediction
+
+    def score_prediction(self, prediction: WorldPrediction, actual_value: Any) -> PredictionError:
+        digest = _value_digest({"predicted": prediction.predicted_value, "actual": actual_value})
+        return PredictionError(
+            prediction_id=prediction.prediction_id,
+            predicted_value=prediction.predicted_value,
+            actual_value=actual_value,
+            absolute_match=prediction.predicted_value == actual_value,
+            error_digest=digest,
+            measured_at=_utc(),
+        )
+
     def digest(self) -> str:
         with self._connect() as db:
             rows = db.execute(
@@ -202,4 +306,4 @@ class WorldModel:
         return hashlib.sha256(_json({"project": self.project, "observations": rows}).encode("utf-8")).hexdigest()[:16]
 
 
-__all__ = ["Observation", "WorldFact", "WorldModel"]
+__all__ = ["Observation", "WorldFact", "WorldPrediction", "PredictionError", "WorldModel"]
