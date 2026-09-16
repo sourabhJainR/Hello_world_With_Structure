@@ -52,6 +52,7 @@ from .self_model import CapabilityProfile, SelfModel
 from .agi_evaluation import CapabilityCase, CapabilityEvaluator, CaseResult, EvaluationReport, KINDS
 from .cognitive_runtime import CognitiveRuntime
 from .learning_transfer import ConsolidationReceipt, LearningExperience, LearningTransfer, TransferCandidate
+from .continual_learning import BenchmarkObservation, ContinualLearningGuard, RegressionResult
 
 __all__ = [
     "main", "AdaptiveRuntime", "HookBus", "HookDecision", "HookEvent", "HookPhase", "HookedExecution",
@@ -75,4 +76,5 @@ __all__ = [
     "Goal", "GoalManager", "InformationAction", "InformationPlan", "InformationPlanner", "CapabilityProfile", "SelfModel",
     "CapabilityCase", "CapabilityEvaluator", "CaseResult", "EvaluationReport", "KINDS", "CognitiveRuntime",
     "LearningExperience", "TransferCandidate", "ConsolidationReceipt", "LearningTransfer",
+    "BenchmarkObservation", "RegressionResult", "ContinualLearningGuard",
 ]
