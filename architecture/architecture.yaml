@@ -39,6 +39,12 @@
       ],
       "rule": "Execution-plan adapters must not become a second dependency-planning authority."
     },
+    "execution_contract": {
+      "canonical_owner": "portable.execution_contract.ExecutionEnvelope",
+      "role": "cross-phase identity and evidence-carrying execution contract",
+      "compatibility_surfaces": [],
+      "rule": "The envelope binds intent, canonical repository identity, plan identity, evidence and lifecycle receipts; it is a contract record, not a second state store."
+    },
     "execution": {
       "canonical_owner": "portable.agency_state_graph.StateGraph",
       "role": "bounded workflow execution, routing, retries, checkpoints, interrupts and trace",
