@@ -1,9 +1,6 @@
 """Reusable facade that composes AER orchestration and agent capabilities."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
-import hashlib
-import json
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -12,7 +9,7 @@ from .capability_fabric import Capability, CapabilityFabric, ProviderAdapter, Pr
 from .context_graph import ContextGraph
 from .context_resolver import ContextResolution, ContextResolver
 from .cognitive_controller import CognitiveController
-from .cognitive_learning import BeliefContext, CognitiveLearningLoop
+from .cognitive_learning import BeliefContext, CognitiveLearningLoop, LearningSignal
 from .cognitive_loop import CognitiveEpisodeReceipt, CognitiveLoop
 from .cognitive_runtime import CognitiveRuntime
 from .hypothesis_engine import BeliefEvidence
@@ -24,7 +21,7 @@ from .persistent_memory import PersistentMemory
 from .provider_fabric import CapabilityRequest, ProviderFabric, RoutingDecision
 from .session_state import SessionCheckpoint, SessionStore
 from .trigger_runtime import TriggerEvent, TriggerRuntime
-from .world_model import PredictionError
+from .world_model import PredictionError, WorldPrediction
 
 
 class AdaptiveRuntime:
@@ -57,7 +54,7 @@ class AdaptiveRuntime:
         self.trigger_runtime = TriggerRuntime(self.automation_scheduler)
         self.last_cognitive_episode: CognitiveEpisodeReceipt | None = None
         self.last_cognitive_plan: dict[str, object] | None = None
-        self.last_learning_signal = None
+        self.last_learning_signal: LearningSignal | None = None
 
     def capability(self, name: str, preferred: tuple[str, ...] = ()) -> RoutingDecision:
         return self.provider_fabric.route(CapabilityRequest(name, preferred))
@@ -139,11 +136,15 @@ class AdaptiveRuntime:
         self.session_store.save(checkpoint)
         cognitive_runtime = self.cognition(project_root)
         cognitive_loop = CognitiveLoop(cognitive_runtime)
-        learning_loop = CognitiveLearningLoop(self.persistent_memory, project_key, self_model=cognitive_runtime.self_model)
         episode = cognitive_loop.begin(project_key, task_id, intent)
-        prediction_error: PredictionError | None = None
-        cognitive_plan_payload: dict[str, object] | None = None
+        learning_loop: CognitiveLearningLoop | None = None
+        learning_init_error: str | None = None
         try:
+            try:
+                learning_loop = CognitiveLearningLoop(self.persistent_memory, project_key, self_model=cognitive_runtime.self_model)
+            except Exception as exc:
+                learning_init_error = f"{type(exc).__name__}: {exc}"
+                cognitive_loop.observe(episode, {"event": "learning_init_error", "error": learning_init_error})
             before = execution.gate(HookPhase.BEFORE_AGENT, task_id=task_id)
             if not before.allow:
                 raise RuntimeError(f"before_agent vetoed: {before.reason}")
@@ -156,37 +157,44 @@ class AdaptiveRuntime:
                 effective_context["aer_context_digest"] = resolution.digest
                 effective_context["aer_context_omitted"] = list(resolution.omitted)
                 cognitive_loop.observe(episode, {"event": "context_resolved", "digest": resolution.digest})
+            cognitive_plan_payload: dict[str, object] | None = None
             if enrich_cognition:
-                effective_context = CognitiveController(cognitive_runtime).enrich_context(
-                    intent, capability=cognitive_capability, uncertainty=cognitive_uncertainty,
-                    information_actions=cognitive_information_actions, entity_id=cognitive_entity_id,
-                    predicate=cognitive_predicate, action=cognitive_action,
-                    current_value=cognitive_current_value, beliefs=cognitive_beliefs,
-                    belief_limit=cognitive_belief_limit, context=effective_context,
-                )
-                cognitive_plan_payload = dict(effective_context["aer_cognitive_plan"])  # type: ignore[arg-type]
-                self.last_cognitive_plan = dict(cognitive_plan_payload)
-                cognitive_loop.observe(episode, {
-                    "event": "cognitive_plan_created",
-                    "belief_count": len(cognitive_plan_payload.get("belief_ids", [])),
-                    "prediction_id": (cognitive_plan_payload.get("prediction") or {}).get("prediction_id")
-                    if isinstance(cognitive_plan_payload.get("prediction"), dict) else None,
-                })
+                try:
+                    effective_context = CognitiveController(cognitive_runtime).enrich_context(
+                        intent, capability=cognitive_capability, uncertainty=cognitive_uncertainty,
+                        information_actions=cognitive_information_actions, entity_id=cognitive_entity_id,
+                        predicate=cognitive_predicate, action=cognitive_action,
+                        current_value=cognitive_current_value, beliefs=cognitive_beliefs,
+                        belief_limit=cognitive_belief_limit, context=effective_context,
+                    )
+                    cognitive_plan_payload = dict(effective_context["aer_cognitive_plan"])  # type: ignore[arg-type]
+                    self.last_cognitive_plan = dict(cognitive_plan_payload)
+                    cognitive_loop.observe(episode, {
+                        "event": "cognitive_plan_created",
+                        "belief_count": len(cognitive_plan_payload.get("belief_ids", [])),
+                        "prediction_id": (cognitive_plan_payload.get("prediction") or {}).get("prediction_id")
+                        if isinstance(cognitive_plan_payload.get("prediction"), dict) else None,
+                    })
+                except Exception as exc:
+                    cognitive_loop.observe(episode, {"event": "cognitive_enrichment_error", "error": f"{type(exc).__name__}: {exc}"})
             result = self.orchestrator.run(task_id, intent, effective_context)
             cognitive_loop.observe(episode, {"event": "execution_completed", "status": result.status.value})
             prediction = cognitive_plan_payload.get("prediction") if cognitive_plan_payload else None
+            prediction_error: PredictionError | None = None
             if cognitive_actual_value is not None and isinstance(prediction, dict):
-                predicted_value = prediction.get("predicted_value")
-                actual_digest = hashlib.sha256(json.dumps({"predicted": predicted_value, "actual": cognitive_actual_value},
-                                                         sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
-                prediction_error = PredictionError(
+                prediction_obj = WorldPrediction(
+                    project=project_key,
                     prediction_id=str(prediction["prediction_id"]),
-                    predicted_value=predicted_value,
-                    actual_value=cognitive_actual_value,
-                    absolute_match=predicted_value == cognitive_actual_value,
-                    error_digest=actual_digest,
-                    measured_at=datetime.now(timezone.utc).isoformat(),
+                    entity_id=str(prediction["entity_id"]),
+                    predicate=str(prediction["predicate"]),
+                    action=str(prediction["action"]),
+                    from_value=prediction.get("from_value"),
+                    predicted_value=prediction.get("predicted_value"),
+                    confidence=float(prediction["confidence"]),
+                    evidence_observation_ids=tuple(prediction.get("evidence_observation_ids", ())),
+                    created_at=str(prediction.get("created_at", "")) or datetime.now(timezone.utc).isoformat(),
                 )
+                prediction_error = cognitive_runtime.world.score_prediction(prediction_obj, cognitive_actual_value)
                 cognitive_loop.observe(episode, {
                     "event": "prediction_scored",
                     "prediction_id": prediction_error.prediction_id,
@@ -200,26 +208,28 @@ class AdaptiveRuntime:
             checkpoint.remaining_batches = []
             checkpoint.last_error = None
             self.session_store.save(checkpoint)
+            if learning_loop is not None:
+                self.last_learning_signal = learning_loop.record(
+                    task_id=task_id, intent=intent, status=result.status.value, capability=cognitive_capability,
+                    evidence=learning_evidence, context=learning_context,
+                    belief_evidence=cognitive_belief_evidence, prediction_error=prediction_error,
+                )
             self.last_cognitive_episode = cognitive_loop.complete(episode, result.status.value)
-            self.last_learning_signal = learning_loop.record(
-                task_id=task_id, intent=intent, status=result.status.value, capability=cognitive_capability,
-                evidence=learning_evidence, context=learning_context,
-                belief_evidence=cognitive_belief_evidence, prediction_error=prediction_error,
-            )
             execution.gate(HookPhase.SESSION_END, task_id=task_id, payload={"status": result.status.value})
             return result
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
             cognitive_loop.observe(episode, {"event": "execution_error", "status": "failed", "error": error})
-            self.last_cognitive_episode = cognitive_loop.complete(episode, "failed", error)
-            self.last_learning_signal = learning_loop.record(
-                task_id=task_id, intent=intent, status="failed", capability=cognitive_capability,
-                evidence=learning_evidence, context=learning_context,
-                belief_evidence=cognitive_belief_evidence, prediction_error=prediction_error,
-            )
+            if learning_loop is not None:
+                self.last_learning_signal = learning_loop.record(
+                    task_id=task_id, intent=intent, status="failed", capability=cognitive_capability,
+                    evidence=learning_evidence, context=learning_context,
+                    belief_evidence=cognitive_belief_evidence,
+                )
             checkpoint.last_error = error
             checkpoint.attempt += 1
             self.session_store.save(checkpoint)
+            self.last_cognitive_episode = cognitive_loop.complete(episode, "failed", error)
             execution.gate(HookPhase.RECOVERY, task_id=task_id, payload={"error": checkpoint.last_error})
             raise
 
