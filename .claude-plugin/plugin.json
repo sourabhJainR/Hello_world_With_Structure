@@ -32,6 +32,15 @@
     "interactive-documentation"
   ],
   "skills": "./skills/",
+  "mcpServers": {
+    "aer-adaptive-runtime": {
+      "command": "python",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/portable/chat_capability.py"
+      ],
+      "cwd": "${CLAUDE_PLUGIN_ROOT}"
+    }
+  },
   "hooks": {
     "UserPromptSubmit": [
       {
