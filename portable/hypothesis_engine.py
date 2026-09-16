@@ -20,6 +20,16 @@ def _utc() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _timestamp(value: str, field: str) -> str:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{field} must be an ISO-8601 timestamp") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{field} must include a timezone")
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
 @dataclass(frozen=True)
 class Hypothesis:
     hypothesis_id: str
@@ -41,12 +51,7 @@ class Hypothesis:
             raise ValueError("status must be open, supported, refuted, or inconclusive")
         if not self.created_at:
             object.__setattr__(self, "created_at", _utc())
-        try:
-            parsed = datetime.fromisoformat(self.created_at.replace("Z", "+00:00"))
-        except ValueError as exc:
-            raise ValueError("created_at must be an ISO-8601 timestamp") from exc
-        if parsed.tzinfo is None:
-            raise ValueError("created_at must include a timezone")
+        object.__setattr__(self, "created_at", _timestamp(self.created_at, "created_at"))
 
 
 @dataclass(frozen=True)
@@ -68,12 +73,7 @@ class BeliefEvidence:
             raise ValueError("confidence must be between 0 and 1")
         if not self.observed_at:
             object.__setattr__(self, "observed_at", _utc())
-        try:
-            parsed = datetime.fromisoformat(self.observed_at.replace("Z", "+00:00"))
-        except ValueError as exc:
-            raise ValueError("observed_at must be an ISO-8601 timestamp") from exc
-        if parsed.tzinfo is None:
-            raise ValueError("observed_at must include a timezone")
+        object.__setattr__(self, "observed_at", _timestamp(self.observed_at, "observed_at"))
 
 
 class HypothesisEngine:
@@ -173,7 +173,7 @@ class HypothesisEngine:
         contradiction = sum(float(confidence) for supports, confidence in evidence if not supports)
         total = support + contradiction
         if total == 0:
-            confidence = float(row[2] if False else row[3])
+            confidence = float(row[3])
             status = row[4]
         else:
             confidence = support / total
