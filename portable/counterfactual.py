@@ -11,6 +11,7 @@ class CounterfactualQuery:
     interventions: tuple[str, ...]
     targets: tuple[str, ...]
     max_hops: int = 8
+    max_paths: int = 128
 
     def __post_init__(self) -> None:
         if not self.interventions or not self.targets:
@@ -19,8 +20,8 @@ class CounterfactualQuery:
             raise ValueError("interventions and targets must contain non-empty strings")
         if len(set(self.interventions)) != len(self.interventions) or len(set(self.targets)) != len(self.targets):
             raise ValueError("interventions and targets must be unique")
-        if self.max_hops < 1:
-            raise ValueError("max_hops must be positive")
+        if self.max_hops < 1 or self.max_paths < 1:
+            raise ValueError("max_hops and max_paths must be positive")
 
 
 @dataclass(frozen=True)
@@ -53,7 +54,7 @@ class CounterfactualEngine:
         for start in query.interventions:
             queue: list[tuple[str, tuple[str, ...], float]] = [(start, (start,), 1.0)]
             seen: set[tuple[str, int]] = set()
-            while queue:
+            while queue and len(found) < query.max_paths:
                 node, path, confidence = queue.pop(0)
                 depth = len(path) - 1
                 state = (node, depth)
@@ -73,7 +74,7 @@ class CounterfactualEngine:
         unique: dict[tuple[str, ...], float] = {}
         for path, confidence in found:
             unique[path] = max(unique.get(path, 0.0), confidence)
-        ordered = sorted(unique.items(), key=lambda item: (len(item[0]), item[0]))
+        ordered = sorted(unique.items(), key=lambda item: (len(item[0]), item[0]))[:query.max_paths]
         paths = tuple(path for path, _ in ordered)
         confidence = max((score for _, score in ordered), default=0.0)
         return CounterfactualResult(query.interventions, query.targets, paths, confidence)
