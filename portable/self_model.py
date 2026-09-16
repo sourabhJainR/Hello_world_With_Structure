@@ -47,14 +47,19 @@ class SelfModel:
                 db.execute("ALTER TABLE self_model_outcomes ADD COLUMN difficulty INTEGER")
             db.execute("CREATE INDEX IF NOT EXISTS idx_self_model_capability ON self_model_outcomes(project, capability, context, difficulty, success, outcome_id)")
 
+    @staticmethod
+    def _validate_context(context: str | None) -> str | None:
+        if context is not None and (not isinstance(context, str) or not context.strip()):
+            raise ValueError("context must be a non-empty string when supplied")
+        return context.strip() if context else None
+
     def record(self, outcome_id: str, capability: str, *, success: bool, context: str | None = None,
                difficulty: int | None = None) -> None:
         if not isinstance(outcome_id, str) or not outcome_id.strip() or not isinstance(capability, str) or not capability.strip():
             raise ValueError("outcome_id and capability are required")
-        if context is not None and not context.strip():
-            raise ValueError("context must be non-empty when supplied")
-        if difficulty is not None and not 0 <= difficulty <= 10:
-            raise ValueError("difficulty must be between 0 and 10")
+        context = self._validate_context(context)
+        if difficulty is not None and (not isinstance(difficulty, int) or isinstance(difficulty, bool) or not 0 <= difficulty <= 10):
+            raise ValueError("difficulty must be an integer between 0 and 10")
         with sqlite3.connect(self.memory.path, timeout=10) as db:
             db.execute("BEGIN IMMEDIATE")
             existing = db.execute("SELECT capability,success,context,difficulty FROM self_model_outcomes WHERE project=? AND outcome_id=?", (self.project, outcome_id)).fetchone()
@@ -66,20 +71,19 @@ class SelfModel:
             count = db.execute("SELECT COUNT(*) FROM self_model_outcomes WHERE project=?", (self.project,)).fetchone()[0]
             if count >= self.max_outcomes:
                 raise ValueError("self-model outcome budget exceeded")
-            db.execute("INSERT INTO self_model_outcomes VALUES(?,?,?,?,?,?)", (self.project, outcome_id, capability.strip(), int(success), context.strip() if context else None, difficulty))
+            db.execute("INSERT INTO self_model_outcomes VALUES(?,?,?,?,?,?)", (self.project, outcome_id, capability.strip(), int(success), context, difficulty))
 
     def profile(self, capability: str, *, context: str | None = None, difficulty: int | None = None) -> CapabilityProfile:
         if not isinstance(capability, str) or not capability.strip():
             raise ValueError("capability is required")
-        if context is not None and not context.strip():
-            raise ValueError("context must be non-empty when supplied")
-        if difficulty is not None and not 0 <= difficulty <= 10:
-            raise ValueError("difficulty must be between 0 and 10")
+        context = self._validate_context(context)
+        if difficulty is not None and (not isinstance(difficulty, int) or isinstance(difficulty, bool) or not 0 <= difficulty <= 10):
+            raise ValueError("difficulty must be an integer between 0 and 10")
         clauses = ["project=?", "capability=?"]
         params: list[object] = [self.project, capability.strip()]
         if context is not None:
             clauses.append("context=?")
-            params.append(context.strip())
+            params.append(context)
         if difficulty is not None:
             clauses.append("difficulty=?")
             params.append(difficulty)
@@ -92,7 +96,7 @@ class SelfModel:
         failures = int(row[1] or 0)
         observations = int(row[2] or 0)
         confidence = successes / observations if observations else 0.0
-        return CapabilityProfile(capability.strip(), successes, failures, round(confidence, 6), observations, context.strip() if context else None, difficulty)
+        return CapabilityProfile(capability.strip(), successes, failures, round(confidence, 6), observations, context, difficulty)
 
     def should_escalate(self, capability: str, *, min_observations: int = 5, min_confidence: float = 0.8,
                         context: str | None = None, difficulty: int | None = None) -> bool:
