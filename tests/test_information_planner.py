@@ -23,6 +23,8 @@ class InformationPlannerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             planner.choose(uncertainty=1.1, actions=())
         with self.assertRaises(ValueError):
+            InformationAction("x", "bad", 1.1)
+        with self.assertRaises(ValueError):
             InformationAction("x", "bad", 1, cost=0)
 
 
