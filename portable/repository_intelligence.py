@@ -1,17 +1,15 @@
 """Canonical repository-intelligence facade for AER.
 
 There is intentionally one repository/code graph store in AER: ``CodebaseIndex``
-from ``agency_codebase_context``.  This module is the task-facing facade over
-that store.  Packing, retrieval, callers/callees, impact, affected tests and
-change awareness all consume the same snapshot instead of building competing
-indexes.
+from ``agency_codebase_context``. This module is the task-facing facade over
+that store. Packing, retrieval, callers/callees, impact, affected tests and
+change awareness all consume the same canonical snapshot.
 """
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import fnmatch
 import hashlib
-import os
 from pathlib import Path
 import re
 import subprocess
@@ -20,9 +18,7 @@ from typing import Iterable, Sequence
 from .agency_codebase_context import (
     CodebaseContext,
     CodebaseIndex,
-    ContextChunk,
     GraphEdge,
-    GraphTrace,
     retrieve,
 )
 
@@ -95,8 +91,8 @@ class RepositoryAnswer:
 class RepositoryIntelligence:
     """Single entry point for repository context acquisition.
 
-    ``self.index`` is the canonical CodebaseIndex. No other repository graph
-    or code map is created by this facade.
+    ``self.index`` is the canonical CodebaseIndex. No second repository crawl,
+    graph, symbol index or code map is created by this facade.
     """
 
     def __init__(self, root: str | Path, *, extra_ignores: Iterable[str] = ()) -> None:
@@ -109,6 +105,11 @@ class RepositoryIntelligence:
         return cls(root, extra_ignores=set(ignores) - set(DEFAULT_IGNORES))
 
     @property
+    def repository_model(self) -> CodebaseIndex:
+        """Return the canonical repository model used by every facade operation."""
+        return self.index
+
+    @property
     def files(self):
         return self.index.files
 
@@ -117,10 +118,14 @@ class RepositoryIntelligence:
         return self.index.edges
 
     def _build_index(self) -> CodebaseIndex:
-        return CodebaseIndex.build(self.root, ignores=self.ignore_names())
+        return CodebaseIndex.build(
+            self.root,
+            ignores=self.ignore_names(),
+            ignore_patterns=self._ignore_file_patterns(),
+        )
 
     def refresh(self) -> None:
-        """Refresh the single canonical graph after repository mutations."""
+        """Refresh the single canonical repository model after repository mutations."""
         self.index = self._build_index()
 
     def ignore_names(self) -> frozenset[str]:
@@ -251,44 +256,53 @@ class RepositoryIntelligence:
     def pack(self, *, include: Sequence[str] = (), ignore: Sequence[str] = (),
              token_budget: int | None = None, compress: bool = False,
              max_file_size: int = 50_000_000) -> RepositoryPack:
+        """Pack content from the canonical index without performing another crawl."""
         patterns = tuple(include)
-        ignores = tuple(ignore) + tuple(self._ignore_file_patterns())
+        ignores = tuple(ignore)
         files: list[PackedFile] = []
-        structure: list[str] = []
         omitted: list[str] = []
         security: list[str] = []
         used = 0
-        candidates = []
-        for current, dirs, names in os.walk(self.root):
-            dirs[:] = [d for d in dirs if d not in self.ignore_names()]
-            for name in names:
-                path = Path(current) / name
-                rel = path.relative_to(self.root).as_posix()
-                structure.append(rel)
-                if path.is_symlink() or path.stat().st_size > max_file_size:
-                    omitted.append(rel); continue
-                if patterns and not any(fnmatch.fnmatch(rel, p) or fnmatch.fnmatch(path.name, p) for p in patterns):
-                    omitted.append(rel); continue
-                if any(fnmatch.fnmatch(rel, p) or fnmatch.fnmatch(path.name, p) for p in ignores):
-                    omitted.append(rel); continue
-                try:
-                    text = path.read_text(encoding="utf-8")
-                except (OSError, UnicodeDecodeError):
-                    omitted.append(rel); continue
-                if self._contains_secret(text):
-                    security.append(rel); continue
-                candidates.append((rel, text))
-        for rel, text in sorted(candidates):
+        candidates: list[tuple[str, str]] = []
+
+        for rel, record in sorted(self.index.files.items()):
+            path = self.root / rel
+            if path.is_symlink() or record.size > max_file_size:
+                omitted.append(rel)
+                continue
+            if patterns and not any(fnmatch.fnmatch(rel, p) or fnmatch.fnmatch(path.name, p) for p in patterns):
+                omitted.append(rel)
+                continue
+            if any(fnmatch.fnmatch(rel, p) or fnmatch.fnmatch(path.name, p) for p in ignores):
+                omitted.append(rel)
+                continue
+            try:
+                text = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):
+                omitted.append(rel)
+                continue
+            if self._contains_secret(text):
+                security.append(rel)
+                continue
+            candidates.append((rel, text))
+
+        for rel, text in candidates:
             payload = self._compress(text, rel) if compress else text
             count = self.token_estimate(payload)
             if token_budget is not None and used + count > token_budget:
-                omitted.append(rel); continue
-            files.append(PackedFile(rel, payload, count, compress)); used += count
-        # The pack digest is tied to the canonical graph snapshot as well as content.
-        snapshot = hashlib.sha256((self.digest() + "\n" + "\n".join(
-            f"{p}|{hashlib.sha256(t.encode()).hexdigest()}" for p, t in candidates)).encode()).hexdigest()
-        return RepositoryPack(str(self.root), snapshot, tuple(files), tuple(sorted(structure)), used,
-                              tuple(sorted(set(omitted))), tuple(sorted(set(security))))
+                omitted.append(rel)
+                continue
+            files.append(PackedFile(rel, payload, count, compress))
+            used += count
+
+        candidate_digest = "\n".join(
+            f"{p}|{hashlib.sha256(t.encode()).hexdigest()}" for p, t in candidates
+        )
+        snapshot = hashlib.sha256((self.digest() + "\n" + candidate_digest).encode()).hexdigest()
+        return RepositoryPack(
+            str(self.root), snapshot, tuple(files), tuple(sorted(self.index.files)), used,
+            tuple(sorted(set(omitted))), tuple(sorted(set(security)))
+        )
 
     def token_estimate(self, text: str) -> int:
         return max(1, len(_TOKEN_RE.findall(text))) if text else 0
