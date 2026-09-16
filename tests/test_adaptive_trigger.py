@@ -1,12 +1,20 @@
-import sqlite3
 import tempfile
 import threading
 import time
 import unittest
 from pathlib import Path
 
+from portable import (
+    AdaptiveTriggerRequest,
+    TriggerOutcome,
+    TriggerReceipt,
+    TriggerStatus,
+    trigger_adaptive_runtime,
+)
 from portable.adaptive_trigger import AdaptiveTrigger
+from portable.adaptive_runtime import AdaptiveRuntime
 from portable.agent_capabilities import AutomationScheduler
+from portable.orchestration import Graph
 from portable.trigger_runtime import TriggerRuntime
 
 
@@ -36,7 +44,7 @@ class AdaptiveTriggerTests(unittest.TestCase):
             self.assertTrue(receipt.trigger_id)
             self.assertLess(elapsed, 1.0)
             self.assertEqual(calls, [])
-            self.assertEqual(trigger_runtime.due(limit=1)[0].event_id, receipt.trigger_id)
+            self.assertEqual(trigger_runtime.due(limit=1, kind="adaptive_runtime")[0].event_id, receipt.trigger_id)
             trigger.close()
             scheduler.close()
 
@@ -58,6 +66,14 @@ class AdaptiveTriggerTests(unittest.TestCase):
             self.assertTrue(done.wait(2.0))
             self.assertEqual(calls[0][0].task, "task")
             self.assertEqual(trigger_runtime.due(), ())
+
+            deadline = time.monotonic() + 2.0
+            status = trigger.get_status(receipt.trigger_id)
+            while time.monotonic() < deadline and status is not None and status.status != "success":
+                time.sleep(0.01)
+                status = trigger.get_status(receipt.trigger_id)
+            self.assertIsNotNone(status)
+            self.assertEqual(status.status, "success")
             trigger.close()
             scheduler.close()
 
@@ -70,7 +86,7 @@ class AdaptiveTriggerTests(unittest.TestCase):
             outcome = trigger._dispatch_event(second.trigger_id)
             self.assertEqual(outcome.trigger_id, second.trigger_id)
             self.assertEqual(calls[0][0].task, "second")
-            self.assertEqual([event.event_id for event in trigger_runtime.due(limit=10)], [first.trigger_id])
+            self.assertEqual([event.event_id for event in trigger_runtime.due(limit=10, kind="adaptive_runtime")], [first.trigger_id])
             trigger.close()
             scheduler.close()
 
@@ -102,11 +118,10 @@ class AdaptiveTriggerTests(unittest.TestCase):
             scheduler, trigger_runtime, trigger = self._runtime(directory, calls, fail=True)
             receipt = trigger.trigger_adaptive_runtime("task", directory, {}, max_attempts=2, fire_and_forget=False)
             trigger.dispatch_once()
-            with sqlite3.connect(Path(directory) / "runtime.sqlite") as db:
-                row = db.execute(
-                    "SELECT status, attempts FROM trigger_events WHERE event_id=?", (receipt.trigger_id,)
-                ).fetchone()
-            self.assertEqual(row, ("pending", 1))
+            status = trigger.get_status(receipt.trigger_id)
+            self.assertEqual(status.status, "pending")
+            self.assertEqual(status.attempts, 1)
+            self.assertEqual(status.outcome["error_type"], "RuntimeError")
             self.assertEqual(trigger_runtime.due(limit=1), ())
             trigger.close()
             scheduler.close()
@@ -124,6 +139,51 @@ class AdaptiveTriggerTests(unittest.TestCase):
             self.assertEqual(trigger_runtime.due(), ())
             trigger.close()
             scheduler.close()
+
+    def test_dispatch_once_ignores_unrelated_trigger_kinds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            calls = []
+            scheduler, trigger_runtime, trigger = self._runtime(directory, calls)
+            trigger_runtime.emit("other", {"task": "leave me alone"}, event_id="unrelated")
+            receipt = trigger.trigger_adaptive_runtime("run me", directory, {}, fire_and_forget=False)
+            outcomes = trigger.dispatch_once(limit=20)
+            self.assertEqual([item.trigger_id for item in outcomes], [receipt.trigger_id])
+            self.assertEqual(trigger_runtime.get("unrelated").status, "pending")
+            trigger.close()
+            scheduler.close()
+
+    def test_runtime_keyed_adapter_is_reused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = AdaptiveRuntime(Graph([]), automation_scheduler=AutomationScheduler(Path(directory) / "runtime.sqlite"))
+            first = AdaptiveTrigger.for_runtime(runtime)
+            second = AdaptiveTrigger.for_runtime(runtime)
+            self.assertIs(first, second)
+            runtime.automation_scheduler.close()
+
+    def test_priority_is_propagated_to_durable_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            calls = []
+            scheduler, trigger_runtime, trigger = self._runtime(directory, calls)
+            receipt = trigger.trigger_adaptive_runtime("urgent", directory, {}, priority="high", fire_and_forget=False)
+            status = trigger.get_status(receipt.trigger_id)
+            self.assertEqual(status.priority, 0)
+            trigger.close()
+            scheduler.close()
+
+    def test_module_convenience_uses_reusable_runtime_adapter(self):
+        with tempfile.TemporaryDirectory() as directory:
+            scheduler = AutomationScheduler(Path(directory) / "runtime.sqlite")
+            runtime = AdaptiveRuntime(Graph([]), automation_scheduler=scheduler)
+            first = AdaptiveTrigger.for_runtime(runtime)
+            trigger_adaptive_runtime(runtime, "queued", directory, event_id="convenience-1")
+            self.assertIs(first, AdaptiveTrigger.for_runtime(runtime))
+            first.close()
+            scheduler.close()
+
+    def test_public_trigger_types_are_exported(self):
+        self.assertTrue(all(value is not None for value in (
+            AdaptiveTriggerRequest, TriggerOutcome, TriggerReceipt, TriggerStatus, trigger_adaptive_runtime,
+        )))
 
 
 if __name__ == "__main__":

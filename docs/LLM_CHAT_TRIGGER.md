@@ -1,18 +1,29 @@
 # LLM Chat AdaptiveRuntime Trigger
 
-AER exposes a provider-neutral, fire-and-forget trigger for an LLM chat, agent adapter, or other interactive caller that needs to start normal `AdaptiveRuntime` execution without waiting for the full orchestration lifecycle.
+AER exposes a provider-neutral, fire-and-forget trigger for an LLM chat, agent adapter, MCP client, or other interactive caller that needs to start normal `AdaptiveRuntime` execution without waiting for the full orchestration lifecycle.
 
 ## Flow
 
 ```text
-LLM chat / tool call
+LLM chat / MCP tool call
+        |
+        v
+adaptive_runtime_trigger
         |
         v
 AdaptiveTrigger.trigger_adaptive_runtime()
         |
         +--> durable TriggerRuntime event
+        |       kind + priority + payload
         |
-        +--> bounded background dispatch
+        +--> immediate TriggerReceipt
+        |
+        v
+bounded background dispatch
+        |
+        v
+TriggerRuntime claim + lease
+        |
         v
 AdaptiveRuntime.run()
         |
@@ -20,10 +31,13 @@ AdaptiveRuntime.run()
         +--> experience record
         +--> deferred learning
         v
+TriggerRuntime completion + durable outcome
+        |
+        v
 existing maintenance service
 ```
 
-The trigger and the maintenance service are complementary. The trigger is an on-demand execution path; the OS service continues to own the scheduled last-day-of-month maintenance cycle. Neither creates a second memory store or scheduler.
+The trigger and the maintenance service are complementary. The trigger is an on-demand execution path; the OS service continues to own the scheduled last-day-of-month maintenance cycle. Neither creates a second memory store or scheduler. The maintenance service does not take ownership of chat-trigger semantics.
 
 ## Python API
 
@@ -54,10 +68,18 @@ receipt = trigger.trigger_adaptive_runtime(
 trigger.dispatch_once()
 ```
 
-A simple convenience entry point is also available:
+The runtime-keyed adapter is reusable:
 
 ```python
-from portable.adaptive_trigger import trigger_adaptive_runtime
+trigger_a = AdaptiveTrigger.for_runtime(runtime)
+trigger_b = AdaptiveTrigger.for_runtime(runtime)
+assert trigger_a is trigger_b
+```
+
+A convenience entry point is also available:
+
+```python
+from portable import trigger_adaptive_runtime
 
 receipt = trigger_adaptive_runtime(
     runtime,
@@ -67,12 +89,39 @@ receipt = trigger_adaptive_runtime(
 )
 ```
 
-## Idempotency and recovery
+## Provider-neutral MCP capability
 
-Pass a stable `event_id` when the chat/tool layer may retry a request. Reusing the same ID with the same payload returns the existing durable trigger rather than creating duplicate work. Reusing it with different content fails closed.
+The capability name is `adaptive_runtime.trigger`. Its input schema is:
 
-The trigger uses `TriggerRuntime` claim-before-run semantics. If the background worker or caller process disappears after persistence, the pending event remains durable and can be drained later by another host using `dispatch_once()` or the existing trigger runtime. AdaptiveRuntime itself remains the only owner of orchestration, evidence, and learning behavior.
+```json
+{
+  "type": "object",
+  "required": ["task", "project_root"],
+  "properties": {
+    "task": {"type": "string", "minLength": 1},
+    "project_root": {"type": "string", "minLength": 1},
+    "context": {"type": "object"},
+    "priority": {"type": "string", "enum": ["high", "normal", "low"]},
+    "event_id": {"type": "string", "minLength": 1},
+    "max_attempts": {"type": "integer", "minimum": 1, "maximum": 16}
+  }
+}
+```
+
+The Claude Code plugin bundles this capability through its MCP server registration. The MCP server starts `portable/chat_capability.py`, which exposes the tool `adaptive_runtime_trigger` and maps calls to the same `AdaptiveTrigger` implementation. The core runtime therefore remains provider-neutral; Claude-specific configuration is only the host registration boundary.
+
+## Status and recovery
+
+Use `trigger.get_status(trigger_id)` or `runtime.trigger_runtime.get(trigger_id)` to inspect durable state. Status includes attempts, max attempts, priority, availability, claim lease information, completion time, diagnostic detail, and a bounded JSON outcome.
+
+Claims use a finite lease. If a worker disappears after claiming an event, another dispatcher can reclaim the event after the lease expires. A live claim cannot be stolen, and completion remains ownership-checked by `claim_id`.
+
+The trigger dispatcher requests only `kind="adaptive_runtime"`, so unrelated trigger kinds remain untouched. Due selection orders `high`, then `normal`, then `low`, followed by availability time and event ID for deterministic FIFO behavior inside a priority.
+
+Pass a stable `event_id` when the chat/tool layer may retry a request. Reusing the same ID with the same payload and priority returns the existing durable trigger rather than creating duplicate work. Reusing it with different content fails closed.
 
 ## Safety boundaries
 
 The trigger does not bypass AER verification, review, evidence, policy, or learning gates. Chat context is passed into the normal `AdaptiveRuntime.run()` path; it does not create a privileged execution path. The background dispatcher is bounded to a shared four-worker pool so many chat requests cannot create one unbounded thread per request.
+
+The MCP adapter accepts only JSON-compatible tool arguments and persists only bounded execution metadata. It does not store arbitrary Python return values in SQLite.
