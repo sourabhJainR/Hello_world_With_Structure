@@ -17,6 +17,10 @@
     "review_ids": {"type": "array", "items": {"type": "string"}},
     "regression_ids": {"type": "array", "items": {"type": "string"}},
     "release_ids": {"type": "array", "items": {"type": "string"}},
+    "iteration": {"type": "integer", "minimum": 0},
+    "wake_reason": {"type": "string"},
+    "prior_outcome_id": {"type": "string"},
+    "next_action_ids": {"type": "array", "items": {"type": "string"}},
     "metadata": {"type": "object"}
   }
 }
