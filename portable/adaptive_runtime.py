@@ -1,17 +1,21 @@
 """Reusable facade that composes AER orchestration and agent capabilities."""
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from .active_information import InformationExecution
+from .adaptive_learning import AdaptiveLearningStore, DeferredLearningJob
 from .automation_scheduler import AutomationScheduler
 from .capability_fabric import Capability, CapabilityFabric, ProviderAdapter, ProviderAdapterRegistry
 from .context_graph import ContextGraph
 from .context_resolver import ContextResolution, ContextResolver
 from .cognitive_controller import CognitiveController
-from .cognitive_learning import BeliefContext, CognitiveLearningLoop, LearningSignal
+from .cognitive_learning import BeliefContext, LearningSignal
 from .cognitive_loop import CognitiveEpisodeReceipt, CognitiveLoop
 from .cognitive_runtime import CognitiveRuntime
+from .empirical_improvement import EmpiricalImprovement, ImprovementObservation, ImprovementReport
 from .hypothesis_engine import BeliefEvidence
 from .information_planner import InformationAction
 from .lifecycle_hooks import HookBus, HookPhase, HookedExecution
@@ -55,6 +59,7 @@ class AdaptiveRuntime:
         self.last_cognitive_episode: CognitiveEpisodeReceipt | None = None
         self.last_cognitive_plan: dict[str, object] | None = None
         self.last_learning_signal: LearningSignal | None = None
+        self.last_deferred_learning_job: DeferredLearningJob | None = None
 
     def capability(self, name: str, preferred: tuple[str, ...] = ()) -> RoutingDecision:
         return self.provider_fabric.route(CapabilityRequest(name, preferred))
@@ -124,6 +129,9 @@ class AdaptiveRuntime:
         cognitive_actual_value: object | None = None,
         learning_evidence: tuple[str, ...] = (),
         learning_context: str | None = None,
+        learning_quality: float | None = None,
+        learning_iterations: int | None = None,
+        learning_verified: bool | None = None,
     ) -> OrchestrationRun:
         project_key = self.session_store.project_key(project_root)
         provider_name = provider or "aer"
@@ -136,20 +144,15 @@ class AdaptiveRuntime:
         self.session_store.save(checkpoint)
         cognitive_runtime = self.cognition(project_root)
         cognitive_loop = CognitiveLoop(cognitive_runtime)
+        learning_store = AdaptiveLearningStore(self.persistent_memory, project_key)
         episode = cognitive_loop.begin(project_key, task_id, intent)
-        learning_loop: CognitiveLearningLoop | None = None
-        learning_init_error: str | None = None
         try:
-            try:
-                learning_loop = CognitiveLearningLoop(self.persistent_memory, project_key, self_model=cognitive_runtime.self_model)
-            except Exception as exc:
-                learning_init_error = f"{type(exc).__name__}: {exc}"
-                cognitive_loop.observe(episode, {"event": "learning_init_error", "error": learning_init_error})
             before = execution.gate(HookPhase.BEFORE_AGENT, task_id=task_id)
             if not before.allow:
                 raise RuntimeError(f"before_agent vetoed: {before.reason}")
             cognitive_loop.observe(episode, {"event": "before_agent", "status": "running"})
             effective_context = dict(context or {})
+            effective_context["aer_workstyle_guidance"] = learning_store.guidance()
             if enrich_context:
                 resolution = self.resolve_context(project_root, intent, node_id=context_node_id,
                                                   workspace_id=workspace_id, required=required_context)
@@ -204,34 +207,75 @@ class AdaptiveRuntime:
             if not after.allow:
                 raise RuntimeError(f"after_agent vetoed: {after.reason}")
             checkpoint.stage = "complete"
-            checkpoint.completed_batches = ["execute", "verify", "review", "learn"]
-            checkpoint.remaining_batches = []
+            checkpoint.completed_batches = ["execute", "verify", "review"]
+            checkpoint.remaining_batches = ["learn"]
             checkpoint.last_error = None
             self.session_store.save(checkpoint)
-            if learning_loop is not None:
-                self.last_learning_signal = learning_loop.record(
-                    task_id=task_id, intent=intent, status=result.status.value, capability=cognitive_capability,
-                    evidence=learning_evidence, context=learning_context,
-                    belief_evidence=cognitive_belief_evidence, prediction_error=prediction_error,
+            iterations = learning_iterations
+            if iterations is None:
+                iterations = sum(max(1, item.attempts) + item.repair_count for item in result.results.values()) or 1
+            quality = learning_quality if learning_quality is not None else (1.0 if result.status.value == "accepted" else 0.0)
+            verified = learning_verified if learning_verified is not None else result.status.value == "accepted"
+            evidence = tuple(sorted(set(learning_evidence) | {item.digest for item in result.evidence}))
+            try:
+                self.last_deferred_learning_job = learning_store.record_outcome(
+                    task_id=task_id, intent=intent, status=result.status.value,
+                    quality=quality, iterations=iterations, context=learning_context,
+                    evidence=evidence, verified=verified, capability=cognitive_capability,
+                    belief_evidence=cognitive_belief_evidence,
+                    prediction_id=prediction_error.prediction_id if prediction_error else None,
+                    prediction_correct=prediction_error.absolute_match if prediction_error else None,
                 )
+                cognitive_loop.observe(episode, {"event": "learning_deferred", "job_id": self.last_deferred_learning_job.job_id})
+            except Exception as exc:
+                cognitive_loop.observe(episode, {"event": "learning_defer_error", "error": f"{type(exc).__name__}: {exc}"})
+            self.last_learning_signal = None
             self.last_cognitive_episode = cognitive_loop.complete(episode, result.status.value)
             execution.gate(HookPhase.SESSION_END, task_id=task_id, payload={"status": result.status.value})
             return result
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
             cognitive_loop.observe(episode, {"event": "execution_error", "status": "failed", "error": error})
-            if learning_loop is not None:
-                self.last_learning_signal = learning_loop.record(
-                    task_id=task_id, intent=intent, status="failed", capability=cognitive_capability,
-                    evidence=learning_evidence, context=learning_context,
-                    belief_evidence=cognitive_belief_evidence,
+            try:
+                self.last_deferred_learning_job = learning_store.record_outcome(
+                    task_id=task_id, intent=intent, status="failed", quality=0.0,
+                    iterations=1, context=learning_context, evidence=learning_evidence, verified=False,
+                    capability=cognitive_capability,
                 )
+            except Exception as learning_exc:
+                cognitive_loop.observe(episode, {"event": "learning_defer_error", "error": f"{type(learning_exc).__name__}: {learning_exc}"})
             checkpoint.last_error = error
             checkpoint.attempt += 1
             self.session_store.save(checkpoint)
             self.last_cognitive_episode = cognitive_loop.complete(episode, "failed", error)
             execution.gate(HookPhase.RECOVERY, task_id=task_id, payload={"error": checkpoint.last_error})
             raise
+
+    def process_learning(self, project_root: Path | str, *, limit: int = 20, dream: bool = True) -> list[dict[str, object]]:
+        """Run deferred learning/maintenance outside the active worker path."""
+        project_key = self.session_store.project_key(project_root)
+        store = AdaptiveLearningStore(self.persistent_memory, project_key)
+        jobs = store.process(limit=limit, dream=dream)
+        return [
+            {"job_id": job.job_id, "task_id": job.task_id, "kind": job.kind, "status": job.status}
+            for job in jobs
+        ]
+
+    def benchmark_improvement(
+        self,
+        project_root: Path | str,
+        cases: Iterable[object],
+        baseline_strategy: str,
+        candidate_strategy: str,
+        evaluator,
+        **thresholds: object,
+    ) -> ImprovementReport:
+        """Replay a bounded benchmark outside execution authority and gate a candidate empirically."""
+        # project_root is deliberately accepted so benchmark identity remains scoped
+        # to the same project namespace as learning state, but the comparison itself
+        # is pure and never mutates the active orchestrator.
+        self.session_store.project_key(project_root)
+        return EmpiricalImprovement.run(cases, baseline_strategy, candidate_strategy, evaluator, **thresholds)
 
     def recover(self, session_id: str, next_stage: str = "execute") -> SessionCheckpoint | None:
         return self.session_store.recover(session_id, next_stage=next_stage)
