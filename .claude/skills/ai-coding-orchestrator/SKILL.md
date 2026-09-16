@@ -79,6 +79,27 @@ Verify the new requirement and affected existing behavior. Start with focused te
 
 `not_applicable: reason` is valid for a genuinely irrelevant concern; silent omission is not evidence. Higher-risk code changes block when configured quality/safety evidence is missing.
 
+## LLM chat trigger
+
+The plugin exposes the provider-neutral `adaptive_runtime.trigger` capability through its bundled MCP server. Use it when an interactive LLM caller needs to start normal `AdaptiveRuntime` work without waiting for orchestration to finish.
+
+The capability accepts:
+
+```json
+{
+  "task": "string",
+  "project_root": "string",
+  "context": "object, optional",
+  "priority": "high | normal | low, optional",
+  "event_id": "string, optional",
+  "max_attempts": "integer 1..16, optional"
+}
+```
+
+It returns a durable receipt containing `trigger_id`, `status`, and `accepted_at`. The trigger is fire-and-forget, persists intent before dispatch, uses the shared bounded worker pool, and invokes the ordinary `AdaptiveRuntime.run()` path. A chat caller can later inspect durable trigger state through the runtime API instead of depending on an in-memory future.
+
+Do not use the capability to bypass verification, evidence, permission, policy, review, or learning gates. Do not create parallel memory, scheduling, or orchestration state for chat requests.
+
 ## Skill composition
 
 - `research`: acquire uncertain external/architectural evidence before implementation.
