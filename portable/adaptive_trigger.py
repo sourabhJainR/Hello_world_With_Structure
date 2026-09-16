@@ -15,11 +15,13 @@ from threading import Lock
 from typing import Any, Callable, Mapping
 
 from .adaptive_runtime import AdaptiveRuntime
-from .trigger_runtime import TriggerEvent, TriggerRuntime
+from .trigger_runtime import TriggerEvent, TriggerRuntime, TriggerStatus
 
 
 _BACKGROUND_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="aer-adaptive-trigger")
 register(_BACKGROUND_EXECUTOR.shutdown, wait=False, cancel_futures=False)
+
+_PRIORITY = {"high": 0, "normal": 1, "low": 2}
 
 
 @dataclass(frozen=True)
@@ -97,7 +99,7 @@ class AdaptiveTrigger:
         """Persist a chat request and optionally dispatch it without blocking."""
         if not isinstance(task, str) or not task.strip():
             raise ValueError("task is required")
-        if priority not in {"low", "normal", "high"}:
+        if priority not in _PRIORITY:
             raise ValueError("priority must be one of: low, normal, high")
         root = str(Path(project_root).expanduser().resolve())
         request = AdaptiveTriggerRequest(task.strip(), root, dict(context or {}), priority)
@@ -114,10 +116,24 @@ class AdaptiveTrigger:
                 },
                 event_id=event_id,
                 max_attempts=max_attempts,
+                priority=_PRIORITY[request.priority],
             )
             if fire_and_forget:
                 _BACKGROUND_EXECUTOR.submit(self._dispatch_event, event.event_id)
         return TriggerReceipt(event.event_id, event.status, event.created_at)
+
+    def get_status(self, trigger_id: str) -> TriggerStatus | None:
+        """Read the durable lifecycle state for a trigger."""
+        return self.trigger_runtime.get(trigger_id)
+
+    @staticmethod
+    def _result_metadata(result: Any) -> dict[str, Any]:
+        status = getattr(result, "status", None)
+        if hasattr(status, "value"):
+            return {"result_status": str(status.value)}
+        if status is not None:
+            return {"result_status": str(status)}
+        return {"result_type": type(result).__name__}
 
     def _dispatch_event(self, event_id: str) -> TriggerOutcome | None:
         claim = self.trigger_runtime.claim(event_id)
@@ -126,10 +142,23 @@ class AdaptiveTrigger:
         now = datetime.now(timezone.utc)
         try:
             outcome = self._handle_event(claim.event)
-            self.trigger_runtime.complete(event_id, claim.claim_id, "success", now=now)
+            self.trigger_runtime.complete(
+                event_id,
+                claim.claim_id,
+                "success",
+                now=now,
+                outcome=self._result_metadata(outcome.result),
+            )
             return outcome
         except Exception as exc:
-            self.trigger_runtime.complete(event_id, claim.claim_id, "retryable", str(exc), now=now)
+            self.trigger_runtime.complete(
+                event_id,
+                claim.claim_id,
+                "retryable",
+                str(exc),
+                now=now,
+                outcome={"error_type": type(exc).__name__},
+            )
             return None
 
     def _handle_event(self, event: TriggerEvent) -> TriggerOutcome:
@@ -142,15 +171,17 @@ class AdaptiveTrigger:
             context=dict(payload.get("context", {})),
             priority=str(payload.get("priority", "normal")),
         )
+        if request.priority not in _PRIORITY:
+            raise ValueError("persisted trigger has invalid priority")
         result = self.runner(request, event.event_id)
         return TriggerOutcome(event.event_id, "accepted", result)
 
     def dispatch_once(self, *, limit: int = 20) -> list[TriggerOutcome]:
-        """Synchronously drain currently due chat triggers; useful for hosts/services."""
+        """Synchronously drain due adaptive chat triggers only."""
         if limit < 1:
             return []
         results: list[TriggerOutcome] = []
-        for event in self.trigger_runtime.due(limit=limit):
+        for event in self.trigger_runtime.due(limit=limit, kind="adaptive_runtime"):
             outcome = self._dispatch_event(event.event_id)
             if outcome is not None:
                 results.append(outcome)
@@ -171,13 +202,8 @@ def trigger_adaptive_runtime(
     event_id: str | None = None,
     max_attempts: int = 3,
 ) -> TriggerReceipt:
-    """Convenience function for an LLM tool/chat adapter.
-
-    The module-level worker pool is bounded, so callers may use this helper
-    directly without creating one executor per chat request.
-    """
-    trigger = AdaptiveTrigger.for_runtime(runtime)
-    return trigger.trigger_adaptive_runtime(
+    """Convenience function backed by the runtime-owned trigger adapter."""
+    return runtime.adaptive_trigger.trigger_adaptive_runtime(
         task,
         project_root,
         context,
