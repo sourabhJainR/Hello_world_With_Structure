@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
-"""Validate AER interactive HTML documentation invariants.
-
-The HTML pages are derived presentation artifacts. This validator keeps them
-self-contained and prevents accidental network/runtime dependencies.
-"""
+"""Validate AER interactive HTML documentation invariants."""
 from __future__ import annotations
 
 from pathlib import Path
 import re
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs" / "html"
@@ -19,7 +14,7 @@ REQUIRED = {
     "self-improving-control-loop-design.html": ("Safety invariants", "svg", "details"),
     "self-improving-control-loop-plan.html": ("Regression gates", "svg", "details"),
 }
-EXTERNAL = re.compile(r"(?:src|href)\\s*=\\s*[\"'](?:https?:|//|data:)", re.IGNORECASE)
+EXTERNAL = re.compile(r"(?:src|href)\s*=\s*[\"'](?:https?:|//|data:)", re.IGNORECASE)
 
 
 def validate() -> list[str]:
