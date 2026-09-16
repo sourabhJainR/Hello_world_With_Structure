@@ -18,6 +18,11 @@ class CapabilityAcquisitionTests(unittest.TestCase):
             self.assertEqual(proposal.missing_count, 3)
             self.assertFalse(proposal.executable)
 
+    def test_duplicate_evidence_does_not_meet_independent_evidence_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            acquirer = CapabilityAcquirer(PersistentMemory(Path(directory) / "memory.db", require_approval=False), "demo")
+            self.assertIsNone(acquirer.propose(CapabilityNeed("task", "browser", 3, ("e1", "e1", "e1"), True)))
+
     def test_sparse_or_unverified_need_is_not_proposed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             acquirer = CapabilityAcquirer(PersistentMemory(Path(directory) / "memory.db", require_approval=False), "demo")
