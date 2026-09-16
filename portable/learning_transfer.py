@@ -1,9 +1,4 @@
-"""Evidence-gated learning transfer and durable memory consolidation.
-
-The module reuses the canonical PersistentMemory SQLite database. Learning is
-stored as structured experience, while consolidation writes only verified,
-independently reproduced patterns back into normal project memory.
-"""
+"""Evidence-gated learning transfer and durable memory consolidation."""
 from __future__ import annotations
 
 import json
@@ -11,6 +6,26 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from .persistent_memory import PersistentMemory
+
+
+def _clean(value: str, field: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be a string")
+    value = value.strip()
+    if not value:
+        raise ValueError(f"{field} must not be empty")
+    return value
+
+
+def _signature(values: tuple[str, ...]) -> frozenset[str]:
+    return frozenset(_clean(value, "structure_signature") for value in values)
+
+
+def _similarity(left: frozenset[str], right: frozenset[str]) -> float:
+    if not left and not right:
+        return 1.0
+    union = left | right
+    return len(left & right) / len(union) if union else 0.0
 
 
 @dataclass(frozen=True)
@@ -24,6 +39,8 @@ class LearningExperience:
     evidence_ids: tuple[str, ...] = ()
     confidence: float = 0.0
     verified: bool = False
+    structure_signature: tuple[str, ...] = ()
+    negative_conditions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -34,6 +51,8 @@ class TransferCandidate:
     source_projects: tuple[str, ...]
     evidence_ids: tuple[str, ...]
     confidence: float
+    similarity: float = 1.0
+    negative_conditions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -46,22 +65,13 @@ class ConsolidationReceipt:
     memory_id: str
 
 
-def _clean(value: str, field: str) -> str:
-    if not isinstance(value, str):
-        raise ValueError(f"{field} must be a string")
-    value = value.strip()
-    if not value:
-        raise ValueError(f"{field} must not be empty")
-    return value
-
-
 class LearningTransfer:
     """Record, transfer, and consolidate verified experience across projects."""
 
     def __init__(self, memory: PersistentMemory, target_project: str) -> None:
         self.memory = memory
         self.target_project = _clean(target_project, "target_project")
-        with self.memory._lock, self.memory._connect() as db:  # same canonical store
+        with self.memory._lock, self.memory._connect() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS learning_experiences(
                 id TEXT PRIMARY KEY,
                 source_project TEXT NOT NULL,
@@ -76,6 +86,11 @@ class LearningTransfer:
             )""")
             db.execute("""CREATE INDEX IF NOT EXISTS idx_learning_lookup
                 ON learning_experiences(task_family, capability, verified, outcome)""")
+            db.execute("""CREATE TABLE IF NOT EXISTS learning_transfer_signatures(
+                experience_id TEXT PRIMARY KEY,
+                structure_signature TEXT NOT NULL,
+                negative_conditions TEXT NOT NULL
+            )""")
 
     def record(self, experience: LearningExperience) -> None:
         if not isinstance(experience, LearningExperience):
@@ -89,6 +104,8 @@ class LearningTransfer:
         if not 0 <= experience.confidence <= 1:
             raise ValueError("confidence must be between 0 and 1")
         evidence = tuple(sorted({_clean(item, "evidence_id") for item in experience.evidence_ids}))
+        structure = tuple(sorted(_signature(experience.structure_signature)))
+        negatives = tuple(sorted(_signature(experience.negative_conditions)))
         if experience.verified and not evidence:
             raise ValueError("verified learning requires evidence_ids")
         created_at = datetime.now(timezone.utc).isoformat()
@@ -99,12 +116,18 @@ class LearningTransfer:
                             experience.detail, json.dumps(evidence), experience.confidence, int(experience.verified))
                 if existing != incoming:
                     raise ValueError(f"learning experience id already exists with different content: {experience.id}")
+                db.execute(
+                    "INSERT OR IGNORE INTO learning_transfer_signatures VALUES(?,?,?)",
+                    (experience.id, json.dumps(structure), json.dumps(negatives)),
+                )
                 return
             db.execute("INSERT INTO learning_experiences VALUES(?,?,?,?,?,?,?,?,?,?)", (
                 experience.id, experience.source_project, experience.task_family, experience.capability,
                 experience.outcome, experience.detail, json.dumps(evidence), experience.confidence,
                 int(experience.verified), created_at,
             ))
+            db.execute("INSERT INTO learning_transfer_signatures VALUES(?,?,?)",
+                       (experience.id, json.dumps(structure), json.dumps(negatives)))
 
     def transfer(self, task_family: str, capability: str, *, limit: int = 10) -> list[TransferCandidate]:
         task_family = _clean(task_family, "task_family")
@@ -129,6 +152,41 @@ class LearningTransfer:
             for detail, item in groups.items()
         ]
         return sorted(candidates, key=lambda x: (-len(x.source_projects), -x.confidence, x.detail))[:limit]
+
+    def transfer_structural(self, task_family: str, capability: str, structure_signature: tuple[str, ...], *,
+                            target_conditions: tuple[str, ...] = (), min_similarity: float = 0.25,
+                            limit: int = 10) -> list[TransferCandidate]:
+        task_family = _clean(task_family, "task_family")
+        capability = _clean(capability, "capability")
+        target = _signature(tuple(structure_signature))
+        conditions = _signature(tuple(target_conditions))
+        if not 0 <= min_similarity <= 1:
+            raise ValueError("min_similarity must be between 0 and 1")
+        if limit < 1:
+            raise ValueError("limit must be positive")
+        with self.memory._lock, self.memory._connect() as db:
+            rows = db.execute("""SELECT e.detail,e.source_project,e.evidence_ids,e.confidence,
+                                       s.structure_signature,s.negative_conditions
+                FROM learning_experiences e
+                JOIN learning_transfer_signatures s ON s.experience_id=e.id
+                WHERE e.task_family=? AND e.capability=? AND e.outcome='worked' AND e.verified=1
+                  AND e.source_project<>?
+                ORDER BY e.confidence DESC, e.created_at DESC, e.id""",
+                              (task_family, capability, self.target_project)).fetchall()
+        candidates: list[TransferCandidate] = []
+        for detail, source_project, evidence_json, confidence, structure_json, negative_json in rows:
+            negatives = _signature(tuple(json.loads(negative_json or "[]")))
+            if negatives & conditions:
+                continue
+            similarity = _similarity(target, _signature(tuple(json.loads(structure_json or "[]"))))
+            if similarity < min_similarity:
+                continue
+            candidates.append(TransferCandidate(
+                str(detail), capability, task_family, (str(source_project),),
+                tuple(sorted(json.loads(evidence_json or "[]"))), float(confidence), similarity,
+                tuple(sorted(negatives)),
+            ))
+        return sorted(candidates, key=lambda x: (-x.similarity, -x.confidence, x.detail))[:limit]
 
     def consolidate(self, task_family: str, capability: str, *, min_projects: int = 2) -> ConsolidationReceipt | None:
         task_family = _clean(task_family, "task_family")
