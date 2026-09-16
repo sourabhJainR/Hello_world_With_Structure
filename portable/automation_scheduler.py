@@ -17,7 +17,6 @@ from .agent_capabilities import AutomationScheduler as _AutomationScheduler, Sch
 
 class AutomationScheduler(_AutomationScheduler):
     def finish(self, schedule_or_claim: str, claim_or_status: str, status_or_detail: str = "", detail: str = "", *, now: datetime | None = None) -> None:
-        # New API: finish(schedule_id, claim, status, detail=...).
         if claim_or_status in {"success", "retryable", "failed", "cancelled"}:
             claim = schedule_or_claim
             status = claim_or_status
@@ -51,7 +50,7 @@ class AutomationScheduler(_AutomationScheduler):
                     for candidate_row in rows:
                         candidate = Schedule(candidate_row[0], candidate_row[1], int(candidate_row[2]), int(candidate_row[3]), candidate_row[4], bool(candidate_row[5]), int(candidate_row[6]))
                         spec = self.calendar_spec(candidate)
-                        if spec is not None and candidate.task_payload().get("task") == task:
+                        if spec is not None and self.task_payload(candidate).get("task") == task:
                             return candidate
                     if existing.enabled:
                         db.execute("UPDATE schedules SET enabled=0,claim=NULL WHERE id=?", (existing.id,))
