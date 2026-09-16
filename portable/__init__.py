@@ -41,7 +41,7 @@ from .agent_patterns import (
     Specialist,
     SpecialistRouter,
 )
-from .world_model import Observation, WorldFact, WorldModel
+from .world_model import Observation, PredictionError, WorldFact, WorldModel, WorldPrediction
 from .hypothesis_engine import BeliefEvidence, Hypothesis, HypothesisEngine
 from .reasoning_ledger import ReasoningLedger, ReasoningRecord
 from .causal_model import CausalLink, CausalModel
@@ -75,7 +75,7 @@ __all__ = [
     "Specialist", "SpecialistRouter", "RouteRequest", "RouteDecision",
     "ResearchTask", "ResearchPlan", "ResearchPlanner", "EvidenceItem", "ConsensusResult", "MixtureOfAgents",
     "OptimizationRound", "OptimizationResult", "OneChangeOptimizer", "ScopeFinding", "ScopeReport", "ScopeChecker",
-    "Observation", "WorldFact", "WorldModel", "BeliefEvidence", "Hypothesis", "HypothesisEngine",
+    "Observation", "WorldFact", "WorldPrediction", "PredictionError", "WorldModel", "BeliefEvidence", "Hypothesis", "HypothesisEngine",
     "ReasoningLedger", "ReasoningRecord", "CausalLink", "CausalModel", "CounterfactualEngine", "CounterfactualQuery", "CounterfactualResult",
     "Goal", "GoalManager", "InformationAction", "InformationPlan", "InformationPlanner", "CapabilityProfile", "SelfModel",
     "CapabilityCase", "CapabilityEvaluator", "CaseResult", "EvaluationReport", "KINDS", "CognitiveRuntime",
