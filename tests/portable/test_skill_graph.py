@@ -20,6 +20,16 @@ class SkillGraphTests(unittest.TestCase):
             self.assertEqual(graph.missing_prerequisites("recover"), ("parse",))
             self.assertEqual(graph.ancestors("recover"), ("parse",))
 
+    def test_readiness_requires_all_transitive_prerequisites(self):
+        with tempfile.TemporaryDirectory() as directory:
+            graph = self._graph(directory)
+            graph.upsert(SkillNode("root", evidence_ids=frozenset({"e1"}), validated=True))
+            graph.upsert(SkillNode("middle", prerequisites=frozenset({"root"}), evidence_ids=frozenset({"e2"}), validated=False))
+            graph.upsert(SkillNode("leaf", prerequisites=frozenset({"middle"}), evidence_ids=frozenset({"e3"}), validated=True))
+            self.assertFalse(graph.ready("leaf"))
+            graph.upsert(SkillNode("middle", prerequisites=frozenset({"root"}), evidence_ids=frozenset({"e2"}), validated=True))
+            self.assertTrue(graph.ready("leaf"))
+
     def test_skill_graph_rejects_dependency_cycles(self):
         with tempfile.TemporaryDirectory() as directory:
             graph = self._graph(directory)
