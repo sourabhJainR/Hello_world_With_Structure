@@ -116,6 +116,13 @@ class LearningTransfer:
                             experience.detail, json.dumps(evidence), experience.confidence, int(experience.verified))
                 if existing != incoming:
                     raise ValueError(f"learning experience id already exists with different content: {experience.id}")
+                signature_row = db.execute(
+                    "SELECT structure_signature,negative_conditions FROM learning_transfer_signatures WHERE experience_id=?",
+                    (experience.id,),
+                ).fetchone()
+                incoming_signature = (json.dumps(structure), json.dumps(negatives))
+                if signature_row is not None and signature_row != incoming_signature:
+                    raise ValueError(f"learning experience id already exists with different transfer metadata: {experience.id}")
                 db.execute(
                     "INSERT OR IGNORE INTO learning_transfer_signatures VALUES(?,?,?)",
                     (experience.id, json.dumps(structure), json.dumps(negatives)),
@@ -165,7 +172,7 @@ class LearningTransfer:
         if limit < 1:
             raise ValueError("limit must be positive")
         with self.memory._lock, self.memory._connect() as db:
-            rows = db.execute("""SELECT e.detail,e.source_project,e.evidence_ids,e.confidence,
+            rows = db.execute("""SELECT e.id,e.detail,e.source_project,e.evidence_ids,e.confidence,
                                        s.structure_signature,s.negative_conditions
                 FROM learning_experiences e
                 JOIN learning_transfer_signatures s ON s.experience_id=e.id
@@ -173,20 +180,32 @@ class LearningTransfer:
                   AND e.source_project<>?
                 ORDER BY e.confidence DESC, e.created_at DESC, e.id""",
                               (task_family, capability, self.target_project)).fetchall()
-        candidates: list[TransferCandidate] = []
-        for detail, source_project, evidence_json, confidence, structure_json, negative_json in rows:
+        groups: dict[tuple[str, str], dict[str, object]] = {}
+        for experience_id, detail, source_project, evidence_json, confidence, structure_json, negative_json in rows:
             negatives = _signature(tuple(json.loads(negative_json or "[]")))
             if negatives & conditions:
                 continue
-            similarity = _similarity(target, _signature(tuple(json.loads(structure_json or "[]"))))
+            source_structure = _signature(tuple(json.loads(structure_json or "[]")))
+            similarity = _similarity(target, source_structure)
             if similarity < min_similarity:
                 continue
-            candidates.append(TransferCandidate(
-                str(detail), capability, task_family, (str(source_project),),
-                tuple(sorted(json.loads(evidence_json or "[]"))), float(confidence), similarity,
-                tuple(sorted(negatives)),
-            ))
-        return sorted(candidates, key=lambda x: (-x.similarity, -x.confidence, x.detail))[:limit]
+            key = (str(detail), json.dumps(sorted(source_structure)))
+            item = groups.setdefault(key, {
+                "detail": str(detail), "projects": set(), "evidence": set(), "confidence": 0.0,
+                "similarity": similarity, "negative": negatives,
+            })
+            item["projects"].add(str(source_project))  # type: ignore[union-attr]
+            item["evidence"].update(json.loads(evidence_json or "[]"))  # type: ignore[union-attr]
+            item["confidence"] = max(float(item["confidence"]), float(confidence))
+            item["similarity"] = max(float(item["similarity"]), similarity)
+        candidates = [
+            TransferCandidate(str(item["detail"]), capability, task_family,
+                              tuple(sorted(item["projects"])), tuple(sorted(item["evidence"])),
+                              float(item["confidence"]), float(item["similarity"]),
+                              tuple(sorted(item["negative"])))
+            for item in groups.values()
+        ]
+        return sorted(candidates, key=lambda x: (-x.similarity, -len(x.source_projects), -x.confidence, x.detail))[:limit]
 
     def consolidate(self, task_family: str, capability: str, *, min_projects: int = 2) -> ConsolidationReceipt | None:
         task_family = _clean(task_family, "task_family")
