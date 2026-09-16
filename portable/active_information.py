@@ -65,7 +65,9 @@ class ActiveInformationLoop:
         return float(row[0]) if row and row[1] else None
 
     def _select(self, *, uncertainty: float, actions: tuple[InformationAction, ...], max_risk: float):
-        if not 0 <= uncertainty <= 1:
+        if not 0 < uncertainty <= 1:
+            if uncertainty == 0:
+                return None
             raise ValueError("uncertainty must be between 0 and 1")
         if not 0 <= max_risk <= 1:
             raise ValueError("max_risk must be between 0 and 1")
@@ -75,7 +77,10 @@ class ActiveInformationLoop:
         ranked = []
         for action in eligible:
             learned = self._learned_gain(action.action_id)
-            effective_gain = action.expected_gain if learned is None else (action.expected_gain + learned) / 2.0
+            if learned is not None:
+                learned = min(uncertainty, max(0.0, learned))
+            expected = min(uncertainty, action.expected_gain)
+            effective_gain = expected if learned is None else (expected + learned) / 2.0
             score = effective_gain * (1.0 - action.risk) / action.cost
             ranked.append((score, action.action_id, action))
         ranked.sort(key=lambda item: (-item[0], item[1]))
