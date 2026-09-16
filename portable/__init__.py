@@ -51,6 +51,7 @@ from .information_planner import InformationAction, InformationPlan, Information
 from .self_model import CapabilityProfile, SelfModel
 from .agi_evaluation import CapabilityCase, CapabilityEvaluator, CaseResult, EvaluationReport, KINDS
 from .cognitive_runtime import CognitiveRuntime
+from .cognitive_loop import CognitiveEpisode, CognitiveEpisodeReceipt, CognitiveLoop
 from .learning_transfer import ConsolidationReceipt, LearningExperience, LearningTransfer, TransferCandidate
 from .continual_learning import BenchmarkObservation, ContinualLearningGuard, RegressionResult
 from .capability_acquisition import CapabilityAcquirer, CapabilityNeed, CapabilityProposal, ValidationEvidence, ValidationReceipt
@@ -78,7 +79,7 @@ __all__ = [
     "ReasoningLedger", "ReasoningRecord", "CausalLink", "CausalModel", "CounterfactualEngine", "CounterfactualQuery", "CounterfactualResult",
     "Goal", "GoalManager", "InformationAction", "InformationPlan", "InformationPlanner", "CapabilityProfile", "SelfModel",
     "CapabilityCase", "CapabilityEvaluator", "CaseResult", "EvaluationReport", "KINDS", "CognitiveRuntime",
-    "LearningExperience", "TransferCandidate", "ConsolidationReceipt", "LearningTransfer",
+    "CognitiveEpisode", "CognitiveEpisodeReceipt", "CognitiveLoop", "LearningExperience", "TransferCandidate", "ConsolidationReceipt", "LearningTransfer",
     "BenchmarkObservation", "RegressionResult", "ContinualLearningGuard",
     "CapabilityAcquirer", "CapabilityNeed", "CapabilityProposal", "ValidationEvidence", "ValidationReceipt",
     "AutonomyEvidence", "AutonomyGraduator", "GraduationPolicy", "GraduationReceipt", "LEVELS",

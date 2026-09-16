@@ -10,9 +10,14 @@ from portable.orchestration import Graph, Node, NodeKind
 from portable.session_state import SessionStore
 
 
+class FailingMemory(PersistentMemory):
+    def remember(self, *args, **kwargs):
+        raise RuntimeError("forced memory failure")
+
+
 class AdaptiveRuntimeContextTests(unittest.TestCase):
-    def _runtime(self, root: Path, graph: Graph):
-        memory = PersistentMemory(root / "memory.db", require_approval=False)
+    def _runtime(self, root: Path, graph: Graph, *, memory=None):
+        memory = memory or PersistentMemory(root / "memory.db", require_approval=False)
         scheduler = AutomationScheduler(root / "automation.db")
         sessions = SessionStore(root / "sessions.db")
         return AdaptiveRuntime(graph, persistent_memory=memory, automation_scheduler=scheduler, session_store=sessions), memory, scheduler
@@ -34,5 +39,28 @@ class AdaptiveRuntimeContextTests(unittest.TestCase):
             self.assertEqual(result.status.value, "accepted")
             self.assertIn("client.py", captured["aer_context_pack"])
             self.assertTrue(captured["aer_context_digest"])
+            self.assertIsNotNone(runtime.last_cognitive_episode)
+            self.assertEqual(runtime.last_cognitive_episode.status, "accepted")
+            self.assertIn("evaluate", runtime.last_cognitive_episode.phases)
+            memory_hits = memory.search(project_key, "execution_completed", limit=5)
+            self.assertTrue(memory_hits)
             scheduler.close()
             memory.close()
+
+    def test_cognitive_persistence_failure_does_not_change_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            graph = Graph([Node("agent", NodeKind.AGENT, lambda context: "ok", critical=True, risk="low")])
+            memory = FailingMemory(root / "memory.db", require_approval=False)
+            runtime, _, scheduler = self._runtime(root, graph, memory=memory)
+            result = runtime.run(session_id="s1", task_id="t2", project_root=root, intent="persist safely")
+            self.assertEqual(result.status.value, "accepted")
+            self.assertIsNotNone(runtime.last_cognitive_episode)
+            self.assertEqual(runtime.last_cognitive_episode.status, "accepted")
+            self.assertTrue(runtime.last_cognitive_episode.persistence_errors)
+            self.assertIn("forced memory failure", runtime.last_cognitive_episode.persistence_errors[0])
+            scheduler.close()
+
+
+if __name__ == "__main__":
+    unittest.main()
