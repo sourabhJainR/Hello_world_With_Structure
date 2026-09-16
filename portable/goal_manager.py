@@ -7,6 +7,8 @@ import json
 import sqlite3
 from typing import Any
 
+from .persistent_memory import PersistentMemory
+
 _STATUSES = frozenset({"open", "active", "blocked", "completed", "abandoned"})
 
 
