@@ -6,7 +6,8 @@ by TriggerRuntime, while execution remains owned by AdaptiveRuntime.
 """
 from __future__ import annotations
 
-from concurrent.futures import Future, ThreadPoolExecutor
+from atexit import register
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
@@ -14,6 +15,10 @@ from typing import Any, Callable, Mapping
 
 from .adaptive_runtime import AdaptiveRuntime
 from .trigger_runtime import TriggerEvent, TriggerRuntime
+
+
+_BACKGROUND_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="aer-adaptive-trigger")
+register(_BACKGROUND_EXECUTOR.shutdown, wait=False, cancel_futures=False)
 
 
 @dataclass(frozen=True)
@@ -48,23 +53,18 @@ class AdaptiveTrigger:
         self,
         trigger_runtime: TriggerRuntime,
         runner: Runner,
-        *,
-        max_workers: int = 1,
     ) -> None:
         if not isinstance(trigger_runtime, TriggerRuntime):
             raise TypeError("trigger_runtime must be a TriggerRuntime")
         if not callable(runner):
             raise TypeError("runner must be callable")
-        if max_workers < 1:
-            raise ValueError("max_workers must be positive")
         self.trigger_runtime = trigger_runtime
         self.runner = runner
-        self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="aer-adaptive-trigger")
         self._lock = Lock()
         self._closed = False
 
     @classmethod
-    def for_runtime(cls, runtime: AdaptiveRuntime, *, max_workers: int = 1) -> "AdaptiveTrigger":
+    def for_runtime(cls, runtime: AdaptiveRuntime) -> "AdaptiveTrigger":
         """Bind the trigger to one existing AdaptiveRuntime composition."""
         if not isinstance(runtime, AdaptiveRuntime):
             raise TypeError("runtime must be an AdaptiveRuntime")
@@ -80,7 +80,7 @@ class AdaptiveTrigger:
                 context=request.context,
             )
 
-        return cls(runtime.trigger_runtime, runner, max_workers=max_workers)
+        return cls(runtime.trigger_runtime, runner)
 
     def trigger_adaptive_runtime(
         self,
@@ -115,7 +115,7 @@ class AdaptiveTrigger:
                 max_attempts=max_attempts,
             )
             if fire_and_forget:
-                self._executor.submit(self._dispatch_event, event.event_id)
+                _BACKGROUND_EXECUTOR.submit(self._dispatch_event, event.event_id)
         return TriggerReceipt(event.event_id, event.status, event.created_at)
 
     def _dispatch_event(self, event_id: str) -> list[TriggerOutcome]:
@@ -135,16 +135,15 @@ class AdaptiveTrigger:
         return TriggerOutcome(event.event_id, "accepted", result)
 
     def dispatch_once(self, *, limit: int = 20) -> list[TriggerOutcome]:
-        """Synchronously drain currently due chat triggers; useful for service hosts."""
+        """Synchronously drain currently due chat triggers; useful for hosts/services."""
+        if limit < 1:
+            return []
         results = self.trigger_runtime.dispatch_due(self._handle_event, limit=limit)
         return [item for item in results if isinstance(item, TriggerOutcome)]
 
-    def close(self, *, wait: bool = False) -> None:
+    def close(self) -> None:
         with self._lock:
-            if self._closed:
-                return
             self._closed = True
-        self._executor.shutdown(wait=wait, cancel_futures=False)
 
 
 def trigger_adaptive_runtime(
@@ -156,22 +155,22 @@ def trigger_adaptive_runtime(
     priority: str = "normal",
     event_id: str | None = None,
     max_attempts: int = 3,
-    fire_and_forget: bool = True,
 ) -> TriggerReceipt:
-    """Convenience function for LLM tool/chat adapters."""
+    """Convenience function for an LLM tool/chat adapter.
+
+    The module-level worker pool is bounded, so callers may use this helper
+    directly without creating one executor per chat request.
+    """
     trigger = AdaptiveTrigger.for_runtime(runtime)
-    receipt = trigger.trigger_adaptive_runtime(
+    return trigger.trigger_adaptive_runtime(
         task,
         project_root,
         context,
         priority=priority,
         event_id=event_id,
         max_attempts=max_attempts,
-        fire_and_forget=fire_and_forget,
+        fire_and_forget=True,
     )
-    if not fire_and_forget:
-        trigger.close(wait=True)
-    return receipt
 
 
 __all__ = ["AdaptiveTrigger", "AdaptiveTriggerRequest", "TriggerOutcome", "TriggerReceipt", "trigger_adaptive_runtime"]
