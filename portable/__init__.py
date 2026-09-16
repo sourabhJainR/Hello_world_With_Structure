@@ -48,6 +48,7 @@ from .causal_model import CausalLink, CausalModel
 from .goal_manager import Goal, GoalManager
 from .information_planner import InformationAction, InformationPlan, InformationPlanner
 from .self_model import CapabilityProfile, SelfModel
+from .agi_evaluation import CapabilityCase, CapabilityEvaluator, CaseResult, EvaluationReport, KINDS
 
 __all__ = [
     "main", "AdaptiveRuntime", "HookBus", "HookDecision", "HookEvent", "HookPhase", "HookedExecution",
@@ -69,4 +70,5 @@ __all__ = [
     "Observation", "WorldFact", "WorldModel", "BeliefEvidence", "Hypothesis", "HypothesisEngine",
     "ReasoningLedger", "ReasoningRecord", "CausalLink", "CausalModel", "Goal", "GoalManager",
     "InformationAction", "InformationPlan", "InformationPlanner", "CapabilityProfile", "SelfModel",
+    "CapabilityCase", "CapabilityEvaluator", "CaseResult", "EvaluationReport", "KINDS",
 ]
