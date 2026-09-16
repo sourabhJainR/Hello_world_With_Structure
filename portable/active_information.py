@@ -56,14 +56,49 @@ class ActiveInformationLoop:
                 PRIMARY KEY(project, execution_id))""")
             db.execute("CREATE INDEX IF NOT EXISTS idx_active_information_action ON active_information_executions(project, action_id, created_at)")
 
-    def execute(self, *, uncertainty: float, actions: tuple[InformationAction, ...],
-                probe: Callable[[InformationAction], InformationExecution], max_risk: float = 1.0) -> InformationReceipt:
+    def _learned_gain(self, action_id: str) -> float | None:
+        with self.memory._lock, self.memory._connect() as db:
+            row = db.execute(
+                "SELECT AVG(realized_gain), COUNT(*) FROM active_information_executions WHERE project=? AND action_id=? AND verified=1",
+                (self.project, action_id),
+            ).fetchone()
+        return float(row[0]) if row and row[1] else None
+
+    def _select(self, *, uncertainty: float, actions: tuple[InformationAction, ...], max_risk: float):
         if not 0 <= uncertainty <= 1:
             raise ValueError("uncertainty must be between 0 and 1")
-        plan = self.planner.choose(uncertainty=uncertainty, actions=actions, max_risk=max_risk)
-        if plan is None:
+        if not 0 <= max_risk <= 1:
+            raise ValueError("max_risk must be between 0 and 1")
+        eligible = [action for action in actions if action.risk <= max_risk and action.expected_gain > 0]
+        if not eligible:
+            return None
+        ranked = []
+        for action in eligible:
+            learned = self._learned_gain(action.action_id)
+            effective_gain = action.expected_gain if learned is None else (action.expected_gain + learned) / 2.0
+            score = effective_gain * (1.0 - action.risk) / action.cost
+            ranked.append((score, action.action_id, action))
+        ranked.sort(key=lambda item: (-item[0], item[1]))
+        return ranked[0][2]
+
+    def history(self, action_id: str, *, limit: int = 50) -> tuple[InformationReceipt, ...]:
+        if not isinstance(action_id, str) or not action_id.strip():
+            raise ValueError("action_id is required")
+        if limit < 1:
+            return ()
+        with self.memory._lock, self.memory._connect() as db:
+            rows = db.execute(
+                "SELECT execution_id,action_id,uncertainty_before,uncertainty_after,expected_gain,realized_gain,evidence_ids,verified,error,created_at "
+                "FROM active_information_executions WHERE project=? AND action_id=? ORDER BY created_at,execution_id LIMIT ?",
+                (self.project, action_id, limit),
+            ).fetchall()
+        return tuple(InformationReceipt(r[0], r[1], float(r[2]), float(r[3]), float(r[4]), float(r[5]), tuple(json.loads(r[6] or "[]")), bool(r[7]), r[8], r[9]) for r in rows)
+
+    def execute(self, *, uncertainty: float, actions: tuple[InformationAction, ...],
+                probe: Callable[[InformationAction], InformationExecution], max_risk: float = 1.0) -> InformationReceipt:
+        selected = self._select(uncertainty=uncertainty, actions=actions, max_risk=max_risk)
+        if selected is None:
             raise ValueError("no eligible information action")
-        selected = next(action for action in actions if action.action_id == plan.action_id)
         execution_id = uuid4().hex
         now = datetime.now(timezone.utc).isoformat()
         error: str | None = None
