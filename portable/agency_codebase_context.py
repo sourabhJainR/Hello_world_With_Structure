@@ -2,15 +2,16 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 import ast
+import fnmatch
 import hashlib
 import os
 from pathlib import Path
 import re
 from typing import Iterable, Sequence
 
-DEFAULT_IGNORES = frozenset({".git",".hg",".svn",".venv","venv","node_modules","dist","build","__pycache__",".mypy_cache",".pytest_cache",".ruff_cache",".tox","coverage"})
-TEXT_EXTENSIONS = frozenset({".py",".pyi",".js",".jsx",".ts",".tsx",".java",".cs",".go",".rs",".cpp",".cc",".h",".hpp",".c",".sql",".sh",".ps1",".md",".json",".yaml",".yml",".toml",".ini",".cfg",".xml",".txt",".proto"})
-CONFIG_NAMES = frozenset({"pyproject.toml","package.json","package-lock.json","pnpm-lock.yaml","yarn.lock","go.mod","cargo.toml","pom.xml","build.gradle","build.gradle.kts","gradle.properties","appsettings.json","web.config","dockerfile","docker-compose.yml","docker-compose.yaml","makefile",".env.example","config.json"})
+DEFAULT_IGNORES = frozenset({".git", ".hg", ".svn", ".venv", "venv", "node_modules", "dist", "build", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".tox", "coverage"})
+TEXT_EXTENSIONS = frozenset({".py", ".pyi", ".js", ".jsx", ".ts", ".tsx", ".java", ".cs", ".go", ".rs", ".cpp", ".cc", ".h", ".hpp", ".c", ".sql", ".sh", ".ps1", ".md", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".xml", ".txt", ".proto"})
+CONFIG_NAMES = frozenset({"pyproject.toml", "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "go.mod", "cargo.toml", "pom.xml", "build.gradle", "build.gradle.kts", "gradle.properties", "appsettings.json", "web.config", "dockerfile", "docker-compose.yml", "docker-compose.yaml", "makefile", ".env.example", "config.json"})
 TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_./:-]*")
 DECL_RE = re.compile(r"\b(class|interface|struct|enum|function|def|func)\s+([A-Za-z_][A-Za-z0-9_]*)", re.I)
 CALL_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_.]*)\s*\(")
@@ -55,22 +56,31 @@ class CodebaseContext:
 @dataclass
 class CodebaseIndex:
     root: Path; files: dict[str,FileRecord]=field(default_factory=dict); edges: tuple[GraphEdge,...]=()
+    ignore_patterns: tuple[str,...]=()
+
     @classmethod
-    def build(cls,root:str|Path,*,ignores:Iterable[str]=DEFAULT_IGNORES)->"CodebaseIndex":
-        root_path=Path(root).resolve(); ignored=set(ignores); records={}
+    def build(cls,root:str|Path,*,ignores:Iterable[str]=DEFAULT_IGNORES, ignore_patterns:Iterable[str]=())->"CodebaseIndex":
+        root_path=Path(root).resolve(); ignored=set(ignores); patterns=tuple(sorted(set(str(p) for p in ignore_patterns if str(p))))
+        records={}
         for current,dirs,names in os.walk(root_path):
-            dirs[:]=[d for d in dirs if d not in ignored and not d.startswith(".")]
+            dirs[:]=[d for d in dirs if d not in ignored]
             for name in names:
                 path=Path(current)/name; rel=path.relative_to(root_path).as_posix()
                 if path.is_symlink() or path.suffix.lower() not in TEXT_EXTENSIONS: continue
+                if any(fnmatch.fnmatch(rel,p) or fnmatch.fnmatch(path.name,p) for p in patterns): continue
                 try: data=path.read_bytes(); text=data.decode("utf-8")
                 except (OSError,UnicodeDecodeError): continue
                 symbols,imports,calls,bases=_extract_structure(rel,text)
                 records[rel]=FileRecord(rel,len(data),hashlib.sha256(data).hexdigest(),text.count("\n")+bool(text),tuple(symbols),tuple(imports),tuple(calls),tuple(bases))
-        index=cls(root_path,records); index.edges=tuple(_build_edges(index)); return index
+        index=cls(root_path,records,(),patterns); index.edges=tuple(_build_edges(index)); return index
+
     def digest(self)->str:
         payload="\n".join(f"{r.path}|{r.size}|{r.sha256}|{','.join(s.name for s in r.symbols)}|{','.join(r.imports)}|{','.join(r.calls)}|{','.join(r.bases)}" for r in sorted(self.files.values(),key=lambda x:x.path))
         return hashlib.sha256(payload.encode()).hexdigest()
+
+    def record(self,path:str)->FileRecord|None:
+        return self.files.get(Path(path).as_posix())
+
     def neighbors(self,path:str,*,kinds:Sequence[str]=())->tuple[GraphEdge,...]:
         allowed=set(kinds); return tuple(e for e in self.edges if (e.source_path==path or e.target_path==path) and (not allowed or e.kind in allowed))
 
@@ -210,4 +220,5 @@ def retrieve(index:CodebaseIndex,query:str,*,token_budget:int=4000,max_files:int
     unknowns.extend("Graph retrieval stopped: "+x for x in trace.stopped)
     return CodebaseContext(str(index.root),query,index.digest(),tuple(chunks),tuple(c.path for c in chunks),tuple(dict.fromkeys(unknowns)),used,len(index.files),files_read,trace)
 
-def retrieve_from_path(root:str|Path,query:str,**kwargs:object)->CodebaseContext: return retrieve(CodebaseIndex.build(root),query,**kwargs)
+def retrieve_from_path(root:str|Path,query:str,**kwargs:object)->CodebaseContext:
+    return retrieve(CodebaseIndex.build(root),query,**kwargs)
