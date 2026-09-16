@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Cross-platform host for AER's durable adaptive-learning maintenance lane.
-
-The AER scheduler remains the source of truth. This module only supplies the
-OS lifecycle wrapper and a bounded foreground loop; it does not own learning
-state or create a second scheduler.
-"""
+"""Cross-platform host for AER's durable adaptive-learning maintenance lane."""
 from __future__ import annotations
 
 import argparse
@@ -112,7 +107,15 @@ def _python_executable() -> str:
 
 
 def _module_command(config: MaintenanceServiceConfig) -> list[str]:
-    return [_python_executable(), "-m", "portable.maintenance_service", "run", "--project-root", str(config.project_root), "--time", config.at_time, "--timezone", config.timezone, "--poll-seconds", str(config.poll_seconds), "--budget", str(config.maintenance_budget)]
+    return [
+        _python_executable(), "-m", "portable.maintenance_service",
+        "--project-root", str(config.project_root),
+        "--time", config.at_time,
+        "--timezone", config.timezone,
+        "--poll-seconds", str(config.poll_seconds),
+        "--budget", str(config.maintenance_budget),
+        "run",
+    ]
 
 
 def _service_home() -> Path:
@@ -124,7 +127,14 @@ def _service_state_path(config: MaintenanceServiceConfig) -> Path:
 
 
 def _write_state(config: MaintenanceServiceConfig, native_path: Path) -> None:
-    state = {"service_name": config.service_name, "scope": config.scope, "platform": sys.platform, "definition": str(native_path), "environment": config.environment(), "schedule": {"kind": "last_day_of_month", "at_time": config.at_time, "timezone": config.timezone}}
+    state = {
+        "service_name": config.service_name,
+        "scope": config.scope,
+        "platform": sys.platform,
+        "definition": str(native_path),
+        "environment": config.environment(),
+        "schedule": {"kind": "last_day_of_month", "at_time": config.at_time, "timezone": config.timezone},
+    }
     path = _service_state_path(config)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -141,7 +151,9 @@ def _linux_unit(config: MaintenanceServiceConfig) -> str:
         f"Description={config.display_name}",
         "After=network-online.target",
         "Wants=network-online.target",
-        "", "[Service]", "Type=simple",
+        "",
+        "[Service]",
+        "Type=simple",
         f"WorkingDirectory={_shell_quote(str(Path.home() / '.aer' / 'current'))}",
         f"ExecStart={command}",
         "Restart=on-failure",
@@ -163,6 +175,15 @@ def _linux_definition_path(config: MaintenanceServiceConfig) -> Path:
     return Path.home() / ".config" / "systemd" / "user" / f"{config.service_name}.service"
 
 
+def _linux_control(config: MaintenanceServiceConfig, action: str) -> int:
+    if not shutil.which("systemctl"):
+        raise SystemExit("systemctl is not available on this Linux system")
+    cmd = ["systemctl"] + (["--user"] if config.scope == "user" else []) + [action, config.service_name]
+    result = _run(cmd)
+    print(result.stdout or result.stderr)
+    return result.returncode
+
+
 def _install_linux(config: MaintenanceServiceConfig) -> int:
     if not shutil.which("systemctl"):
         raise SystemExit("systemctl is not available on this Linux system")
@@ -182,11 +203,14 @@ def _uninstall_linux(config: MaintenanceServiceConfig) -> int:
         return 0
     cmd = ["systemctl"] + (["--user"] if config.scope == "user" else [])
     _run(cmd + ["disable", "--now", config.service_name])
-    path = _linux_definition_path(config)
-    path.unlink(missing_ok=True)
+    _linux_definition_path(config).unlink(missing_ok=True)
     _run(cmd + ["daemon-reload"])
     _service_state_path(config).unlink(missing_ok=True)
     return 0
+
+
+def _launchd_label(config: MaintenanceServiceConfig) -> str:
+    return f"com.aer.{config.service_name}"
 
 
 def _launchd_plist(config: MaintenanceServiceConfig) -> str:
@@ -197,7 +221,7 @@ def _launchd_plist(config: MaintenanceServiceConfig) -> str:
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
         <plist version="1.0">
         <dict>
-            <key>Label</key><string>com.aer.{config.service_name}</string>
+            <key>Label</key><string>{_launchd_label(config)}</string>
             <key>ProgramArguments</key><array>
 {args}
             </array>
@@ -222,8 +246,23 @@ def _xml_escape(value: str) -> str:
 
 def _launchd_definition_path(config: MaintenanceServiceConfig) -> Path:
     if config.scope == "system":
-        return Path("/Library/LaunchDaemons") / f"com.aer.{config.service_name}.plist"
-    return Path.home() / "Library" / "LaunchAgents" / f"com.aer.{config.service_name}.plist"
+        return Path("/Library/LaunchDaemons") / f"{_launchd_label(config)}.plist"
+    return Path.home() / "Library" / "LaunchAgents" / f"{_launchd_label(config)}.plist"
+
+
+def _mac_control(config: MaintenanceServiceConfig, action: str) -> int:
+    if not shutil.which("launchctl"):
+        raise SystemExit("launchctl is not available on this macOS system")
+    domain = f"gui/{os.getuid()}" if config.scope == "user" else "system"
+    label = _launchd_label(config)
+    command = {
+        "start": ["launchctl", "kickstart", "-k", f"{domain}/{label}"],
+        "stop": ["launchctl", "kill", "SIGTERM", f"{domain}/{label}"],
+        "status": ["launchctl", "print", f"{domain}/{label}"],
+    }[action]
+    result = _run(command)
+    print(result.stdout or result.stderr)
+    return result.returncode
 
 
 def _install_macos(config: MaintenanceServiceConfig) -> int:
@@ -232,14 +271,10 @@ def _install_macos(config: MaintenanceServiceConfig) -> int:
     path = _launchd_definition_path(config)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_launchd_plist(config), encoding="utf-8")
-    if config.scope == "user":
-        domain = f"gui/{os.getuid()}"
-        _run(["launchctl", "bootout", domain, str(path)])
-        _run(["launchctl", "bootstrap", domain, str(path)], check=True)
-        _run(["launchctl", "enable", f"{domain}/com.aer.{config.service_name}"])
-    else:
-        _run(["launchctl", "bootout", "system", str(path)])
-        _run(["launchctl", "bootstrap", "system", str(path)], check=True)
+    domain = f"gui/{os.getuid()}" if config.scope == "user" else "system"
+    _run(["launchctl", "bootout", domain, str(path)])
+    _run(["launchctl", "bootstrap", domain, str(path)], check=True)
+    _run(["launchctl", "enable", f"{domain}/{_launchd_label(config)}"])
     _write_state(config, path)
     print(f"Installed {config.service_name}: {path}")
     return 0
@@ -249,8 +284,8 @@ def _uninstall_macos(config: MaintenanceServiceConfig) -> int:
     if not shutil.which("launchctl"):
         return 0
     path = _launchd_definition_path(config)
+    domain = f"gui/{os.getuid()}" if config.scope == "user" else "system"
     if path.exists():
-        domain = f"gui/{os.getuid()}" if config.scope == "user" else "system"
         _run(["launchctl", "bootout", domain, str(path)])
         path.unlink(missing_ok=True)
     _service_state_path(config).unlink(missing_ok=True)
@@ -258,11 +293,10 @@ def _uninstall_macos(config: MaintenanceServiceConfig) -> int:
 
 
 try:
-    import win32event
     import win32service
     import win32serviceutil
 except ImportError:  # pragma: no cover - platform/dependency specific
-    win32event = win32service = win32serviceutil = None
+    win32service = win32serviceutil = None
 
 
 if win32serviceutil is not None:  # pragma: no cover - Windows integration
@@ -273,13 +307,11 @@ if win32serviceutil is not None:  # pragma: no cover - Windows integration
 
         def __init__(self, args):
             super().__init__(args)
-            self.stop_event = win32event.CreateEvent(None, 0, 0, None)
             self.worker = MaintenanceService(MaintenanceServiceConfig.from_env())
 
         def SvcStop(self):
             self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
             self.worker.stop()
-            win32event.SetEvent(self.stop_event)
 
         def SvcDoRun(self):
             self.worker.loop()
@@ -295,7 +327,7 @@ def _install_windows(config: MaintenanceServiceConfig) -> int:
     _WindowsMaintenanceService._svc_name_ = config.service_name
     _WindowsMaintenanceService._svc_display_name_ = config.display_name
     win32serviceutil.InstallService(
-        _WindowsMaintenanceService.SvcDoRun,
+        _WindowsMaintenanceService,
         config.service_name,
         config.display_name,
         startType=win32service.SERVICE_AUTO_START,
@@ -313,6 +345,14 @@ def _uninstall_windows(config: MaintenanceServiceConfig) -> int:
     win32serviceutil.RemoveService(config.service_name)
     _service_state_path(config).unlink(missing_ok=True)
     return 0
+
+
+def _windows_control(config: MaintenanceServiceConfig, action: str) -> int:
+    if os.name != "nt":
+        raise SystemExit("Windows service control is only supported on Windows")
+    result = _run(["sc.exe", action, config.service_name])
+    print(result.stdout or result.stderr)
+    return result.returncode
 
 
 def install(config: MaintenanceServiceConfig) -> int:
@@ -335,18 +375,18 @@ def uninstall(config: MaintenanceServiceConfig) -> int:
     raise SystemExit(f"unsupported service platform: {sys.platform}")
 
 
-def status(config: MaintenanceServiceConfig) -> int:
+def control(config: MaintenanceServiceConfig, action: str) -> int:
     if sys.platform.startswith("win"):
-        result = _run(["sc.exe", "query", config.service_name])
-    elif sys.platform == "darwin":
-        domain = f"gui/{os.getuid()}" if config.scope == "user" else "system"
-        result = _run(["launchctl", "print", f"{domain}/com.aer.{config.service_name}"])
-    elif sys.platform.startswith("linux"):
-        result = _run(["systemctl"] + (["--user"] if config.scope == "user" else []) + ["status", config.service_name, "--no-pager"])
-    else:
-        raise SystemExit(f"unsupported service platform: {sys.platform}")
-    print(result.stdout or result.stderr)
-    return result.returncode
+        return _windows_control(config, action)
+    if sys.platform == "darwin":
+        return _mac_control(config, action)
+    if sys.platform.startswith("linux"):
+        return _linux_control(config, action)
+    raise SystemExit(f"unsupported service platform: {sys.platform}")
+
+
+def status(config: MaintenanceServiceConfig) -> int:
+    return control(config, "status")
 
 
 def run_foreground(config: MaintenanceServiceConfig) -> int:
@@ -364,15 +404,15 @@ def run_once(config: MaintenanceServiceConfig) -> int:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="AER adaptive-learning maintenance service")
-    sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("install", "uninstall", "start", "stop", "status", "run", "run-once"):
-        sub.add_parser(name)
     parser.add_argument("--project-root", type=Path, default=None)
     parser.add_argument("--time", default=DEFAULT_RUN_TIME)
     parser.add_argument("--timezone", default=DEFAULT_TIMEZONE)
     parser.add_argument("--poll-seconds", type=int, default=DEFAULT_POLL_SECONDS)
     parser.add_argument("--budget", type=int, default=DEFAULT_MAINTENANCE_BUDGET)
     parser.add_argument("--scope", choices=("user", "system"), default=None)
+    sub = parser.add_subparsers(dest="command", required=True)
+    for name in ("install", "uninstall", "start", "stop", "status", "run", "run-once"):
+        sub.add_parser(name)
     return parser
 
 
@@ -394,11 +434,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return uninstall(config)
     if args.command == "status":
         return status(config)
-    if args.command in {"run", "start"}:
-        return run_foreground(config)
+    if args.command == "start":
+        return control(config, "start")
     if args.command == "stop":
-        print("Use the native service manager: systemctl/launchctl/sc.exe stop")
-        return 0
+        return control(config, "stop")
+    if args.command == "run":
+        return run_foreground(config)
     return run_once(config)
 
 
