@@ -10,6 +10,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Iterable, Mapping
 from uuid import uuid4
@@ -53,7 +54,8 @@ class DeferredLearningJob:
 class AdaptiveLearningStore:
     """Persist bounded worker outcomes and process them outside execution."""
 
-    def __init__(self, memory: PersistentMemory, project: str, *, max_jobs: int = 100_000) -> None:
+    def __init__(self, memory: PersistentMemory, project: str, *, max_jobs: int = 100_000,
+                 dream_root: Path | str | None = None) -> None:
         if not isinstance(memory, PersistentMemory):
             raise TypeError("memory must be a PersistentMemory instance")
         if not project or not project.strip():
@@ -63,6 +65,7 @@ class AdaptiveLearningStore:
         self.memory = memory
         self.project = project.strip()
         self.max_jobs = max_jobs
+        self.dream_root = Path(dream_root).expanduser().resolve() if dream_root is not None else None
         with self.memory._lock, self.memory._connect() as db:
             db.execute("""CREATE TABLE IF NOT EXISTS deferred_learning_jobs(
                 project TEXT NOT NULL, job_id TEXT NOT NULL, task_id TEXT NOT NULL,
@@ -169,7 +172,7 @@ class AdaptiveLearningStore:
                             prediction_id=str(payload["prediction_id"]),
                             absolute_match=bool(payload["prediction_correct"]),
                         )
-                    CognitiveLearningLoop(self.memory, self.project).record(
+                    signal = CognitiveLearningLoop(self.memory, self.project).record(
                         task_id=job.task_id,
                         intent=str(payload["intent"]),
                         status=str(payload["status"]),
@@ -179,11 +182,13 @@ class AdaptiveLearningStore:
                         belief_evidence=belief_items,
                         prediction_error=prediction,
                     )
+                    if signal.persistence_errors:
+                        continue
                 except Exception:
-                    pass
-                if dream:
+                    continue
+                if dream and self.dream_root is not None:
                     try:
-                        DreamMemory(self.memory.path.parent).dream(job.task_id)
+                        DreamMemory(self.dream_root).dream(job.task_id)
                     except Exception:
                         pass
             with self.memory._lock, self.memory._connect() as db:
