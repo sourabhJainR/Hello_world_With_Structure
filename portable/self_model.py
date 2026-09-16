@@ -41,7 +41,7 @@ class SelfModel:
             db.execute("CREATE INDEX IF NOT EXISTS idx_self_model_capability ON self_model_outcomes(project, capability, success, outcome_id)")
 
     def record(self, outcome_id: str, capability: str, *, success: bool) -> None:
-        if not outcome_id.strip() or not capability.strip():
+        if not isinstance(outcome_id, str) or not outcome_id.strip() or not isinstance(capability, str) or not capability.strip():
             raise ValueError("outcome_id and capability are required")
         with sqlite3.connect(self.memory.path, timeout=10) as db:
             db.execute("BEGIN IMMEDIATE")
@@ -57,7 +57,7 @@ class SelfModel:
             db.execute("INSERT INTO self_model_outcomes VALUES(?,?,?,?)", (self.project, outcome_id, capability, int(success)))
 
     def profile(self, capability: str) -> CapabilityProfile:
-        if not capability.strip():
+        if not isinstance(capability, str) or not capability.strip():
             raise ValueError("capability is required")
         with sqlite3.connect(self.memory.path, timeout=10) as db:
             row = db.execute("SELECT SUM(success),SUM(CASE WHEN success=0 THEN 1 ELSE 0 END),COUNT(*) FROM self_model_outcomes WHERE project=? AND capability=?", (self.project, capability)).fetchone()
