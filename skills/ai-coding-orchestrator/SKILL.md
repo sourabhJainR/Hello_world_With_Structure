@@ -71,9 +71,41 @@ Use `.ai-harness/runtime/feedback_loop.py` only when repeated evidence can chang
 
 `observe fresh state -> choose one bounded action -> act -> verify -> record -> repeat or stop`
 
-## Engineering design
+## Engineering design and curated change quality
 
 Use `.ai-harness/ENGINEERING_DESIGN_POLICY.md` as the canonical synthesis of engineering design sources. Before substantial implementation, use `portable.engineering_design_guard.EngineeringDesignGuard.review(...)` for relevant dimensions.
+
+For code changes, make the following evidence explicit before implementation. This is an extension of the existing design gate, not a second workflow:
+
+`reuse candidates -> usage compatibility -> data/DB access -> performance -> logging/telemetry -> exception handling -> regression safety net`
+
+### Reuse before creation
+
+Search the repository for existing implementations, extension points, interfaces, helpers, clients, repositories, query paths, tests, configuration, logging patterns, and exception types that can satisfy the request. Prefer direct reuse, composition, narrow extension, or an adapter over a duplicate implementation.
+
+When reuse is rejected, record the candidate and the concrete reason: incompatible contract, missing behavior, unacceptable coupling, performance risk, or another repository-specific constraint. Do not create a new implementation simply because a familiar generic implementation is easier to write.
+
+### Preserve workflow and usage patterns
+
+Treat existing API shapes, caller behavior, configuration semantics, persisted contracts, lifecycle ordering, CLI/HTTP flows, and user-visible workflows as compatibility surfaces. Keep them unchanged unless the request explicitly requires a behavior or contract change. Internals may be improved without changing the external usage pattern.
+
+### Minimize data and database calls
+
+When data access is involved, inspect the current repository/query path first. Prefer already-fetched state, existing caches, batching/set-based operations, joins or bulk APIs already used by the repository, and shared transaction/connection handling. Explicitly avoid N+1 queries, per-record reads, duplicate round trips, repeated hydration, and needless remote calls. Never trade correctness or transaction semantics for a cosmetic reduction in query count.
+
+### Keep performance at parity
+
+Identify whether the change touches a hot path or resource-sensitive behavior. Preserve established latency, throughput, allocation, CPU, memory, I/O, concurrency, and queue characteristics unless the requested functionality intentionally changes them. Reuse existing batching, pooling, caching, serialization, and scheduling mechanisms before adding alternatives. Measure when static reasoning cannot establish safe parity.
+
+### Follow local logging and exception conventions
+
+Use the repository's existing logger/telemetry framework, severity levels, structured fields, correlation/context, redaction, and sampling rules. Use existing exception types and translation/propagation patterns; preserve diagnostic context and clean up owned resources. Do not swallow exceptions or add a second logging/error abstraction merely for the new feature.
+
+### Regression is part of implementation
+
+Verify both the new requirement and affected existing behavior. Start with focused tests, then run the repository-native build, integration, contract, static, security, data, or performance checks relevant to the changed surface. A new test passing does not prove that an existing workflow was preserved.
+
+The design guard accepts `not_applicable: reason` for genuinely irrelevant practices. Silent omission is not treated as evidence; high-risk code changes block on missing safety-critical quality evidence.
 
 ## Skill composition
 
@@ -87,7 +119,7 @@ These skills are orchestration surfaces. They reuse the canonical repository/con
 
 ## Minimal safe change
 
-Prefer the smallest change that satisfies intent and preserves contracts. Do not introduce parallel stores or duplicate ownership.
+Prefer the smallest change that satisfies intent and preserves contracts. Reuse existing maintained implementations before adding new ones. Do not introduce parallel stores or duplicate ownership. Do not combine feature delivery with unrelated refactoring.
 
 ## Runtime contracts
 
@@ -131,7 +163,7 @@ or, after a failed rollout gate, rollback. Never bypass deployment gates.
 
 Normal coding:
 
-`understand intent -> repository map -> acquire bounded context -> choose single-agent or team from evidence -> implement -> verify -> review -> integrate -> regression -> bounded feedback where useful -> artifact -> shadow -> canary -> promote or rollback`
+`understand intent -> repository map -> find reusable implementation -> acquire bounded context -> declare quality evidence -> choose single-agent or team from evidence -> implement -> verify -> review -> integrate -> regression -> bounded feedback where useful -> artifact -> shadow -> canary -> promote or rollback`
 
 Research/POC:
 
@@ -147,4 +179,4 @@ Review:
 
 ## Output discipline
 
-State what changed, why, what was verified/reviewed, evidence identifiers, receipts when applicable, and remaining uncertainty. Prefer concrete paths, symbols, tests, receipts, graph edges, snapshot digests, and lifecycle state over broad claims.
+State what changed, why, what was verified/reviewed, evidence identifiers, receipts when applicable, and remaining uncertainty. Include reusable implementations inspected and the reuse decision when code was changed. Prefer concrete paths, symbols, tests, receipts, graph edges, snapshot digests, and lifecycle state over broad claims.
