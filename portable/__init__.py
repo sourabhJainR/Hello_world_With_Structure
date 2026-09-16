@@ -41,6 +41,7 @@ from .agent_patterns import (
     Specialist,
     SpecialistRouter,
 )
+from .world_model import Observation, WorldFact, WorldModel
 
 __all__ = [
     "main", "AdaptiveRuntime", "HookBus", "HookDecision", "HookEvent", "HookPhase", "HookedExecution",
@@ -59,4 +60,5 @@ __all__ = [
     "Specialist", "SpecialistRouter", "RouteRequest", "RouteDecision",
     "ResearchTask", "ResearchPlan", "ResearchPlanner", "EvidenceItem", "ConsensusResult", "MixtureOfAgents",
     "OptimizationRound", "OptimizationResult", "OneChangeOptimizer", "ScopeFinding", "ScopeReport", "ScopeChecker",
+    "Observation", "WorldFact", "WorldModel",
 ]
