@@ -28,12 +28,14 @@ class DeepEvaluationTests(unittest.TestCase):
                 BenchmarkCase("r1", "reasoning", "ok", "ok", ("e2",), 1.0, "easy", "x"),
             ])
 
-    def test_evidence_and_confidence_are_validated(self) -> None:
-        evaluator = DeepEvaluator()
+    def test_missing_evidence_is_measured_as_a_failed_case(self) -> None:
+        report = DeepEvaluator().run([BenchmarkCase("r1", "reasoning", "ok", "ok", (), 1.0, "easy", "x")])
+        self.assertEqual(report.pass_rate, 0.0)
+        self.assertEqual(report.evidence_rate, 0.0)
+
+    def test_confidence_is_validated(self) -> None:
         with self.assertRaises(ValueError):
-            evaluator.run([BenchmarkCase("r1", "reasoning", "ok", "ok", (), 1.0, "easy", "x")])
-        with self.assertRaises(ValueError):
-            evaluator.run([BenchmarkCase("r1", "reasoning", "ok", "ok", ("e",), 1.1, "easy", "x")])
+            DeepEvaluator().run([BenchmarkCase("r1", "reasoning", "ok", "ok", ("e",), 1.1, "easy", "x")])
 
 
 if __name__ == "__main__":
