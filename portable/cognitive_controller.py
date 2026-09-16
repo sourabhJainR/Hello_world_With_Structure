@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+import hashlib
+import json
 from typing import Mapping, Sequence
 
 from .cognitive_learning import BeliefContext, CognitiveLearningLoop
 from .cognitive_runtime import CognitiveRuntime
 from .information_planner import InformationAction
-from .world_model import WorldPrediction, PredictionError
+from .world_model import PredictionError, WorldPrediction
 
 
 @dataclass(frozen=True)
@@ -41,10 +44,9 @@ class CognitiveController:
             raise ValueError("belief_limit must be positive")
         goals = self.cognitive.goals.ready(limit=20)
         goal = goals[0] if goals else None
-        selected_beliefs = CognitiveLearningLoop.select_beliefs(
-            beliefs or CognitiveLearningLoop(self.cognitive.memory, self.cognitive.project).beliefs(limit=belief_limit),
-            limit=belief_limit,
-        )
+        learning = CognitiveLearningLoop(self.cognitive.memory, self.cognitive.project, self_model=self.cognitive.self_model)
+        candidate_beliefs = beliefs or learning.beliefs(limit=belief_limit)
+        selected_beliefs = learning.select_beliefs(candidate_beliefs, limit=belief_limit)
         info = self.cognitive.information.choose(
             uncertainty=uncertainty,
             actions=information_actions,
@@ -56,7 +58,12 @@ class CognitiveController:
                 entity_id, predicate, action, current_value=current_value,
             )
         self_confidence = self.cognitive.self_model.profile(capability).confidence if capability else 0.0
-        rationale = ["uses durable goal state", "uses persisted or supplied low-confidence beliefs", "uses explicit uncertainty", "execution authority remains with orchestrator"]
+        rationale = [
+            "uses durable goal state",
+            "uses persisted or supplied low-confidence beliefs",
+            "uses explicit uncertainty",
+            "execution authority remains with orchestrator",
+        ]
         if info:
             rationale.append("selected bounded information action by expected gain per cost and risk")
         if prediction:
@@ -116,15 +123,21 @@ class CognitiveController:
             return None
         if prediction.project != project:
             raise ValueError("prediction belongs to a different cognitive project")
+        error_digest = hashlib.sha256(
+            json.dumps(
+                {"predicted": prediction.predicted_value, "actual": actual_value},
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
         return PredictionError(
             prediction_id=prediction.prediction_id,
             predicted_value=prediction.predicted_value,
             actual_value=actual_value,
             absolute_match=prediction.predicted_value == actual_value,
-            error_digest=__import__("hashlib").sha256(
-                __import__("json").dumps({"predicted": prediction.predicted_value, "actual": actual_value}, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
-            ).hexdigest(),
-            measured_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+            error_digest=error_digest,
+            measured_at=datetime.now(timezone.utc).isoformat(),
         )
 
 
