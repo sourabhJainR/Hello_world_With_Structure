@@ -176,8 +176,7 @@ class CapabilityAcquirer:
                 raise TypeError("practice runner must return a dict")
             tests_passed = bool(outcome.get("tests_passed", False))
             safety_reviewed = bool(outcome.get("safety_reviewed", False))
-            raw_detail = str(outcome.get("detail", ""))
-            detail = raw_detail[:max_detail_chars]
+            detail = str(outcome.get("detail", ""))[:max_detail_chars]
             accepted = tests_passed and safety_reviewed
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"[:max_detail_chars]
@@ -196,6 +195,16 @@ class CapabilityAcquirer:
             proposal = db.execute("SELECT task_family,capability FROM capability_proposals WHERE id=? AND project=?", (proposal_id, self.project)).fetchone()
             if proposal is None:
                 raise KeyError(f"unknown capability proposal: {proposal_id}")
+            supplied_ids = tuple(dict.fromkeys(result.attempt_id for result in results if result.proposal_id == proposal_id and result.accepted))
+            if supplied_ids:
+                placeholders = ",".join("?" for _ in supplied_ids)
+                stored = db.execute(
+                    f"SELECT attempt_id FROM capability_practice WHERE proposal_id=? AND accepted=1 AND attempt_id IN ({placeholders})",
+                    (proposal_id, *supplied_ids),
+                ).fetchall()
+                persisted_ids = {row[0] for row in stored}
+            else:
+                persisted_ids = set()
         reasons: list[str] = []
         accepted_results = tuple(result for result in results if result.proposal_id == proposal_id and result.accepted)
         attempt_ids = tuple(dict.fromkeys(result.attempt_id for result in accepted_results))
@@ -203,6 +212,8 @@ class CapabilityAcquirer:
             reasons.append("at least two accepted practice attempts are required")
         if len(attempt_ids) != len(accepted_results):
             reasons.append("practice attempt ids must be distinct")
+        if len(persisted_ids) != len(attempt_ids):
+            reasons.append("practice attempts must match persisted accepted attempts")
         if len(evidence) < 2:
             reasons.append("at least two graduation evidence ids are required")
         if reasons:
