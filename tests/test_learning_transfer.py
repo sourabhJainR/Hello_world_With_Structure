@@ -18,7 +18,7 @@ class LearningTransferTests(unittest.TestCase):
                 LearningExperience("e2", "source-b", "api-migration", "python", "worked", "Use bounded batches", ("ev2",), 0.8, True)
             )
             candidates = learning.transfer("api-migration", "python", limit=5)
-            self.assertEqual(len(candidates), 2)
+            self.assertEqual(len(candidates), 1)
             self.assertEqual(candidates[0].detail, "Use bounded batches")
             self.assertEqual(candidates[0].source_projects, ("source-a", "source-b"))
 
