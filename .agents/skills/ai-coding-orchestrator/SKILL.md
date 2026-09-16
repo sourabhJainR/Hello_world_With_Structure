@@ -87,7 +87,7 @@ Verify the new requirement and affected existing behavior. Start with focused te
 - `interactive-documentation`: produce portable visual architecture/workflow evidence.
 - `retro`: turn verified session outcomes into small durable improvements.
 
-These are orchestration surfaces that reuse canonical repository/context/evidence/provenance stores.
+Skills are orchestration surfaces that reuse canonical repository/context/evidence/provenance stores.
 
 ## Minimal safe change
 
@@ -129,7 +129,7 @@ Normal coding:
 
 Research/POC:
 
-`define question -> bounded evidence -> research -> prototype when useful -> measure -> decide -> record unknowns -> normal implementation gates`
+`define question -> repository map -> bounded evidence -> research -> prototype when useful -> measure -> decide -> record unknowns -> normal implementation gates`
 
 Visual documentation:
 
