@@ -28,6 +28,14 @@ class SkillGraphTests(unittest.TestCase):
             graph.add_dependency("b", "a")
             with self.assertRaises(ValueError):
                 graph.add_dependency("a", "b")
+            self.assertEqual(graph.ancestors("b"), ("a",))
+
+    def test_skill_graph_rejects_unknown_prerequisite(self):
+        with tempfile.TemporaryDirectory() as directory:
+            graph = self._graph(directory)
+            with self.assertRaises(KeyError):
+                graph.upsert(SkillNode("recover", prerequisites=frozenset({"parse"})))
+            self.assertFalse(graph.ready("recover"))
 
     def test_unknown_skill_is_not_ready(self):
         with tempfile.TemporaryDirectory() as directory:
