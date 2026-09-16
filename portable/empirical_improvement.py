@@ -131,8 +131,8 @@ class EmpiricalImprovement:
         evaluator,
         **thresholds,
     ) -> ImprovementReport:
-        baseline = [evaluator(case, baseline_strategy) for case in cases]
         cases = list(cases)
+        baseline = [evaluator(case, baseline_strategy) for case in cases]
         candidate = [evaluator(case, candidate_strategy) for case in cases]
         return cls.evaluate(baseline, candidate, **thresholds)
 
