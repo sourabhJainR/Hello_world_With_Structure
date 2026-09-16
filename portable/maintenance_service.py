@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shlex
 import shutil
 import signal
 import subprocess
@@ -121,7 +120,7 @@ def _module_command(config: MaintenanceServiceConfig) -> list[str]:
 
 
 def _windows_service_args(config: MaintenanceServiceConfig) -> str:
-    return " ".join(shlex.quote(item) for item in _module_command(config)[4:])
+    return subprocess.list2cmdline(_module_command(config)[3:-1])
 
 
 def _service_home() -> Path:
@@ -356,7 +355,7 @@ def _install_windows(config: MaintenanceServiceConfig) -> int:
         raise SystemExit("pywin32 is required for Windows Service mode: python -m pip install pywin32")
     _WindowsMaintenanceService._svc_name_ = config.service_name
     _WindowsMaintenanceService._svc_display_name_ = config.display_name
-    exe_args = " ".join(shlex.quote(item) for item in _module_command(config)[4:-1])
+    exe_args = subprocess.list2cmdline(_module_command(config)[3:-1])
     win32serviceutil.InstallService(
         _WindowsMaintenanceService,
         config.service_name,
