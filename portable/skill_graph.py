@@ -55,15 +55,22 @@ class SkillGraph:
                 PRIMARY KEY(project,name))""")
             db.execute("""CREATE TABLE IF NOT EXISTS skill_dependencies(
                 project TEXT NOT NULL, skill TEXT NOT NULL, prerequisite TEXT NOT NULL,
-                PRIMARY KEY(project,skill,prerequisite),
-                FOREIGN KEY(project,skill) REFERENCES skill_nodes(project,name),
-                FOREIGN KEY(project,prerequisite) REFERENCES skill_nodes(project,name))""")
+                PRIMARY KEY(project,skill,prerequisite))""")
 
     def upsert(self, node: SkillNode) -> None:
         if not isinstance(node, SkillNode):
             raise ValueError("node must be a SkillNode")
         now = datetime.now(timezone.utc).isoformat()
         with self.memory._lock, self.memory._connect() as db:
+            missing = [name for name in node.prerequisites if db.execute(
+                "SELECT 1 FROM skill_nodes WHERE project=? AND name=?", (self.project, name)
+            ).fetchone() is None]
+            if missing:
+                raise KeyError(f"unknown prerequisite skill: {missing[0]}")
+            previous = db.execute(
+                "SELECT prerequisite FROM skill_dependencies WHERE project=? AND skill=?", (self.project, node.name)
+            ).fetchall()
+            old_dependencies = tuple(row[0] for row in previous)
             db.execute(
                 "INSERT INTO skill_nodes VALUES(?,?,?,?,?,?,?,?,?) "
                 "ON CONFLICT(project,name) DO UPDATE SET kind=excluded.kind,evidence_ids=excluded.evidence_ids,"
@@ -75,9 +82,11 @@ class SkillGraph:
             for prerequisite in node.prerequisites:
                 if prerequisite == node.name:
                     raise ValueError("skill cannot depend on itself")
-                db.execute("INSERT OR IGNORE INTO skill_dependencies VALUES(?,?,?)", (self.project, node.name, prerequisite))
+                db.execute("INSERT INTO skill_dependencies VALUES(?,?,?)", (self.project, node.name, prerequisite))
             if self._has_cycle(db):
                 db.execute("DELETE FROM skill_dependencies WHERE project=? AND skill=?", (self.project, node.name))
+                for prerequisite in old_dependencies:
+                    db.execute("INSERT INTO skill_dependencies VALUES(?,?,?)", (self.project, node.name, prerequisite))
                 raise ValueError("skill dependency cycle detected")
 
     def add_dependency(self, skill: str, prerequisite: str) -> None:
