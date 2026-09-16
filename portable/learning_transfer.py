@@ -66,7 +66,7 @@ class ConsolidationReceipt:
 
 
 class LearningTransfer:
-    """Record, transfer, and consolidate verified experience across projects."""
+    """Record, validate, transfer, and consolidate verified experience across projects."""
 
     def __init__(self, memory: PersistentMemory, target_project: str) -> None:
         self.memory = memory
@@ -91,6 +91,13 @@ class LearningTransfer:
                 structure_signature TEXT NOT NULL,
                 negative_conditions TEXT NOT NULL
             )""")
+            db.execute("""CREATE TABLE IF NOT EXISTS learning_transfer_validations(
+                project TEXT NOT NULL, validation_id TEXT NOT NULL, detail TEXT NOT NULL,
+                source_projects TEXT NOT NULL, similarity REAL NOT NULL, success INTEGER NOT NULL,
+                negative_transfer INTEGER NOT NULL, evidence_ids TEXT NOT NULL,
+                detail_text TEXT NOT NULL, created_at TEXT NOT NULL,
+                PRIMARY KEY(project, validation_id))""")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_transfer_validation_lookup ON learning_transfer_validations(project, detail, negative_transfer)")
 
     def record(self, experience: LearningExperience) -> None:
         if not isinstance(experience, LearningExperience):
@@ -136,6 +143,12 @@ class LearningTransfer:
             db.execute("INSERT INTO learning_transfer_signatures VALUES(?,?,?)",
                        (experience.id, json.dumps(structure), json.dumps(negatives)))
 
+    def _is_blocked(self, db, detail: str) -> bool:
+        return db.execute(
+            "SELECT 1 FROM learning_transfer_validations WHERE project=? AND detail=? AND negative_transfer=1 LIMIT 1",
+            (self.target_project, detail),
+        ).fetchone() is not None
+
     def transfer(self, task_family: str, capability: str, *, limit: int = 10) -> list[TransferCandidate]:
         task_family = _clean(task_family, "task_family")
         capability = _clean(capability, "capability")
@@ -147,12 +160,14 @@ class LearningTransfer:
                 WHERE task_family=? AND capability=? AND outcome='worked' AND verified=1
                   AND source_project<>?
                 ORDER BY confidence DESC, created_at DESC, id""", (task_family, capability, self.target_project)).fetchall()
-        groups: dict[str, dict[str, object]] = {}
-        for detail, source_project, evidence_json, confidence in rows:
-            item = groups.setdefault(str(detail), {"projects": set(), "evidence": set(), "confidence": 0.0})
-            item["projects"].add(str(source_project))  # type: ignore[union-attr]
-            item["evidence"].update(json.loads(evidence_json or "[]"))  # type: ignore[union-attr]
-            item["confidence"] = max(float(item["confidence"]), float(confidence))
+            groups: dict[str, dict[str, object]] = {}
+            for detail, source_project, evidence_json, confidence in rows:
+                if self._is_blocked(db, str(detail)):
+                    continue
+                item = groups.setdefault(str(detail), {"projects": set(), "evidence": set(), "confidence": 0.0})
+                item["projects"].add(str(source_project))
+                item["evidence"].update(json.loads(evidence_json or "[]"))
+                item["confidence"] = max(float(item["confidence"]), float(confidence))
         candidates = [
             TransferCandidate(detail, capability, task_family, tuple(sorted(item["projects"])),
                               tuple(sorted(item["evidence"])), float(item["confidence"]))
@@ -180,24 +195,26 @@ class LearningTransfer:
                   AND e.source_project<>?
                 ORDER BY e.confidence DESC, e.created_at DESC, e.id""",
                               (task_family, capability, self.target_project)).fetchall()
-        groups: dict[tuple[str, str], dict[str, object]] = {}
-        for experience_id, detail, source_project, evidence_json, confidence, structure_json, negative_json in rows:
-            negatives = _signature(tuple(json.loads(negative_json or "[]")))
-            if negatives & conditions:
-                continue
-            source_structure = _signature(tuple(json.loads(structure_json or "[]")))
-            similarity = _similarity(target, source_structure)
-            if similarity < min_similarity:
-                continue
-            key = (str(detail), json.dumps(sorted(source_structure)))
-            item = groups.setdefault(key, {
-                "detail": str(detail), "projects": set(), "evidence": set(), "confidence": 0.0,
-                "similarity": similarity, "negative": negatives,
-            })
-            item["projects"].add(str(source_project))  # type: ignore[union-attr]
-            item["evidence"].update(json.loads(evidence_json or "[]"))  # type: ignore[union-attr]
-            item["confidence"] = max(float(item["confidence"]), float(confidence))
-            item["similarity"] = max(float(item["similarity"]), similarity)
+            groups: dict[tuple[str, str], dict[str, object]] = {}
+            for experience_id, detail, source_project, evidence_json, confidence, structure_json, negative_json in rows:
+                if self._is_blocked(db, str(detail)):
+                    continue
+                negatives = _signature(tuple(json.loads(negative_json or "[]")))
+                if negatives & conditions:
+                    continue
+                source_structure = _signature(tuple(json.loads(structure_json or "[]")))
+                similarity = _similarity(target, source_structure)
+                if similarity < min_similarity:
+                    continue
+                key = (str(detail), json.dumps(sorted(source_structure)))
+                item = groups.setdefault(key, {
+                    "detail": str(detail), "projects": set(), "evidence": set(), "confidence": 0.0,
+                    "similarity": similarity, "negative": negatives,
+                })
+                item["projects"].add(str(source_project))
+                item["evidence"].update(json.loads(evidence_json or "[]"))
+                item["confidence"] = max(float(item["confidence"]), float(confidence))
+                item["similarity"] = max(float(item["similarity"]), similarity)
         candidates = [
             TransferCandidate(str(item["detail"]), capability, task_family,
                               tuple(sorted(item["projects"])), tuple(sorted(item["evidence"])),
