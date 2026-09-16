@@ -63,7 +63,7 @@ __all__ = [
     "AgencyReceipt", "CycleObservation", "RecursiveAgency", "WorkItem",
     "PackedFile", "RepositoryPack", "RepositoryEvidence", "RepositoryAnswer", "RepositoryIntelligence", "RepositoryMap", "render_compact",
     "Specialist", "SpecialistRouter", "RouteRequest", "RouteDecision",
-    "ResearchTask", "ResearchPlan", "ResearchPlanner", "ResearchTask", "EvidenceItem", "ConsensusResult", "MixtureOfAgents",
+    "ResearchTask", "ResearchPlan", "ResearchPlanner", "EvidenceItem", "ConsensusResult", "MixtureOfAgents",
     "OptimizationRound", "OptimizationResult", "OneChangeOptimizer", "ScopeFinding", "ScopeReport", "ScopeChecker",
     "Observation", "WorldFact", "WorldModel", "BeliefEvidence", "Hypothesis", "HypothesisEngine",
     "ReasoningLedger", "ReasoningRecord", "CausalLink", "CausalModel", "Goal", "GoalManager",
