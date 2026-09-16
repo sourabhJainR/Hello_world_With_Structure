@@ -102,6 +102,9 @@ class ContinualLearningGuard:
     def compare(self, observation: BenchmarkObservation, *, tolerance: float = 0.02) -> RegressionResult:
         if not 0 <= tolerance <= 1:
             raise ValueError("tolerance must be between 0 and 1")
+        if not observation.verified or not observation.evidence_ids or (self.memory.require_approval and not observation.approved):
+            return RegressionResult(observation.suite, observation.capability, None, observation.version,
+                                    None, observation.score, None, tolerance, False, True)
         with self.memory._lock, self.memory._connect() as db:
             row = db.execute("""SELECT version,score FROM continual_benchmarks
                 WHERE project=? AND suite=? AND capability=?
