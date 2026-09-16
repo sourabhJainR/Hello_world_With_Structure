@@ -33,7 +33,7 @@ The map is evidence acceleration, not proof. Preserve its snapshot digest, confi
 
 Start with one capable agent: `one agent -> observe -> verify -> stop or continue`. Use multi-agent execution only when independent work, prior failure, measurable benchmark value, or a clear safety/ownership boundary justifies the coordination cost. Remain provider/model neutral.
 
-## Canonical state and context
+## Engineering State Ledger
 
 Preserve the ledger:
 
@@ -113,7 +113,7 @@ Keep these aligned:
 - `ENGINEERING_DESIGN_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`
 - `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `QUALITY_GOVERNANCE.md`
 
-## Evidence, rollout, and safety
+## Evidence, review, rollout, and safety
 
 Evidence must be traceable and sufficient for the claim. Verification is independent of generation; review gates the verified artifact and same evidence.
 
