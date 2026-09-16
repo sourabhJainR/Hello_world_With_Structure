@@ -17,6 +17,10 @@ python -m portable.repo_intelligence . --for="<task>" --token-budget=4000
 
 Use focused map queries for callers, callees, impact, tests, and current situational state. Treat the map as evidence acceleration, not proof; retain its digest, confidence, skipped files, parse errors, and unknowns.
 
+## Contract anchors
+
+`portable.task_planner.TaskPlan`, `portable.impact_analysis`, `portable.repo_intelligence.RepositoryMap`, `CodebaseIndex`, `ContextEvidence` and `.ai-harness/runtime/tool_runner.py`, `.ai-harness/runtime/lsp_server.py`, `.ai-harness/runtime/feedback_loop.py`, `.ai-harness/runtime/auto_compaction.py` remain canonical. `downgrade=explicit_install_only` applies to artifact installation.
+
 ## Required workflow
 
 `intent -> context -> plan -> evidence -> change -> verification -> review -> artifact -> rollout -> observation`
@@ -39,4 +43,4 @@ For bugs: `reproduce -> isolate -> identify owner -> minimal fix -> regression t
 
 Require explicit approval for destructive, irreversible, production, financial, privacy-sensitive, or external-message actions. Never bypass security, permission, scope, or regression gates.
 
-Skills are orchestration surfaces and `skills are orchestration surfaces` that reuse canonical repository, context, evidence, and provenance stores.
+Skills are orchestration surfaces and `skills are orchestration surfaces` that reuse canonical repository, context, evidence, and provenance stores. `interactive-documentation` remains a composed skill using canonical evidence and provenance.
