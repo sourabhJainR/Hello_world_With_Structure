@@ -10,7 +10,7 @@ class DeepEvaluationTests(unittest.TestCase):
             BenchmarkCase("r2", "reasoning", "ok", "bad", ("e2",), 0.2, "hard", "finance"),
             BenchmarkCase("a1", "adversarial", "ok", "ok", ("e3",), 0.8, "hard", "security"),
         ]
-        report = DeepEvaluator().run(cases, required_kinds=("reasoning", "adversarial"))
+        report = DeepEvaluator().run(cases, required_kinds=("reasoning", "adversarial"), min_cases_per_kind=1)
         self.assertEqual(report.total, 3)
         self.assertAlmostEqual(report.pass_rate, 2 / 3)
         self.assertEqual(report.per_kind["reasoning"], 0.5)
@@ -22,6 +22,8 @@ class DeepEvaluationTests(unittest.TestCase):
         evaluator = DeepEvaluator()
         with self.assertRaises(ValueError):
             evaluator.run([BenchmarkCase("r1", "reasoning", "ok", "ok", ("e",), 1.0, "easy", "x")], required_kinds=("reasoning", "causal"))
+        with self.assertRaises(ValueError):
+            evaluator.run([BenchmarkCase("r1", "reasoning", "ok", "ok", ("e",), 1.0, "easy", "x")], required_kinds=("reasoning",), min_cases_per_kind=2)
         with self.assertRaises(ValueError):
             evaluator.run([
                 BenchmarkCase("r1", "reasoning", "ok", "ok", ("e",), 1.0, "easy", "x"),
