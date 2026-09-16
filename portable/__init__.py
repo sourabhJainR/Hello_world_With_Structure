@@ -56,6 +56,8 @@ from .continual_learning import BenchmarkObservation, ContinualLearningGuard, Re
 from .capability_acquisition import CapabilityAcquirer, CapabilityNeed, CapabilityProposal, GraduationReceipt as CapabilityGraduationReceipt, PracticeResult, ValidationEvidence, ValidationReceipt
 from .autonomy_graduation import AutonomyEvidence, AutonomyGraduator, GraduationPolicy, GraduationReceipt, LEVELS
 from .deep_evaluation import BenchmarkCase, DeepBenchmarkReport, DeepEvaluator
+from .adaptive_trigger import AdaptiveTrigger, AdaptiveTriggerRequest, TriggerOutcome, TriggerReceipt, trigger_adaptive_runtime
+from .trigger_runtime import TriggerClaim, TriggerEvent, TriggerRuntime, TriggerStatus
 
 __all__ = [
     "main", "AdaptiveRuntime", "AdaptiveLearningStore", "DeferredLearningJob", "WorkStyleProfile", "AdaptivePolicy", "AdaptiveTuner", "ExperienceRecord", "MaintenanceReceipt", "TuningDecision", "EmpiricalImprovement", "ImprovementObservation", "ImprovementReport",
@@ -85,4 +87,6 @@ __all__ = [
     "BenchmarkObservation", "RegressionResult", "ContinualLearningGuard",
     "CapabilityAcquirer", "CapabilityNeed", "CapabilityProposal", "PracticeResult", "CapabilityGraduationReceipt", "ValidationEvidence", "ValidationReceipt",
     "AutonomyEvidence", "AutonomyGraduator", "GraduationPolicy", "GraduationReceipt", "LEVELS", "BenchmarkCase", "DeepBenchmarkReport", "DeepEvaluator",
+    "AdaptiveTrigger", "AdaptiveTriggerRequest", "TriggerOutcome", "TriggerReceipt", "trigger_adaptive_runtime",
+    "TriggerClaim", "TriggerEvent", "TriggerRuntime", "TriggerStatus",
 ]
