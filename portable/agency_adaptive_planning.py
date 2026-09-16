@@ -14,6 +14,56 @@ EXECUTION_ORDER = ("single-agent", "multi-agent")
 
 
 @dataclass(frozen=True)
+class EngineeringLesson:
+    lesson_id: str
+    task_class: str
+    problem: str
+    cause: str
+    solution: str
+    evidence_ids: tuple[str, ...] = ()
+    prevention_rule: str = ""
+    applicable_modes: tuple[str, ...] = ("single-agent",)
+    recurrence_count: int = 0
+
+    def __post_init__(self) -> None:
+        if not self.lesson_id.strip() or not self.problem.strip() or not self.solution.strip():
+            raise ValueError("lesson_id, problem and solution are required")
+        if self.recurrence_count < 0:
+            raise ValueError("recurrence_count cannot be negative")
+        if any(not item.strip() for item in self.evidence_ids):
+            raise ValueError("evidence_ids must not contain empty values")
+        if any(mode not in EXECUTION_ORDER for mode in self.applicable_modes):
+            raise ValueError("unsupported lesson execution mode")
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "lesson_id": self.lesson_id,
+            "task_class": self.task_class,
+            "problem": self.problem,
+            "cause": self.cause,
+            "solution": self.solution,
+            "evidence_ids": list(self.evidence_ids),
+            "prevention_rule": self.prevention_rule,
+            "applicable_modes": list(self.applicable_modes),
+            "recurrence_count": self.recurrence_count,
+        }
+
+
+@dataclass(frozen=True)
+class LessonOutcome:
+    lesson_id: str
+    prevented_recurrence: bool
+    observed_again: bool = False
+    evidence_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.lesson_id.strip():
+            raise ValueError("lesson_id is required")
+        if any(not item.strip() for item in self.evidence_ids):
+            raise ValueError("evidence_ids must not contain empty values")
+
+
+@dataclass(frozen=True)
 class BenchmarkObservation:
     task_id: str
     plan_digest: str
@@ -235,3 +285,22 @@ def apply_recommendation(requested_mutation_mode: str, requested_support_limit: 
     allowed = set(allowed_mutation_modes)
     mode = recommendation.mutation_mode if recommendation.mutation_mode in allowed else requested_mutation_mode
     return mode, min(requested_support_limit, recommendation.support_limit if recommendation.support_limit >= 0 else requested_support_limit)
+
+
+def compound_lesson(lesson: EngineeringLesson, outcome: LessonOutcome) -> EngineeringLesson:
+    if lesson.lesson_id != outcome.lesson_id:
+        raise ValueError("lesson and outcome IDs must match")
+    return EngineeringLesson(
+        lesson.lesson_id,
+        lesson.task_class,
+        lesson.problem,
+        lesson.cause,
+        lesson.solution,
+        lesson.evidence_ids + tuple(x for x in outcome.evidence_ids if x not in lesson.evidence_ids),
+        lesson.prevention_rule,
+        lesson.applicable_modes,
+        lesson.recurrence_count + int(outcome.observed_again),
+    )
+
+
+__all__ = ["AdaptiveRecommendation", "BenchmarkHistory", "BenchmarkObservation", "EngineeringLesson", "LessonOutcome", "apply_recommendation", "compound_lesson", "observe_run", "provenance_head", "recommend_plan"]
