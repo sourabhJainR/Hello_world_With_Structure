@@ -2,16 +2,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 from .automation_scheduler import AutomationScheduler
 from .capability_fabric import Capability, CapabilityFabric, ProviderAdapter, ProviderAdapterRegistry
+from .context_graph import ContextGraph
+from .context_resolver import ContextResolution, ContextResolver
 from .lifecycle_hooks import HookBus, HookPhase, HookedExecution
 from .orchestration import Graph, OrchestrationRun, Orchestrator
 from .output_quality import OutputQualityGate, QualityResult
 from .persistent_memory import PersistentMemory
 from .provider_fabric import CapabilityRequest, ProviderFabric, RoutingDecision
 from .session_state import SessionCheckpoint, SessionStore
+from .trigger_runtime import TriggerEvent, TriggerRuntime
 
 
 class AdaptiveRuntime:
@@ -41,6 +44,7 @@ class AdaptiveRuntime:
         self.automation_scheduler = automation_scheduler or AutomationScheduler(aer_state / "automation" / "automation.db")
         self.output_quality = output_quality or OutputQualityGate()
         self.provider_adapters = provider_adapters or ProviderAdapterRegistry()
+        self.trigger_runtime = TriggerRuntime(self.automation_scheduler)
 
     def capability(self, name: str, preferred: tuple[str, ...] = ()) -> RoutingDecision:
         return self.provider_fabric.route(CapabilityRequest(name, preferred))
@@ -70,6 +74,24 @@ class AdaptiveRuntime:
             unresolved=unresolved,
         )
 
+    def resolve_context(self, project_root: Path | str, task: str, *, node_id: str | None = None,
+                        workspace_id: str | None = None, required: Sequence[str] = (),
+                        memory_limit: int = 12, graph_limit: int = 24) -> ContextResolution:
+        """Resolve durable context through the canonical memory/graph path."""
+        project_key = self.session_store.project_key(project_root)
+        graph = ContextGraph(self.persistent_memory, project_key)
+        resolver = ContextResolver(self.persistent_memory, graph)
+        return resolver.resolve(task, node_id=node_id, workspace_id=workspace_id,
+                                required=required, memory_limit=memory_limit, graph_limit=graph_limit)
+
+    def emit_trigger(self, kind: str, payload: Mapping[str, Any], *, event_id: str | None = None,
+                     max_attempts: int = 3) -> TriggerEvent:
+        return self.trigger_runtime.emit(kind, payload, event_id=event_id, max_attempts=max_attempts)
+
+    def dispatch_triggers(self, handler: Any, *, limit: int = 20) -> list[Any]:
+        """Dispatch claimed triggers to a caller-owned normal orchestration handler."""
+        return self.trigger_runtime.dispatch_due(handler, limit=limit)
+
     def run(
         self,
         *,
@@ -79,6 +101,10 @@ class AdaptiveRuntime:
         intent: str,
         provider: str | None = None,
         context: Mapping[str, Any] | None = None,
+        context_node_id: str | None = None,
+        workspace_id: str | None = None,
+        required_context: Sequence[str] = (),
+        enrich_context: bool = False,
     ) -> OrchestrationRun:
         project_key = self.session_store.project_key(project_root)
         provider_name = provider or "aer"
@@ -96,7 +122,16 @@ class AdaptiveRuntime:
             before = execution.gate(HookPhase.BEFORE_AGENT, task_id=task_id)
             if not before.allow:
                 raise RuntimeError(f"before_agent vetoed: {before.reason}")
-            result = self.orchestrator.run(task_id, intent, context)
+            effective_context = dict(context or {})
+            if enrich_context:
+                resolution = self.resolve_context(
+                    project_root, intent, node_id=context_node_id,
+                    workspace_id=workspace_id, required=required_context,
+                )
+                effective_context["aer_context_pack"] = resolution.pack
+                effective_context["aer_context_digest"] = resolution.digest
+                effective_context["aer_context_omitted"] = list(resolution.omitted)
+            result = self.orchestrator.run(task_id, intent, effective_context)
             after = execution.gate(HookPhase.AFTER_AGENT, task_id=task_id, payload={"status": result.status.value})
             if not after.allow:
                 raise RuntimeError(f"after_agent vetoed: {after.reason}")

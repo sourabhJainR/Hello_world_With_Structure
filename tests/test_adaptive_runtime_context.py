@@ -1,0 +1,38 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+from portable.adaptive_runtime import AdaptiveRuntime
+from portable.automation_scheduler import AutomationScheduler
+from portable.context_graph import ContextGraph, ContextNode
+from portable.persistent_memory import PersistentMemory
+from portable.orchestration import Graph, Node, NodeKind
+from portable.session_state import SessionStore
+
+
+class AdaptiveRuntimeContextTests(unittest.TestCase):
+    def _runtime(self, root: Path, graph: Graph):
+        memory = PersistentMemory(root / "memory.db", require_approval=False)
+        scheduler = AutomationScheduler(root / "automation.db")
+        sessions = SessionStore(root / "sessions.db")
+        return AdaptiveRuntime(graph, persistent_memory=memory, automation_scheduler=scheduler, session_store=sessions), memory, scheduler
+
+    def test_runtime_resolves_context_without_bypassing_orchestrator(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            captured = {}
+            graph = Graph([Node("agent", NodeKind.AGENT, lambda context: captured.update(context) or "ok", critical=True, risk="low")])
+            runtime, memory, scheduler = self._runtime(root, graph)
+            project_key = runtime.session_store.project_key(root)
+            context_graph = ContextGraph(memory, project_key)
+            context_graph.upsert_node(ContextNode("task:1", "task", "Fix timeout", "task"))
+            context_graph.upsert_node(ContextNode("file:1", "file", "client.py", "repo"))
+            context_graph.link("task:1", "touches", "file:1", source="repo")
+            resolution = runtime.resolve_context(root, "Fix timeout", node_id="task:1")
+            self.assertIn("client.py", resolution.pack)
+            result = runtime.run(session_id="s1", task_id="t1", project_root=root, intent="Fix timeout", context_node_id="task:1", enrich_context=True)
+            self.assertEqual(result.status.value, "accepted")
+            self.assertIn("client.py", captured["aer_context_pack"])
+            self.assertTrue(captured["aer_context_digest"])
+            scheduler.close()
+            memory.close()
