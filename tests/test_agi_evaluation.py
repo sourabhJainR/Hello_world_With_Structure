@@ -12,6 +12,7 @@ class CapabilityEvaluatorTests(unittest.TestCase):
         ))
         self.assertEqual((report.total, report.passed, report.failed), (3, 2, 1))
         self.assertEqual(report.coverage, ("memory", "novel", "transfer"))
+        self.assertEqual(len(report.missing_kinds), 7)
         self.assertAlmostEqual(report.pass_rate, 2 / 3)
 
     def test_missing_evidence_and_duplicate_ids_fail_closed(self) -> None:
