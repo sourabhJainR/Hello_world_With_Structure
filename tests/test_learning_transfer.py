@@ -47,14 +47,20 @@ class LearningTransferTests(unittest.TestCase):
             self.assertEqual(learning.transfer("deploy", "terminal"), [])
             self.assertIsNone(learning.consolidate("deploy", "terminal", min_projects=2))
 
+    def test_verified_learning_requires_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            learning = LearningTransfer(PersistentMemory(Path(directory) / "memory.db", require_approval=False), "target")
+            with self.assertRaises(ValueError):
+                learning.record(LearningExperience("e1", "source-a", "task", "cap", "worked", "detail", (), 0.8, True))
+
     def test_duplicate_experience_id_must_be_identical(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             learning = LearningTransfer(PersistentMemory(Path(directory) / "memory.db", require_approval=False), "target")
-            experience = LearningExperience("e1", "source-a", "task", "cap", "worked", "detail", (), 0.8, True)
+            experience = LearningExperience("e1", "source-a", "task", "cap", "worked", "detail", (), 0.8, False)
             learning.record(experience)
             learning.record(experience)
             with self.assertRaises(ValueError):
-                learning.record(LearningExperience("e1", "source-b", "task", "cap", "worked", "other", (), 0.8, True))
+                learning.record(LearningExperience("e1", "source-b", "task", "cap", "worked", "other", (), 0.8, False))
 
 
 if __name__ == "__main__":
