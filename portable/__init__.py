@@ -53,6 +53,8 @@ from .agi_evaluation import CapabilityCase, CapabilityEvaluator, CaseResult, Eva
 from .cognitive_runtime import CognitiveRuntime
 from .cognitive_loop import CognitiveEpisode, CognitiveEpisodeReceipt, CognitiveLoop
 from .learning_transfer import ConsolidationReceipt, LearningExperience, LearningTransfer, TransferCandidate
+from .generalization import Abstraction, AnalogyCandidate, GeneralizationEngine
+from .skill_graph import SkillGraph, SkillNode
 from .continual_learning import BenchmarkObservation, ContinualLearningGuard, RegressionResult
 from .capability_acquisition import CapabilityAcquirer, CapabilityNeed, CapabilityProposal, ValidationEvidence, ValidationReceipt
 from .autonomy_graduation import AutonomyEvidence, AutonomyGraduator, GraduationPolicy, GraduationReceipt, LEVELS
@@ -80,6 +82,7 @@ __all__ = [
     "Goal", "GoalManager", "InformationAction", "InformationPlan", "InformationPlanner", "CapabilityProfile", "SelfModel",
     "CapabilityCase", "CapabilityEvaluator", "CaseResult", "EvaluationReport", "KINDS", "CognitiveRuntime",
     "CognitiveEpisode", "CognitiveEpisodeReceipt", "CognitiveLoop", "LearningExperience", "TransferCandidate", "ConsolidationReceipt", "LearningTransfer",
+    "Abstraction", "AnalogyCandidate", "GeneralizationEngine", "SkillGraph", "SkillNode",
     "BenchmarkObservation", "RegressionResult", "ContinualLearningGuard",
     "CapabilityAcquirer", "CapabilityNeed", "CapabilityProposal", "ValidationEvidence", "ValidationReceipt",
     "AutonomyEvidence", "AutonomyGraduator", "GraduationPolicy", "GraduationReceipt", "LEVELS",
