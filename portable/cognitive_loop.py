@@ -38,6 +38,7 @@ class CognitiveEpisodeReceipt:
     finished_at: str
     digest: str
     error: str | None = None
+    persistence_errors: tuple[str, ...] = ()
 
 
 @dataclass
@@ -49,6 +50,7 @@ class CognitiveEpisode:
     started_at: str
     _phases: list[str] = field(default_factory=list)
     _observations: list[dict[str, Any]] = field(default_factory=list)
+    _persistence_errors: list[str] = field(default_factory=list)
 
     @classmethod
     def start(cls, project_key: str, task_id: str, intent: str) -> "CognitiveEpisode":
@@ -73,6 +75,7 @@ class CognitiveEpisode:
             "status": status,
             "phases": self._phases,
             "observations": self._observations,
+            "persistence_errors": self._persistence_errors,
         }
         return CognitiveEpisodeReceipt(
             episode_id=self.episode_id,
@@ -86,6 +89,7 @@ class CognitiveEpisode:
             finished_at=_utc(),
             digest=_digest(payload),
             error=error,
+            persistence_errors=tuple(self._persistence_errors),
         )
 
 
@@ -126,14 +130,17 @@ class CognitiveLoop:
             "digest": _digest({str(k): v for k, v in observation.items()}),
         }
         text = json.dumps(compact, sort_keys=True, separators=(",", ":"), default=str)
-        self.cognitive.memory.remember(
-            episode.project_key,
-            "cognitive_episode",
-            text,
-            confidence=1.0,
-            verified=True,
-            approved=True,
-        )
+        try:
+            self.cognitive.memory.remember(
+                episode.project_key,
+                "cognitive_episode",
+                text,
+                confidence=1.0,
+                verified=True,
+                approved=True,
+            )
+        except Exception as exc:
+            episode._persistence_errors.append(f"{type(exc).__name__}: {exc}")
 
 
 __all__ = ["CognitiveEpisode", "CognitiveEpisodeReceipt", "CognitiveLoop"]
