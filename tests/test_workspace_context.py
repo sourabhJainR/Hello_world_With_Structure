@@ -26,6 +26,7 @@ class WorkspaceContextTests(unittest.TestCase):
             graph.upsert_node(ContextNode("ws:1", "workspace", "Engineering", "workspace"))
             graph.upsert_node(ContextNode("note:1", "note", "Private finding", "private", 0.95, {"private": True}))
             workspace = WorkspaceContext(graph)
+            workspace.attach("ws:1", "note:1")
             promoted = workspace.promote("ws:1", "note:1", summary="Verified finding", evidence=("run:1",))
             self.assertEqual(promoted.kind, "shared_summary")
             self.assertEqual(promoted.label, "Verified finding")
