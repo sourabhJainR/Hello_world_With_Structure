@@ -7,7 +7,6 @@ never treats a causal edge as permission to mutate the environment.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
 
 from .context_graph import ContextEdge, ContextGraph
 
@@ -70,25 +69,6 @@ class CausalModel:
 
     def effects_of(self, cause_id: str, *, limit: int = 50) -> tuple[ContextEdge, ...]:
         return self.graph.neighbors(cause_id, relation="causes", direction="out", limit=limit)
-
-    def compare_intervention(self, link_id: str, *, intervention: str) -> dict[str, Any]:
-        if not intervention.strip():
-            raise ValueError("intervention is required")
-        edge = self._find(link_id)
-        interventions = tuple(str(x) for x in edge.properties.get("interventions", ()))
-        return {"link_id": link_id, "mechanism": edge.properties.get("mechanism", ""),
-                "confidence": edge.confidence, "supported": intervention in interventions,
-                "recorded_interventions": interventions}
-
-    def _find(self, link_id: str) -> ContextEdge:
-        with self.graph._connect() as db:
-            row = db.execute(
-                "SELECT edge_id,source_id,relation,target_id,source,confidence,properties,created_at FROM context_edges WHERE project=? AND edge_id=? AND relation='causes'",
-                (self.graph.project, link_id),
-            ).fetchone()
-        if not row:
-            raise KeyError("causal link does not exist")
-        return self.graph._edge(row)
 
 
 __all__ = ["CausalLink", "CausalModel"]
