@@ -50,6 +50,7 @@ class ContextResolver:
             raise ValueError("context limits cannot be negative")
 
         items: list[ContextItem] = [ContextItem("contract", task.strip(), "task", 100, True)]
+        items.extend(ContextItem("contract", value.strip(), "required", 110, True) for value in required if isinstance(value, str) and value.strip())
         source_ids: list[str] = []
         graph_ids: list[str] = []
 
@@ -57,6 +58,8 @@ class ContextResolver:
             node = self.graph.get_node(node_id)
             if node is None:
                 raise KeyError(f"unknown graph node: {node_id}")
+            if self._private(node):
+                raise PermissionError("private task context cannot be resolved")
             items.append(self._node_item(node, 100))
             source_ids.append(node.node_id)
             if graph_limit:
@@ -82,6 +85,7 @@ class ContextResolver:
                     raise PermissionError("task is not linked to the requested workspace")
 
         memory_rows: list[MemoryRecord] = []
+        included_memory_ids: list[str] = []
         if memory_limit:
             memory_rows = self.memory.search(self.graph.project, task, limit=memory_limit)
             for record in memory_rows:
@@ -95,6 +99,7 @@ class ContextResolver:
                     "verified": record.verified,
                     "evidence": [record.id],
                 }]))
+                included_memory_ids.append(record.id)
 
         selected_items = self.engine.select(items, required=required)
         pack = self.engine.pack(selected_items)
@@ -107,7 +112,7 @@ class ContextResolver:
             "workspace_id": workspace_id,
             "sources": sorted(source_ids),
             "graph": sorted(graph_ids),
-            "memory": sorted(record.id for record in memory_rows),
+            "memory": sorted(included_memory_ids),
             "selected": selected,
             "omitted": omitted,
             "pack": pack,

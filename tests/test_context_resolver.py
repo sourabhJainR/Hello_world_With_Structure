@@ -25,14 +25,17 @@ class ContextResolverTests(unittest.TestCase):
             self.assertLessEqual(len(result.pack), 240)
             memory.close()
 
-    def test_required_context_is_reported_when_omitted(self):
+    def test_required_context_is_included_when_it_fits_and_reported_when_omitted(self):
         with tempfile.TemporaryDirectory() as directory:
             memory = PersistentMemory(Path(directory) / "memory.sqlite", require_approval=False)
             graph = ContextGraph(memory, "project")
             graph.upsert_node(ContextNode("task:1", "task", "Task", "task"))
-            resolver = ContextResolver(memory, graph, ContextEngine(ContextPolicy(max_chars=10, max_items=2, max_item_chars=20, output_chars=20)))
-            result = resolver.resolve("Task", node_id="task:1", required=("This required fact cannot fit",))
-            self.assertIn("This required fact cannot fit", result.omitted)
+            resolver = ContextResolver(memory, graph, ContextEngine(ContextPolicy(max_chars=100, max_items=4, max_item_chars=40, output_chars=100)))
+            included = resolver.resolve("Task", node_id="task:1", required=("Required fact",))
+            self.assertIn("Required fact", included.pack)
+            tiny = ContextResolver(memory, graph, ContextEngine(ContextPolicy(max_chars=10, max_items=2, max_item_chars=20, output_chars=20)))
+            omitted = tiny.resolve("Task", node_id="task:1", required=("This required fact cannot fit",))
+            self.assertIn("This required fact cannot fit", omitted.omitted)
             memory.close()
 
     def test_workspace_scope_is_graph_relationship_not_private_leak(self):
