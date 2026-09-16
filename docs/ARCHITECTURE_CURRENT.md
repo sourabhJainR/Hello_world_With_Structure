@@ -1,6 +1,6 @@
 # Current Architecture
 
-This document describes the current AER 24.x architecture. Historical version notes remain provenance records and do not redefine runtime ownership.
+This document describes the current AER 23.x architecture. Historical version notes remain provenance records and do not redefine runtime ownership.
 
 ## Engineering spine
 
@@ -42,4 +42,4 @@ User task
 
 No second repository graph, evidence store, workflow engine, capability catalog, or memory authority is introduced. Context is a snapshot-bound derived view. Probabilities describe model belief and never become verification truth. Workflow evaluation is measurement only. Learning can recommend strategy and prevention rules, but cannot authorize actions, weaken gates, or replace canonical state.
 
-Parallel work is explicit and must converge through deterministic graph semantics. Evidence references remain snapshot-bound and stale evidence must be refreshed. The portable layer remains provider-neutral and dependency-light.
+Parallel work remains an execution strategy on the canonical `StateGraph` and must converge through deterministic merge and verification. Evidence references remain snapshot-bound and stale evidence must be refreshed. The portable layer remains provider-neutral and dependency-light.
