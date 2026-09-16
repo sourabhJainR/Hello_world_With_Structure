@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from portable.adaptive_learning import AdaptiveLearningStore
 from portable.persistent_memory import PersistentMemory
@@ -55,6 +56,17 @@ class AdaptiveLearningTests(unittest.TestCase):
             first.process()
             second = AdaptiveLearningStore(memory, "project-b")
             self.assertEqual(second.profile().observations, 0)
+
+    def test_processing_uses_repository_root_for_dream_memory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "repo"
+            root.mkdir()
+            memory = PersistentMemory(root / ".aer" / "memory.db", require_approval=False)
+            store = AdaptiveLearningStore(memory, "project-x", dream_root=root)
+            store.record_outcome(task_id="t1", intent="fix", status="accepted", quality=1.0, iterations=1, context="concise")
+            with patch("portable.adaptive_learning.DreamMemory") as dream:
+                store.process()
+                dream.assert_called_once_with(root.resolve())
 
 
 if __name__ == "__main__":
