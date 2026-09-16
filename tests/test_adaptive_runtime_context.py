@@ -34,5 +34,14 @@ class AdaptiveRuntimeContextTests(unittest.TestCase):
             self.assertEqual(result.status.value, "accepted")
             self.assertIn("client.py", captured["aer_context_pack"])
             self.assertTrue(captured["aer_context_digest"])
+            self.assertIsNotNone(runtime.last_cognitive_episode)
+            self.assertEqual(runtime.last_cognitive_episode.status, "accepted")
+            self.assertIn("evaluate", runtime.last_cognitive_episode.phases)
+            memory_hits = memory.search(project_key, "execution_completed", limit=5)
+            self.assertTrue(memory_hits)
             scheduler.close()
             memory.close()
+
+
+if __name__ == "__main__":
+    unittest.main()
