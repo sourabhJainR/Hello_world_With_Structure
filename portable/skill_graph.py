@@ -67,10 +67,6 @@ class SkillGraph:
             ).fetchone() is None]
             if missing:
                 raise KeyError(f"unknown prerequisite skill: {missing[0]}")
-            previous = db.execute(
-                "SELECT prerequisite FROM skill_dependencies WHERE project=? AND skill=?", (self.project, node.name)
-            ).fetchall()
-            old_dependencies = tuple(row[0] for row in previous)
             db.execute(
                 "INSERT INTO skill_nodes VALUES(?,?,?,?,?,?,?,?,?) "
                 "ON CONFLICT(project,name) DO UPDATE SET kind=excluded.kind,evidence_ids=excluded.evidence_ids,"
@@ -84,9 +80,6 @@ class SkillGraph:
                     raise ValueError("skill cannot depend on itself")
                 db.execute("INSERT INTO skill_dependencies VALUES(?,?,?)", (self.project, node.name, prerequisite))
             if self._has_cycle(db):
-                db.execute("DELETE FROM skill_dependencies WHERE project=? AND skill=?", (self.project, node.name))
-                for prerequisite in old_dependencies:
-                    db.execute("INSERT INTO skill_dependencies VALUES(?,?,?)", (self.project, node.name, prerequisite))
                 raise ValueError("skill dependency cycle detected")
 
     def add_dependency(self, skill: str, prerequisite: str) -> None:
@@ -100,8 +93,6 @@ class SkillGraph:
                     raise KeyError(f"unknown skill: {name}")
             db.execute("INSERT OR IGNORE INTO skill_dependencies VALUES(?,?,?)", (self.project, skill, prerequisite))
             if self._has_cycle(db):
-                db.execute("DELETE FROM skill_dependencies WHERE project=? AND skill=? AND prerequisite=?",
-                           (self.project, skill, prerequisite))
                 raise ValueError("skill dependency cycle detected")
 
     def _has_cycle(self, db: sqlite3.Connection) -> bool:
@@ -146,7 +137,12 @@ class SkillGraph:
             row = db.execute("SELECT validated,evidence_ids FROM skill_nodes WHERE project=? AND name=?", (self.project, skill)).fetchone()
         if row is None or not bool(row[0]) or not json.loads(row[1]):
             return False
-        return not self.missing_prerequisites(skill)
+        for ancestor in self.ancestors(skill):
+            with self.memory._lock, self.memory._connect() as db:
+                ancestor_row = db.execute("SELECT validated,evidence_ids FROM skill_nodes WHERE project=? AND name=?", (self.project, ancestor)).fetchone()
+            if ancestor_row is None or not bool(ancestor_row[0]) or not json.loads(ancestor_row[1]):
+                return False
+        return True
 
     def ancestors(self, skill: str, *, limit: int = 100) -> tuple[str, ...]:
         skill = _clean(skill, "skill")
