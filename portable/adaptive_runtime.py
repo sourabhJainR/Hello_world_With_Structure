@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from .active_information import InformationExecution
 from .adaptive_learning import AdaptiveLearningStore, DeferredLearningJob
 from .automation_scheduler import AutomationScheduler
 from .capability_fabric import Capability, CapabilityFabric, ProviderAdapter, ProviderAdapterRegistry
@@ -15,7 +14,7 @@ from .cognitive_controller import CognitiveController
 from .cognitive_learning import BeliefContext, LearningSignal
 from .cognitive_loop import CognitiveEpisodeReceipt, CognitiveLoop
 from .cognitive_runtime import CognitiveRuntime
-from .empirical_improvement import EmpiricalImprovement, ImprovementObservation, ImprovementReport
+from .empirical_improvement import EmpiricalImprovement, ImprovementReport
 from .hypothesis_engine import BeliefEvidence
 from .information_planner import InformationAction
 from .lifecycle_hooks import HookBus, HookPhase, HookedExecution
@@ -144,7 +143,7 @@ class AdaptiveRuntime:
         self.session_store.save(checkpoint)
         cognitive_runtime = self.cognition(project_root)
         cognitive_loop = CognitiveLoop(cognitive_runtime)
-        learning_store = AdaptiveLearningStore(self.persistent_memory, project_key)
+        learning_store = AdaptiveLearningStore(self.persistent_memory, project_key, dream_root=project_root)
         episode = cognitive_loop.begin(project_key, task_id, intent)
         try:
             before = execution.gate(HookPhase.BEFORE_AGENT, task_id=task_id)
@@ -254,7 +253,7 @@ class AdaptiveRuntime:
     def process_learning(self, project_root: Path | str, *, limit: int = 20, dream: bool = True) -> list[dict[str, object]]:
         """Run deferred learning/maintenance outside the active worker path."""
         project_key = self.session_store.project_key(project_root)
-        store = AdaptiveLearningStore(self.persistent_memory, project_key)
+        store = AdaptiveLearningStore(self.persistent_memory, project_key, dream_root=project_root)
         jobs = store.process(limit=limit, dream=dream)
         return [
             {"job_id": job.job_id, "task_id": job.task_id, "kind": job.kind, "status": job.status}
@@ -271,9 +270,6 @@ class AdaptiveRuntime:
         **thresholds: object,
     ) -> ImprovementReport:
         """Replay a bounded benchmark outside execution authority and gate a candidate empirically."""
-        # project_root is deliberately accepted so benchmark identity remains scoped
-        # to the same project namespace as learning state, but the comparison itself
-        # is pure and never mutates the active orchestrator.
         self.session_store.project_key(project_root)
         return EmpiricalImprovement.run(cases, baseline_strategy, candidate_strategy, evaluator, **thresholds)
 
