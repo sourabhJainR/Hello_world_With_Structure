@@ -8,6 +8,7 @@ from .automation_scheduler import AutomationScheduler
 from .capability_fabric import Capability, CapabilityFabric, ProviderAdapter, ProviderAdapterRegistry
 from .context_graph import ContextGraph
 from .context_resolver import ContextResolution, ContextResolver
+from .cognitive_loop import CognitiveEpisodeReceipt, CognitiveLoop
 from .cognitive_runtime import CognitiveRuntime
 from .lifecycle_hooks import HookBus, HookPhase, HookedExecution
 from .orchestration import Graph, OrchestrationRun, Orchestrator
@@ -46,6 +47,8 @@ class AdaptiveRuntime:
         self.output_quality = output_quality or OutputQualityGate()
         self.provider_adapters = provider_adapters or ProviderAdapterRegistry()
         self.trigger_runtime = TriggerRuntime(self.automation_scheduler)
+        self._cognitive_loop = CognitiveLoop()
+        self.last_cognitive_episode: CognitiveEpisodeReceipt | None = None
 
     def capability(self, name: str, preferred: tuple[str, ...] = ()) -> RoutingDecision:
         return self.provider_fabric.route(CapabilityRequest(name, preferred))
@@ -124,10 +127,13 @@ class AdaptiveRuntime:
             active_provider=provider_name,
         )
         self.session_store.save(checkpoint)
+        episode = self._cognitive_loop.begin(project_key, task_id, intent)
+        self._cognitive_loop.cognitive = self.cognition(project_root)
         try:
             before = execution.gate(HookPhase.BEFORE_AGENT, task_id=task_id)
             if not before.allow:
                 raise RuntimeError(f"before_agent vetoed: {before.reason}")
+            self._cognitive_loop.observe(episode, {"event": "before_agent", "status": "running"})
             effective_context = dict(context or {})
             if enrich_context:
                 resolution = self.resolve_context(
@@ -137,7 +143,9 @@ class AdaptiveRuntime:
                 effective_context["aer_context_pack"] = resolution.pack
                 effective_context["aer_context_digest"] = resolution.digest
                 effective_context["aer_context_omitted"] = list(resolution.omitted)
+                self._cognitive_loop.observe(episode, {"event": "context_resolved", "digest": resolution.digest})
             result = self.orchestrator.run(task_id, intent, effective_context)
+            self._cognitive_loop.observe(episode, {"event": "execution_completed", "status": result.status.value})
             after = execution.gate(HookPhase.AFTER_AGENT, task_id=task_id, payload={"status": result.status.value})
             if not after.allow:
                 raise RuntimeError(f"after_agent vetoed: {after.reason}")
@@ -146,10 +154,14 @@ class AdaptiveRuntime:
             checkpoint.remaining_batches = []
             checkpoint.last_error = None
             self.session_store.save(checkpoint)
+            self.last_cognitive_episode = self._cognitive_loop.complete(episode, result.status.value)
             execution.gate(HookPhase.SESSION_END, task_id=task_id, payload={"status": result.status.value})
             return result
         except Exception as exc:
-            checkpoint.last_error = f"{type(exc).__name__}: {exc}"
+            error = f"{type(exc).__name__}: {exc}"
+            self._cognitive_loop.observe(episode, {"event": "execution_error", "status": "failed", "error": error})
+            self.last_cognitive_episode = self._cognitive_loop.complete(episode, "failed", error)
+            checkpoint.last_error = error
             checkpoint.attempt += 1
             self.session_store.save(checkpoint)
             execution.gate(HookPhase.RECOVERY, task_id=task_id, payload={"error": checkpoint.last_error})
