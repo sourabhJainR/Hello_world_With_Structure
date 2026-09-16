@@ -6,7 +6,6 @@ keeping StateGraph/Orchestrator as the execution authority.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 from .agi_evaluation import CapabilityEvaluator
 from .causal_model import CausalModel
@@ -42,12 +41,6 @@ class CognitiveRuntime:
         return cls(project, memory, graph, WorldModel(memory, project), HypothesisEngine(memory, project),
                    ReasoningLedger(memory, project), CausalModel(graph), GoalManager(memory, project),
                    InformationPlanner(), SelfModel(memory, project), CapabilityEvaluator())
-
-    def digest(self) -> str:
-        """Return a compact digest of durable semantic state."""
-        import hashlib
-        parts = [self.graph.digest(), self.world.digest()]
-        return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
 
 
 __all__ = ["CognitiveRuntime"]
