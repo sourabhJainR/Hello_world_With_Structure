@@ -8,6 +8,7 @@ from .automation_scheduler import AutomationScheduler
 from .capability_fabric import Capability, CapabilityFabric, ProviderAdapter, ProviderAdapterRegistry
 from .context_graph import ContextGraph
 from .context_resolver import ContextResolution, ContextResolver
+from .cognitive_runtime import CognitiveRuntime
 from .lifecycle_hooks import HookBus, HookPhase, HookedExecution
 from .orchestration import Graph, OrchestrationRun, Orchestrator
 from .output_quality import OutputQualityGate, QualityResult
@@ -83,6 +84,11 @@ class AdaptiveRuntime:
         resolver = ContextResolver(self.persistent_memory, graph)
         return resolver.resolve(task, node_id=node_id, workspace_id=workspace_id,
                                 required=required, memory_limit=memory_limit, graph_limit=graph_limit)
+
+    def cognition(self, project_root: Path | str) -> CognitiveRuntime:
+        """Return the project-scoped cognitive layer without replacing orchestration."""
+        project_key = self.session_store.project_key(project_root)
+        return CognitiveRuntime.create(self.persistent_memory, project_key)
 
     def emit_trigger(self, kind: str, payload: Mapping[str, Any], *, event_id: str | None = None,
                      max_attempts: int = 3) -> TriggerEvent:
