@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Integrate the existing AER cognitive primitives with `AdaptiveRuntime.run()` so each execution can persist observations, maintain goals/beliefs, select information actions, act through the existing orchestrator, and update cognitive state without replacing the execution authority.
+**Goal:** Integrate the existing AER cognitive primitives with `AdaptiveRuntime.run()` so each execution produces a bounded cognitive episode, persists compact observations, and exposes evaluation evidence without replacing execution authority.
 
-**Architecture:** `AdaptiveRuntime` remains the execution facade and `Orchestrator` remains authoritative for task execution. A new cognitive episode coordinator will wrap the execution lifecycle, using the existing `CognitiveRuntime` facade and persistent memory, while emitting deterministic, bounded episode records. Cognitive side effects are best-effort and must never silently change an orchestration result; failures are recorded and surfaced through the episode receipt.
+**Architecture:** `AdaptiveRuntime` remains the execution facade and `Orchestrator` remains authoritative for task execution. A per-execution `CognitiveLoop` wraps the lifecycle and uses the project-scoped `CognitiveRuntime` plus canonical `PersistentMemory`. Cognitive persistence is best-effort: persistence failures are captured in the receipt and never change orchestration success/failure semantics.
 
 **Tech Stack:** Python 3, existing `portable` cognitive/runtime modules, pytest, SQLite-backed `PersistentMemory`.
 
@@ -17,7 +17,8 @@
 - Keep cognitive state project-scoped through the canonical `PersistentMemory` path.
 - Keep each cognitive episode bounded and serializable.
 - Preserve existing `AdaptiveRuntime.run()` return type and failure semantics.
-- Add tests before implementation for the new lifecycle behavior.
+- Cognitive persistence failures must not fail or alter successful orchestration.
+- Add regression coverage for persistence failure isolation.
 
 ---
 
@@ -28,10 +29,10 @@
 - Test: `tests/portable/test_cognitive_loop.py`
 
 **Interfaces:**
-- Produces `CognitiveEpisode` and `CognitiveLoop`.
 - `CognitiveLoop.begin(...) -> CognitiveEpisode`
 - `CognitiveLoop.observe(...) -> None`
-- `CognitiveLoop.complete(...) -> CognitiveEpisode`
+- `CognitiveLoop.complete(...) -> CognitiveEpisodeReceipt`
+- `CognitiveEpisodeReceipt` contains deterministic digest and persistence errors.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -49,6 +50,7 @@ def test_episode_has_stable_identity_and_phase_history():
     assert receipt.status == "success"
     assert receipt.phases == ("observe", "plan")
     assert receipt.episode_id
+    assert len(receipt.digest) == 64
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -58,70 +60,7 @@ Expected: FAIL because `portable.cognitive_loop` does not exist.
 
 - [ ] **Step 3: Write minimal implementation**
 
-```python
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from uuid import uuid4
-
-
-@dataclass(frozen=True)
-class CognitiveEpisodeReceipt:
-    episode_id: str
-    project_key: str
-    task_id: str
-    intent: str
-    status: str
-    phases: tuple[str, ...]
-    observations: tuple[dict, ...]
-    started_at: str
-    finished_at: str
-    error: str | None = None
-
-
-@dataclass
-class CognitiveEpisode:
-    episode_id: str
-    project_key: str
-    task_id: str
-    intent: str
-    started_at: str
-    _phases: list[str] = field(default_factory=list)
-    _observations: list[dict] = field(default_factory=list)
-
-    @classmethod
-    def start(cls, project_key: str, task_id: str, intent: str) -> "CognitiveEpisode":
-        return cls(uuid4().hex, project_key, task_id, intent, datetime.now(timezone.utc).isoformat())
-
-    def record_phase(self, phase: str) -> None:
-        if phase not in self._phases:
-            self._phases.append(phase)
-
-    def observe(self, observation: dict) -> None:
-        self._observations.append(dict(observation))
-
-    def finish(self, status: str, error: str | None = None) -> CognitiveEpisodeReceipt:
-        return CognitiveEpisodeReceipt(
-            self.episode_id, self.project_key, self.task_id, self.intent, status,
-            tuple(self._phases), tuple(self._observations), self.started_at,
-            datetime.now(timezone.utc).isoformat(), error,
-        )
-
-
-class CognitiveLoop:
-    def begin(self, project_key: str, task_id: str, intent: str) -> CognitiveEpisode:
-        episode = CognitiveEpisode.start(project_key, task_id, intent)
-        episode.record_phase("observe")
-        return episode
-
-    def observe(self, episode: CognitiveEpisode, observation: dict) -> None:
-        episode.observe(observation)
-        episode.record_phase("learn")
-
-    def complete(self, episode: CognitiveEpisode, status: str, error: str | None = None) -> CognitiveEpisodeReceipt:
-        episode.record_phase("evaluate")
-        episode.record_phase("complete")
-        return episode.finish(status, error)
-```
+Implement `CognitiveEpisode`, `CognitiveEpisodeReceipt`, and `CognitiveLoop` with UTC timestamps, UUID episode IDs, phase deduplication, bounded observation copies, and a SHA-256 digest over canonical JSON.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -143,90 +82,107 @@ git commit -m "feat: add bounded cognitive episode contract"
 - Test: `tests/test_adaptive_runtime_context.py`
 
 **Interfaces:**
-- `AdaptiveRuntime.run()` returns the existing `OrchestrationRun` unchanged.
-- New `AdaptiveRuntime.last_cognitive_episode` exposes the most recent receipt for diagnostics.
-- The cognitive episode receives start/end observations and uses the project-scoped `CognitiveRuntime` facade already exposed by `cognition()`.
+- `AdaptiveRuntime.run()` still returns `OrchestrationRun`.
+- `AdaptiveRuntime.last_cognitive_episode` exposes the latest receipt.
+- A fresh `CognitiveLoop` is created inside each `run()` invocation to prevent concurrent executions from sharing mutable cognitive state.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing integration test**
 
 ```python
-def test_run_records_cognitive_episode(monkeypatch, tmp_path):
-    runtime = make_runtime(tmp_path)
-    result = runtime.run(
-        session_id="s1", task_id="t1", project_root=tmp_path,
-        intent="test cognitive integration",
-    )
-    receipt = runtime.last_cognitive_episode
-    assert result.status.value == "completed"
-    assert receipt is not None
-    assert receipt.task_id == "t1"
-    assert "observe" in receipt.phases
-    assert "evaluate" in receipt.phases
-    assert receipt.status == result.status.value
+def test_runtime_records_cognitive_episode_without_replacing_orchestrator():
+    result = runtime.run(session_id="s1", task_id="t1", project_root=root, intent="Fix timeout")
+    assert result.status.value == "accepted"
+    assert runtime.last_cognitive_episode is not None
+    assert runtime.last_cognitive_episode.task_id == "t1"
+    assert runtime.last_cognitive_episode.status == result.status.value
+    assert "evaluate" in runtime.last_cognitive_episode.phases
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `pytest tests/test_adaptive_runtime_context.py::test_run_records_cognitive_episode -q`
-Expected: FAIL because `last_cognitive_episode` does not exist.
+Run: `pytest tests/test_adaptive_runtime_context.py -q`
+Expected: FAIL because the runtime has no cognitive episode lifecycle.
 
-- [ ] **Step 3: Write minimal implementation**
+- [ ] **Step 3: Implement the lifecycle**
 
-Add a `CognitiveLoop` instance and `last_cognitive_episode` field in `AdaptiveRuntime.__init__`. In `run()`, create an episode after the session-start gate, record the resolved context digest when enrichment is enabled, record orchestration completion status, and complete the episode in both success and exception paths. Do not alter the existing `OrchestrationRun` return value or exception behavior.
+Instantiate `CognitiveLoop(self.cognition(project_root))` after the session checkpoint is saved. Record `before_agent`, optional context resolution, and orchestration completion observations. Complete the receipt on success and in the exception path. Leave the existing hooks, checkpoint transitions, orchestrator call, return value, and raised exceptions intact.
 
-- [ ] **Step 4: Run focused and regression tests**
+- [ ] **Step 4: Add public exports**
+
+Export `CognitiveEpisode`, `CognitiveEpisodeReceipt`, and `CognitiveLoop` from `portable.__init__`.
+
+- [ ] **Step 5: Run regression tests**
 
 Run: `pytest tests/test_adaptive_runtime_context.py -q tests/portable/test_cognitive_loop.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add portable/adaptive_runtime.py portable/__init__.py tests/test_adaptive_runtime_context.py
 git commit -m "feat: integrate cognitive episode lifecycle into runtime"
 ```
 
-### Task 3: Persist cognitive observations through existing memory
+### Task 3: Persist observations without taking execution authority
 
 **Files:**
 - Modify: `portable/cognitive_loop.py`
-- Modify: `portable/cognitive_runtime.py`
 - Test: `tests/portable/test_cognitive_loop.py`
+- Test: `tests/test_adaptive_runtime_context.py`
 
 **Interfaces:**
-- `CognitiveLoop` accepts an optional `CognitiveRuntime` and persists normalized episode observations through canonical memory.
-- Persistence is bounded to episode metadata and does not duplicate full orchestration context.
+- `CognitiveLoop(cognitive)` persists compact records through `cognitive.memory.remember(...)` with `approved=True` for this internal trusted runtime event stream.
+- `_persist(...)` catches persistence exceptions and appends normalized diagnostic text to the episode.
+- `CognitiveEpisodeReceipt.persistence_errors` exposes persistence failures without changing episode status.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the persistence test**
 
 ```python
-def test_loop_persists_episode_observation(cognitive_runtime):
-    loop = CognitiveLoop(cognitive_runtime)
+def test_loop_persists_episode_observation():
+    memory = PersistentMemory(path, require_approval=False)
+    cognitive = CognitiveRuntime.create(memory, "project-x")
+    loop = CognitiveLoop(cognitive)
     episode = loop.begin("project-x", "task-1", "learn")
     loop.observe(episode, {"event": "execution_started", "status": "running"})
-    matches = cognitive_runtime.memory.search("execution_started", limit=5)
-    assert matches
+    assert memory.search("project-x", "execution_started", limit=5)
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Write the failure-isolation test**
 
-Run: `pytest tests/portable/test_cognitive_loop.py::test_loop_persists_episode_observation -q`
-Expected: FAIL because loop observations are not persisted.
+```python
+class FailingMemory(PersistentMemory):
+    def remember(self, *args, **kwargs):
+        raise RuntimeError("forced memory failure")
 
-- [ ] **Step 3: Implement persistence using existing memory APIs**
 
-Use the existing `PersistentMemory` interface already held by `CognitiveRuntime`; store a compact record keyed by `cognitive_episode:{episode_id}:{sequence}` with project/task/phase/status metadata. Do not store raw prompts or large context payloads.
+def test_cognitive_persistence_failure_does_not_change_success():
+    memory = FailingMemory(path, require_approval=False)
+    runtime = build_runtime(memory)
+    result = runtime.run(session_id="s1", task_id="t2", project_root=root, intent="persist safely")
+    assert result.status.value == "accepted"
+    assert runtime.last_cognitive_episode.persistence_errors
+    assert "forced memory failure" in runtime.last_cognitive_episode.persistence_errors[0]
+```
 
-- [ ] **Step 4: Run tests**
+- [ ] **Step 3: Run the tests to verify they fail**
 
-Run: `pytest tests/portable/test_cognitive_loop.py -q`
+Run: `pytest tests/portable/test_cognitive_loop.py tests/test_adaptive_runtime_context.py -q`
+Expected: the persistence test fails before persistence is added and the failure-isolation behavior is absent before exception capture is added.
+
+- [ ] **Step 4: Implement bounded persistence**
+
+Persist only episode ID, task ID, event name, status, phase, and an observation digest. Catch all persistence exceptions at this boundary, record them in `_persistence_errors`, and never re-raise them into `AdaptiveRuntime.run()`.
+
+- [ ] **Step 5: Run focused tests**
+
+Run: `pytest tests/portable/test_cognitive_loop.py tests/test_adaptive_runtime_context.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add portable/cognitive_loop.py portable/cognitive_runtime.py tests/portable/test_cognitive_loop.py
-git commit -m "feat: persist bounded cognitive episode observations"
+git add portable/cognitive_loop.py tests/portable/test_cognitive_loop.py tests/test_adaptive_runtime_context.py
+git commit -m "fix: isolate cognitive persistence failures"
 ```
 
 ### Task 4: PR review, CI, merge, and branch cleanup
@@ -235,15 +191,15 @@ git commit -m "feat: persist bounded cognitive episode observations"
 - No source files unless review fixes are required.
 
 **Interfaces:**
-- Feature branch merges only after review findings are resolved and every CI check completes successfully.
+- The increment merges only when review findings are resolved and every CI check for the latest head SHA is complete and successful.
 
-- [ ] **Step 1: Run the full repository test command defined by CI**
-- [ ] **Step 2: Open PR against `main`**
-- [ ] **Step 3: Inspect complete diff and review threads**
-- [ ] **Step 4: Fix every actionable finding**
-- [ ] **Step 5: Wait for all CI checks on the latest head SHA**
-- [ ] **Step 6: Merge PR**
-- [ ] **Step 7: Delete feature branch**
-- [ ] **Step 8: Verify only `main` remains**
+- [ ] **Step 1: Compare branch against `main` and inspect the complete diff.**
+- [ ] **Step 2: Perform a code/design review and record all findings.**
+- [ ] **Step 3: Fix all actionable findings and push the fixes.**
+- [ ] **Step 4: Wait for all CI checks on the latest head SHA.**
+- [ ] **Step 5: If any check fails, diagnose it, fix it, and repeat the full check cycle.**
+- [ ] **Step 6: Merge the PR only after all checks are green.**
+- [ ] **Step 7: Delete the feature branch.**
+- [ ] **Step 8: Verify the repository has only `main`.**
 
-After this increment is merged, repeat the same lifecycle for the next backlog item, beginning from the new `main` SHA.
+After merge, start the next backlog increment from the resulting `main` SHA and repeat this lifecycle.
