@@ -66,7 +66,14 @@ class AdaptiveTriggerTests(unittest.TestCase):
             self.assertTrue(done.wait(2.0))
             self.assertEqual(calls[0][0].task, "task")
             self.assertEqual(trigger_runtime.due(), ())
-            self.assertEqual(trigger.get_status(receipt.trigger_id).status, "success")
+
+            deadline = time.monotonic() + 2.0
+            status = trigger.get_status(receipt.trigger_id)
+            while time.monotonic() < deadline and status is not None and status.status != "success":
+                time.sleep(0.01)
+                status = trigger.get_status(receipt.trigger_id)
+            self.assertIsNotNone(status)
+            self.assertEqual(status.status, "success")
             trigger.close()
             scheduler.close()
 
