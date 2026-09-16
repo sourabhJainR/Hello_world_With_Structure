@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
-import sqlite3
+
 from .causal_model import CausalLink, CausalModel
 
 
@@ -55,22 +55,42 @@ class CausalLearner:
         if not intervention.intervention_id or not intervention.cause_id or not intervention.expected_effect:
             raise ValueError("intervention fields are required")
         with self.memory._lock, self.memory._connect() as db:
-            db.execute("INSERT OR REPLACE INTO causal_interventions VALUES(?,?,?,?,?,?)",
+            existing = db.execute(
+                "SELECT cause_id,value,expected_effect FROM causal_interventions WHERE project=? AND intervention_id=?",
+                (self.project, intervention.intervention_id),
+            ).fetchone()
+            expected = (intervention.cause_id, json.dumps(intervention.value, sort_keys=True), intervention.expected_effect)
+            if existing:
+                if existing != expected:
+                    raise ValueError("intervention_id already exists with different content")
+                return
+            db.execute("INSERT INTO causal_interventions VALUES(?,?,?,?,?,?)",
                        (self.project, intervention.intervention_id, intervention.cause_id,
-                        json.dumps(intervention.value, sort_keys=True), intervention.expected_effect, _utc()))
+                        expected[1], intervention.expected_effect, _utc()))
 
     def observe(self, outcome: InterventionOutcome) -> CausalLink | None:
-        if not 0 <= outcome.confidence <= 1 or not outcome.evidence_id:
+        if not isinstance(outcome, InterventionOutcome):
+            raise TypeError("outcome must be an InterventionOutcome")
+        if not 0 <= outcome.confidence <= 1 or not outcome.evidence_id or not outcome.effect_id:
             raise ValueError("invalid intervention outcome")
         with self.memory._lock, self.memory._connect() as db:
             row = db.execute("SELECT cause_id,expected_effect FROM causal_interventions WHERE project=? AND intervention_id=?",
                              (self.project, outcome.intervention_id)).fetchone()
             if row is None:
                 raise KeyError("unknown intervention")
+            if outcome.effect_id != row[1]:
+                raise ValueError("observed effect does not match intervention expectation")
+            existing = db.execute(
+                "SELECT 1 FROM causal_outcomes WHERE project=? AND intervention_id=? AND effect_id=? AND evidence_id=?",
+                (self.project, outcome.intervention_id, outcome.effect_id, outcome.evidence_id),
+            ).fetchone()
+            if existing:
+                edges = self.causal.effects_of(row[0], limit=self.causal.max_links)
+                return next((edge for edge in edges if edge.target_id == outcome.effect_id and edge.edge_id == f"intervention:{outcome.intervention_id}:{outcome.effect_id}"), None)
             count = db.execute("SELECT COUNT(*) FROM causal_outcomes WHERE project=?", (self.project,)).fetchone()[0]
             if count >= self.max_outcomes:
                 raise ValueError("causal outcome budget exceeded")
-            db.execute("INSERT OR REPLACE INTO causal_outcomes VALUES(?,?,?,?,?,?,?)",
+            db.execute("INSERT INTO causal_outcomes VALUES(?,?,?,?,?,?,?)",
                        (self.project, outcome.intervention_id, outcome.effect_id, int(outcome.observed),
                         outcome.evidence_id, outcome.confidence, _utc()))
         if not outcome.observed:
