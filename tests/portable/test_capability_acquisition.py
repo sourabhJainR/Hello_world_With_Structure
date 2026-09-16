@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from portable.capability_acquisition import CapabilityAcquirer, CapabilityNeed
+from portable.capability_acquisition import CapabilityAcquirer, CapabilityNeed, PracticeResult
 from portable.persistent_memory import PersistentMemory
 from portable.skill_graph import SkillGraph
 
@@ -48,6 +48,19 @@ class CapabilityAcquisitionTests(unittest.TestCase):
 
             graph = SkillGraph(acquirer.memory, "project-x")
             self.assertTrue(graph.ready("recovery"))
+
+    def test_graduation_rejects_fabricated_practice_results(self):
+        with tempfile.TemporaryDirectory() as directory:
+            acquirer = self._acquirer(directory)
+            proposal = self._proposal(acquirer)
+            assert proposal is not None
+            fabricated = (
+                PracticeResult(proposal.id, "fake-1", True, True, True),
+                PracticeResult(proposal.id, "fake-2", True, True, True),
+            )
+            receipt = acquirer.graduate(proposal.id, fabricated, evidence_ids=("e1", "e2"))
+            self.assertFalse(receipt.accepted)
+            self.assertIn("persisted accepted attempts", receipt.reasons[0])
 
 
 if __name__ == "__main__":
