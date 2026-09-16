@@ -8,10 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Iterable
 from uuid import uuid4
 
@@ -85,6 +83,19 @@ class TuningDecision:
     policy_version: str
 
 
+@dataclass(frozen=True)
+class MaintenanceReceipt:
+    cycle_id: str
+    project: str
+    started_at: str
+    finished_at: str
+    jobs_processed: int
+    strategy_action: str
+    policy_version: str
+    errors: tuple[str, ...]
+    digest: str
+
+
 class AdaptiveTuner:
     """Persist experience and graduate empirically validated future policy."""
 
@@ -111,6 +122,11 @@ class AdaptiveTuner:
                 iteration_target REAL NOT NULL, created_at TEXT NOT NULL, status TEXT NOT NULL,
                 evidence_digest TEXT NOT NULL, PRIMARY KEY(project, scope, version))""")
             db.execute("CREATE INDEX IF NOT EXISTS idx_adaptive_policy_current ON adaptive_policies(project, scope, status, created_at)")
+            db.execute("""CREATE TABLE IF NOT EXISTS adaptive_maintenance_receipts(
+                project TEXT NOT NULL, cycle_id TEXT NOT NULL, started_at TEXT NOT NULL,
+                finished_at TEXT NOT NULL, jobs_processed INTEGER NOT NULL, strategy_action TEXT NOT NULL,
+                policy_version TEXT NOT NULL, errors TEXT NOT NULL, digest TEXT NOT NULL,
+                PRIMARY KEY(project, cycle_id))""")
             row = db.execute("SELECT 1 FROM adaptive_policies WHERE project=? AND scope=? LIMIT 1", (self.project, "global")).fetchone()
             if row is None:
                 db.execute(
@@ -243,15 +259,53 @@ class AdaptiveTuner:
         changed = action != "hold" or abs(confidence_adjustment - active.confidence_adjustment) >= 0.02 or abs(iteration_target - active.iteration_target) >= 0.25
         evidence_digest = self._history_digest(records)
         if not changed:
-            action = "hold"
-            strategy = active.strategy
-            iteration_target = active.iteration_target
-            confidence_adjustment = active.confidence_adjustment
-            reason = "history does not support a bounded change"
-            return TuningDecision(scope, action, strategy, confidence_adjustment, iteration_target, active.iteration_target,
-                                   len(records), independent, reason, evidence_digest, active.version)
+            return TuningDecision(scope, "hold", active.strategy, active.confidence_adjustment, active.iteration_target,
+                                  active.iteration_target, len(records), independent, "history does not support a bounded change",
+                                  evidence_digest, active.version)
         return self._promote(scope, active, strategy, confidence_adjustment, iteration_target, len(records), independent,
                              strategy_reason, evidence_digest, action)
+
+    def record_maintenance_receipt(
+        self,
+        *,
+        started_at: str,
+        jobs_processed: int,
+        strategy_action: str,
+        policy_version: str,
+        errors: Iterable[str] = (),
+        cycle_id: str | None = None,
+    ) -> MaintenanceReceipt:
+        finished_at = _utc()
+        cycle_id = cycle_id or uuid4().hex
+        clean_errors = tuple(sorted({str(item) for item in errors if str(item)}))
+        payload = {
+            "cycle_id": cycle_id,
+            "project": self.project,
+            "started_at": started_at,
+            "finished_at": finished_at,
+            "jobs_processed": int(jobs_processed),
+            "strategy_action": strategy_action,
+            "policy_version": policy_version,
+            "errors": clean_errors,
+        }
+        digest = _digest(payload)
+        with self.memory._lock, self.memory._connect() as db:
+            db.execute(
+                "INSERT INTO adaptive_maintenance_receipts VALUES(?,?,?,?,?,?,?,?,?)",
+                (self.project, cycle_id, started_at, finished_at, int(jobs_processed), strategy_action, policy_version,
+                 json.dumps(clean_errors), digest),
+            )
+        return MaintenanceReceipt(cycle_id, self.project, started_at, finished_at, int(jobs_processed), strategy_action,
+                                  policy_version, clean_errors, digest)
+
+    def recent_receipts(self, limit: int = 20) -> tuple[MaintenanceReceipt, ...]:
+        with self.memory._lock, self.memory._connect() as db:
+            rows = db.execute(
+                "SELECT cycle_id,started_at,finished_at,jobs_processed,strategy_action,policy_version,errors,digest "
+                "FROM adaptive_maintenance_receipts WHERE project=? ORDER BY finished_at DESC,cycle_id DESC LIMIT ?",
+                (self.project, int(limit)),
+            ).fetchall()
+        return tuple(MaintenanceReceipt(row[0], self.project, row[1], row[2], int(row[3]), row[4], row[5], tuple(json.loads(row[6])), row[7]) for row in rows)
 
     def _promote(self, scope: str, active: AdaptivePolicy, strategy: str, confidence_adjustment: float,
                  iteration_target: float, observations: int, independent: int, reason: str,
@@ -281,4 +335,4 @@ class AdaptiveTuner:
         return _digest({"records": [record.digest for record in records]})
 
 
-__all__ = ["AdaptivePolicy", "AdaptiveTuner", "ExperienceRecord", "TuningDecision"]
+__all__ = ["AdaptivePolicy", "AdaptiveTuner", "ExperienceRecord", "MaintenanceReceipt", "TuningDecision"]
