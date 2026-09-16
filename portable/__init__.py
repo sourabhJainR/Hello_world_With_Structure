@@ -47,6 +47,7 @@ from .reasoning_ledger import ReasoningLedger, ReasoningRecord
 from .causal_model import CausalLink, CausalModel
 from .goal_manager import Goal, GoalManager
 from .information_planner import InformationAction, InformationPlan, InformationPlanner
+from .self_model import CapabilityProfile, SelfModel
 
 __all__ = [
     "main", "AdaptiveRuntime", "HookBus", "HookDecision", "HookEvent", "HookPhase", "HookedExecution",
@@ -67,5 +68,5 @@ __all__ = [
     "OptimizationRound", "OptimizationResult", "OneChangeOptimizer", "ScopeFinding", "ScopeReport", "ScopeChecker",
     "Observation", "WorldFact", "WorldModel", "BeliefEvidence", "Hypothesis", "HypothesisEngine",
     "ReasoningLedger", "ReasoningRecord", "CausalLink", "CausalModel", "Goal", "GoalManager",
-    "InformationAction", "InformationPlan", "InformationPlanner",
+    "InformationAction", "InformationPlan", "InformationPlanner", "CapabilityProfile", "SelfModel",
 ]
