@@ -51,11 +51,12 @@ def test_structural_analogy_ranks_overlap_and_preserves_negative_conditions():
     assert "non_idempotent_action" in candidate.negative_conditions
 
 
-def test_validation_requires_evidence_and_repeatability():
+def test_validation_requires_independent_evidence():
     engine = GeneralizationEngine(memory, "target")
     engine.record(Abstraction("a1", "parser-recovery", "recovery", frozenset({"retry", "validate"}), ("e1",), 0.8, frozenset()))
     candidate = engine.find_analogies(frozenset({"retry", "validate"}))[0]
     assert not engine.validate_candidate(candidate, evidence_ids=())
+    assert not engine.validate_candidate(candidate, evidence_ids=("e1",))
     assert engine.validate_candidate(candidate, evidence_ids=("e2",))
 ```
 
@@ -66,7 +67,7 @@ Expected: FAIL because the module does not exist.
 
 - [ ] **Step 3: Implement the minimal persistent abstraction model**
 
-Use SQLite tables `generalization_abstractions` and `generalization_validations`, normalize structure features as sorted unique strings, compute Jaccard similarity, carry source evidence and negative conditions, and require non-empty validation evidence distinct from source evidence.
+Use SQLite tables `generalization_abstractions` and `generalization_validations`, normalize structure features as sorted unique strings, compute Jaccard similarity, carry source evidence and negative conditions, reject empty structural evidence, and require validation evidence distinct from source evidence.
 
 - [ ] **Step 4: Run focused tests**
 
@@ -102,8 +103,8 @@ from portable.skill_graph import SkillGraph, SkillNode
 
 def test_skill_graph_tracks_prerequisites_and_readiness():
     graph = SkillGraph(memory, "project-x")
-    graph.upsert(SkillNode("parse", "skill", frozenset(), frozenset({"e1"}), frozenset({"parse_error"}), frozenset()))
-    graph.upsert(SkillNode("recover", "skill", frozenset({"parse"}), frozenset({"e2"}), frozenset({"bad_retry"}), frozenset()))
+    graph.upsert(SkillNode("parse", "skill", frozenset(), frozenset({"e1"}), frozenset({"parse_error"}), frozenset(), True))
+    graph.upsert(SkillNode("recover", "skill", frozenset({"parse"}), frozenset({"e2"}), frozenset({"bad_retry"}), frozenset(), False))
     assert graph.ready("parse")
     assert not graph.ready("recover")
     assert graph.missing_prerequisites("recover") == ("parse",)
@@ -125,7 +126,7 @@ Expected: FAIL because the module does not exist.
 
 - [ ] **Step 3: Implement persistent skill graph**
 
-Store nodes and directed prerequisite edges under project scope. Detect dependency cycles with bounded DFS before inserting an edge. `ready()` is true only when the node exists and all prerequisites have evidence-backed validation state.
+Store nodes and directed prerequisite edges under project scope. Reject unknown prerequisite nodes. Detect dependency cycles with bounded DFS before insertion, and preserve prior dependencies when an `upsert()` cycle check fails. `ready()` is true only when the node itself is validated with evidence and all prerequisites are validated with evidence.
 
 - [ ] **Step 4: Run focused tests**
 
@@ -143,14 +144,14 @@ git commit -m "feat: add durable skill dependency graph"
 
 **Files:**
 - Modify: `portable/learning_transfer.py`
-- Modify: `portable/generalization.py`
-- Test: `tests/portable/test_learning_transfer.py`
+- Test: `tests/test_learning_transfer.py`
 
 **Interfaces:**
-- Add optional `structure_signature: tuple[str, ...] = ()` to `LearningExperience` without breaking existing constructors through a default.
+- Add optional `structure_signature: tuple[str, ...] = ()` and `negative_conditions: tuple[str, ...] = ()` to `LearningExperience` without breaking existing constructors through defaults.
 - `LearningTransfer.transfer_structural(...) -> list[TransferCandidate]`
-- Structural transfer ranks by similarity, source-project count, and confidence.
-- Negative-transfer rules exclude candidates whose negative condition intersects the supplied target conditions.
+- Structural transfer ranks by similarity, independent source-project count, and confidence.
+- Negative-transfer rules exclude candidates whose negative conditions intersect supplied target conditions.
+- Re-recording an existing experience ID with different transfer metadata is rejected.
 
 - [ ] **Step 1: Write failing tests**
 
@@ -165,28 +166,30 @@ def test_structural_transfer_finds_related_verified_experience():
 
 
 def test_structural_transfer_rejects_negative_context():
-    # source pattern carries a non-idempotent restriction; target supplies that condition.
-    ...
+    transfer.record(LearningExperience("e2", "source-a", "parser", "recovery", "worked", "retry safely",
+                                       ("ev2",), 0.9, True, ("retry",), ("non_idempotent_action",)))
+    assert transfer.transfer_structural("parser", "recovery", ("retry",),
+                                        target_conditions=("non_idempotent_action",)) == []
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pytest tests/portable/test_learning_transfer.py -q`
+Run: `pytest tests/test_learning_transfer.py -q`
 Expected: FAIL because structural signature transfer is unavailable.
 
 - [ ] **Step 3: Implement structural matching**
 
-Persist signatures in a companion `learning_transfer_signatures` table keyed by experience ID. Use Jaccard similarity over signatures. Reuse existing verified/worked/evidence filters. Attach negative conditions through the generalization lookup before returning a candidate.
+Persist signatures in a companion `learning_transfer_signatures` table keyed by experience ID. Use Jaccard similarity over signatures, aggregate equivalent patterns across independent source projects, reuse existing verified/worked/evidence filters, and attach negative conditions to each returned candidate.
 
 - [ ] **Step 4: Run regression tests**
 
-Run: `pytest tests/portable/test_learning_transfer.py -q`
+Run: `pytest tests/test_learning_transfer.py -q`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add portable/learning_transfer.py portable/generalization.py tests/portable/test_learning_transfer.py
+git add portable/learning_transfer.py tests/test_learning_transfer.py
 git commit -m "feat: add structural evidence-gated learning transfer"
 ```
 
@@ -200,15 +203,15 @@ git commit -m "feat: add structural evidence-gated learning transfer"
 - [ ] **Step 1: Add public exports**
 - [ ] **Step 2: Run the focused generalized-learning suite**
 
-Run: `pytest tests/portable/test_generalization.py tests/portable/test_skill_graph.py tests/portable/test_learning_transfer.py -q`
+Run: `pytest tests/portable/test_generalization.py tests/portable/test_skill_graph.py tests/test_learning_transfer.py -q`
 Expected: PASS.
 
 - [ ] **Step 3: Run the repository regression suite defined by CI**
 - [ ] **Step 4: Commit**
 
 ```bash
-git add portable/__init__.py tests/portable/test_generalization.py tests/portable/test_skill_graph.py
-# include any integration test changes in the same commit
+git add portable/__init__.py tests/portable/test_generalization.py tests/portable/test_skill_graph.py tests/test_learning_transfer.py
+# include any required integration changes in this commit
 git commit -m "feat: export generalization and skill graph capabilities"
 ```
 
