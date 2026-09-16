@@ -42,6 +42,7 @@ from .agent_patterns import (
     SpecialistRouter,
 )
 from .world_model import Observation, WorldFact, WorldModel
+from .hypothesis_engine import BeliefEvidence, Hypothesis, HypothesisEngine
 
 __all__ = [
     "main", "AdaptiveRuntime", "HookBus", "HookDecision", "HookEvent", "HookPhase", "HookedExecution",
@@ -60,5 +61,5 @@ __all__ = [
     "Specialist", "SpecialistRouter", "RouteRequest", "RouteDecision",
     "ResearchTask", "ResearchPlan", "ResearchPlanner", "EvidenceItem", "ConsensusResult", "MixtureOfAgents",
     "OptimizationRound", "OptimizationResult", "OneChangeOptimizer", "ScopeFinding", "ScopeReport", "ScopeChecker",
-    "Observation", "WorldFact", "WorldModel",
+    "Observation", "WorldFact", "WorldModel", "BeliefEvidence", "Hypothesis", "HypothesisEngine",
 ]
