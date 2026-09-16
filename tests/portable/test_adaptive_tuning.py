@@ -47,6 +47,8 @@ class AdaptiveTuningTests(unittest.TestCase):
         for i in range(6):
             self._record(f"base-{i}", strategy="default", quality=0.85, iterations=3)
             self._record(f"cand-{i}", strategy="fast", quality=0.95, iterations=2)
+        for i in range(2):
+            self._record(f"hold-{i}", strategy="fast", quality=0.95, iterations=2, evaluation_class="holdout")
         decision = self.tuner.evaluate("planning", candidate_strategy="fast")
         self.assertEqual(decision.action, "promote")
         self.assertEqual(self.tuner.current_policy("planning").strategy, "fast")
@@ -64,15 +66,15 @@ class AdaptiveTuningTests(unittest.TestCase):
 
     def test_iteration_target_reduces_only_with_holdout_evidence(self):
         for i in range(8):
-            self._record(f"r-{i}", quality=0.95, iterations=3, evaluation_class="adaptation")
-            self._record(f"h-{i}", quality=0.95, iterations=2, evaluation_class="holdout")
+            self._record(f"r-{i}", quality=0.95, iterations=1, evaluation_class="adaptation")
+            self._record(f"h-{i}", quality=0.95, iterations=1, evaluation_class="holdout")
         decision = self.tuner.evaluate("planning")
         self.assertLess(decision.iteration_target, decision.previous_iteration_target)
 
     def test_quality_regression_blocks_iteration_reduction(self):
         for i in range(8):
-            self._record(f"r-{i}", quality=0.95, iterations=3, evaluation_class="adaptation")
-            self._record(f"h-{i}", quality=0.70, iterations=2, evaluation_class="holdout")
+            self._record(f"r-{i}", quality=0.95, iterations=1, evaluation_class="adaptation")
+            self._record(f"h-{i}", quality=0.70, iterations=1, evaluation_class="holdout")
         decision = self.tuner.evaluate("planning")
         self.assertGreaterEqual(decision.iteration_target, decision.previous_iteration_target)
 
