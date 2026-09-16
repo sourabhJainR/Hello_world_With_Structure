@@ -27,8 +27,8 @@ class BenchmarkCase:
                 raise ValueError(f"{name} must be non-empty")
         if self.kind not in KINDS:
             raise ValueError("unknown benchmark kind")
-        if not self.evidence or any(not isinstance(item, str) or not item.strip() for item in self.evidence):
-            raise ValueError("benchmark evidence is required")
+        if any(not isinstance(item, str) or not item.strip() for item in self.evidence):
+            raise ValueError("evidence must contain non-empty identifiers")
         if not 0 <= self.confidence <= 1:
             raise ValueError("confidence must be between 0 and 1")
 
@@ -75,14 +75,17 @@ class DeepEvaluator:
         if missing:
             raise ValueError(f"missing required benchmark kinds: {', '.join(missing)}")
 
-        passed = [case for case in materialized if case.expected.strip() == case.observed.strip()]
+        def passed_case(case: BenchmarkCase) -> bool:
+            return bool(case.evidence) and case.expected.strip() == case.observed.strip()
+
+        passed = [case for case in materialized if passed_case(case)]
         def rate(group: list[BenchmarkCase]) -> float:
-            return sum(case.expected.strip() == case.observed.strip() for case in group) / len(group) if group else 0.0
+            return sum(passed_case(case) for case in group) / len(group) if group else 0.0
 
         per_kind = {kind: rate([case for case in materialized if case.kind == kind]) for kind in coverage}
         per_domain = {domain: rate([case for case in materialized if case.domain == domain]) for domain in sorted({case.domain for case in materialized})}
         per_difficulty = {difficulty: rate([case for case in materialized if case.difficulty == difficulty]) for difficulty in sorted({case.difficulty for case in materialized})}
-        calibration = sum(abs(case.confidence - float(case in passed)) for case in materialized) / len(materialized) if materialized else 0.0
+        calibration = sum(abs(case.confidence - float(passed_case(case))) for case in materialized) / len(materialized) if materialized else 0.0
         adversarial = [case for case in materialized if case.kind == "adversarial"]
         canonical = [
             {"case_id": case.case_id, "kind": case.kind, "expected": case.expected.strip(), "observed": case.observed.strip(),
@@ -90,9 +93,10 @@ class DeepEvaluator:
             for case in sorted(materialized, key=lambda item: item.case_id)
         ]
         digest = hashlib.sha256(json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+        evidence_rate = sum(bool(case.evidence) for case in materialized) / len(materialized) if materialized else 0.0
         return DeepBenchmarkReport(
             len(materialized), len(passed), len(materialized) - len(passed), coverage, per_kind, per_domain,
-            per_difficulty, 1.0 if materialized else 0.0, round(calibration, 6), rate(adversarial) if adversarial else None,
+            per_difficulty, round(evidence_rate, 6), round(calibration, 6), rate(adversarial) if adversarial else None,
             tuple(sorted({case.domain for case in materialized})), digest,
         )
 
