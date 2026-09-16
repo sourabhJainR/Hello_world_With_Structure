@@ -69,12 +69,18 @@ class ExecutionEnvelope:
     review_ids: tuple[str, ...] = ()
     regression_ids: tuple[str, ...] = ()
     release_ids: tuple[str, ...] = ()
+    iteration: int = 0
+    wake_reason: str = ""
+    prior_outcome_id: str = ""
+    next_action_ids: tuple[str, ...] = ()
     metadata: Mapping[str, Any] = field(default_factory=dict)
     schema_version: str = "1.0"
 
     def validate(self) -> None:
         if self.schema_version != "1.0":
             raise ValueError(f"unsupported execution envelope schema: {self.schema_version}")
+        if self.iteration < 0:
+            raise ValueError("iteration cannot be negative")
         if self.plan.task_ids and self.intent.task_id not in self.plan.task_ids:
             raise ValueError("plan/task identity mismatch")
         seen: set[str] = set()
@@ -106,6 +112,10 @@ class ExecutionEnvelope:
             "review_ids": list(self.review_ids),
             "regression_ids": list(self.regression_ids),
             "release_ids": list(self.release_ids),
+            "iteration": self.iteration,
+            "wake_reason": self.wake_reason,
+            "prior_outcome_id": self.prior_outcome_id,
+            "next_action_ids": list(self.next_action_ids),
             "metadata": dict(self.metadata),
         }
 
@@ -132,6 +142,10 @@ class ExecutionEnvelope:
             review_ids=tuple(raw.get("review_ids", ())),
             regression_ids=tuple(raw.get("regression_ids", ())),
             release_ids=tuple(raw.get("release_ids", ())),
+            iteration=int(raw.get("iteration", 0)),
+            wake_reason=str(raw.get("wake_reason", "")),
+            prior_outcome_id=str(raw.get("prior_outcome_id", "")),
+            next_action_ids=tuple(raw.get("next_action_ids", ())),
             metadata=dict(raw.get("metadata", {})),
             schema_version=str(raw.get("schema_version", "1.0")),
         )

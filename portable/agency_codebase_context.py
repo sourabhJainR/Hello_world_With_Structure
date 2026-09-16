@@ -44,13 +44,42 @@ class GraphTrace:
         return {"seed_paths":list(self.seed_paths),"expanded_paths":list(self.expanded_paths),"stopped":list(self.stopped),"edges":[e.__dict__.copy() for e in self.edges]}
 
 @dataclass(frozen=True)
+class ContextReuseKey:
+    snapshot_digest: str
+    query: str
+    token_budget: int
+    max_files: int
+    context_lines: int
+    graph_hops: int
+
+    def __post_init__(self) -> None:
+        if not self.snapshot_digest or not self.query.strip():
+            raise ValueError("snapshot_digest and query are required")
+        if min(self.token_budget, self.max_files, self.context_lines) < 1 or self.graph_hops < 0:
+            raise ValueError("context limits must be valid")
+
+    def digest(self) -> str:
+        payload = "|".join((self.snapshot_digest, self.query.strip(), str(self.token_budget), str(self.max_files), str(self.context_lines), str(self.graph_hops)))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+@dataclass(frozen=True)
 class CodebaseContext:
     root: str; query: str; snapshot_digest: str; chunks: tuple[ContextChunk,...]
     relevant_paths: tuple[str,...]; unknowns: tuple[str,...]; token_estimate: int
     files_scanned: int; files_read: int
     graph_trace: GraphTrace=field(default_factory=lambda:GraphTrace((),(),(),()))
+    context_version: str="1"
+    retrieval_fingerprint: str=""
+
+    def reuse_key(self, *, token_budget: int, max_files: int, context_lines: int, graph_hops: int) -> ContextReuseKey:
+        return ContextReuseKey(self.snapshot_digest, self.query, token_budget, max_files, context_lines, graph_hops)
+
+    @property
+    def omitted_count(self) -> int:
+        return sum(1 for path in self.unknowns if path.startswith("Relevant files omitted from context budget:"))
+
     def as_dict(self)->dict[str,object]:
-        return {"root":self.root,"query":self.query,"snapshot_digest":self.snapshot_digest,"relevant_paths":list(self.relevant_paths),"unknowns":list(self.unknowns),"token_estimate":self.token_estimate,"files_scanned":self.files_scanned,"files_read":self.files_read,"graph_trace":self.graph_trace.as_dict(),"chunks":[c.__dict__|{"tokens":c.tokens} for c in self.chunks]}
+        return {"root":self.root,"query":self.query,"snapshot_digest":self.snapshot_digest,"context_version":self.context_version,"retrieval_fingerprint":self.retrieval_fingerprint,"relevant_paths":list(self.relevant_paths),"unknowns":list(self.unknowns),"token_estimate":self.token_estimate,"files_scanned":self.files_scanned,"files_read":self.files_read,"graph_trace":self.graph_trace.as_dict(),"chunks":[c.__dict__|{"tokens":c.tokens} for c in self.chunks]}
 
 @dataclass
 class CodebaseIndex:
@@ -59,7 +88,7 @@ class CodebaseIndex:
     def build(cls,root:str|Path,*,ignores:Iterable[str]=DEFAULT_IGNORES)->"CodebaseIndex":
         root_path=Path(root).resolve(); ignored=set(ignores); records={}
         for current,dirs,names in os.walk(root_path):
-            dirs[:]=[d for d in dirs if d not in ignored and not d.startswith(".")]
+            dirs[:]=[d for d in dirs if d not in ignored]
             for name in names:
                 path=Path(current)/name; rel=path.relative_to(root_path).as_posix()
                 if path.is_symlink() or path.suffix.lower() not in TEXT_EXTENSIONS: continue
@@ -187,7 +216,7 @@ def retrieve(index:CodebaseIndex,query:str,*,token_budget:int=4000,max_files:int
     if token_budget<1 or max_files<1 or context_lines<1: raise ValueError("token_budget, max_files and context_lines must be positive")
     ranked=_rank_files(index,query); unknowns=[]
     if not ranked:
-        trace=GraphTrace((),(),(),("no_seed_match",)); return CodebaseContext(str(index.root),query,index.digest(),(),(),("No indexed file path, symbol, or import matched the query",),0,len(index.files),0,trace)
+        trace=GraphTrace((),(),(),("no_seed_match",)); return CodebaseContext(str(index.root),query,index.digest(),(),(),("No indexed file path, symbol, or import matched the query",),0,len(index.files),0,trace,"1",ContextReuseKey(index.digest(),query,token_budget,max_files,context_lines,graph_hops).digest())
     seeds=[r.path for _,r,_ in ranked[:min(3,max_files)]]; graph_ranked,trace=_expand_graph(index,seeds,graph_hops)
     candidates={r.path:(s,why or "ranked-file") for s,r,why in ranked[:max_files]}
     for p,s,why in graph_ranked:
@@ -208,6 +237,9 @@ def retrieve(index:CodebaseIndex,query:str,*,token_budget:int=4000,max_files:int
     omitted=[p for p,_ in ordered if p not in {c.path for c in chunks}]
     if omitted: unknowns.append("Relevant files omitted from context budget: "+", ".join(omitted))
     unknowns.extend("Graph retrieval stopped: "+x for x in trace.stopped)
-    return CodebaseContext(str(index.root),query,index.digest(),tuple(chunks),tuple(c.path for c in chunks),tuple(dict.fromkeys(unknowns)),used,len(index.files),files_read,trace)
+    key=ContextReuseKey(index.digest(),query,token_budget,max_files,context_lines,graph_hops)
+    return CodebaseContext(str(index.root),query,index.digest(),tuple(chunks),tuple(c.path for c in chunks),tuple(dict.fromkeys(unknowns)),used,len(index.files),files_read,trace,"1",key.digest())
 
 def retrieve_from_path(root:str|Path,query:str,**kwargs:object)->CodebaseContext: return retrieve(CodebaseIndex.build(root),query,**kwargs)
+
+__all__ = ["CodebaseContext", "CodebaseIndex", "ContextChunk", "ContextReuseKey", "FileRecord", "GraphEdge", "GraphTrace", "Symbol", "retrieve", "retrieve_from_path"]

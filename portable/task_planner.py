@@ -22,6 +22,9 @@ class Task:
     acceptance: list[str] = field(default_factory=list)
     files: list[str] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
+    parallel_group: str = ""
+    checkpoint: str = ""
+    verification_strategy: list[str] = field(default_factory=list)
 
     def validate(self) -> None:
         if not self.id or not self.title:
@@ -71,6 +74,14 @@ class TaskPlan:
                 result.append(task)
         priority = {"high": 0, "medium": 1, "low": 2}
         return sorted(result, key=lambda t: (priority[t.priority], t.id))
+
+    def parallel_ready(self, tag: str | None = None) -> list[Task]:
+        ready = self.ready(tag)
+        groups: dict[str, list[Task]] = {}
+        for task in ready:
+            if task.parallel_group:
+                groups.setdefault(task.parallel_group, []).append(task)
+        return [task for group in sorted(groups) for task in sorted(groups[group], key=lambda t: t.id)]
 
     def next(self, tag: str | None = None) -> Task | None:
         ready = self.ready(tag)
