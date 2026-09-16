@@ -8,7 +8,7 @@ from __future__ import annotations
 import calendar
 import json
 import sqlite3
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -33,16 +33,35 @@ class AutomationScheduler(_AutomationScheduler):
         return super().finish(schedule_or_claim, claim_or_status, status_or_detail, detail, now=now)
 
     def find_task(self, task: str) -> Schedule | None:
-        """Return the existing durable schedule for an exact task, if any."""
+        """Return an exact schedule, migrating the legacy learning task once."""
         with sqlite3.connect(self.path) as db:
             row = db.execute(
                 "SELECT id,task,interval_seconds,max_attempts,next_run,enabled,attempts "
                 "FROM schedules WHERE task=? ORDER BY id LIMIT 1",
                 (task,),
             ).fetchone()
-        if row is None:
-            return None
-        return Schedule(row[0], row[1], int(row[2]), int(row[3]), row[4], bool(row[5]), int(row[6]))
+            if row is not None:
+                existing = Schedule(row[0], row[1], int(row[2]), int(row[3]), row[4], bool(row[5]), int(row[6]))
+                try:
+                    payload = json.loads(task)
+                except (TypeError, json.JSONDecodeError):
+                    payload = None
+                if isinstance(payload, dict) and payload.get("kind") == "adaptive_learning":
+                    rows = db.execute("SELECT id,task,interval_seconds,max_attempts,next_run,enabled,attempts FROM schedules WHERE enabled=1 ORDER BY id").fetchall()
+                    for candidate_row in rows:
+                        candidate = Schedule(candidate_row[0], candidate_row[1], int(candidate_row[2]), int(candidate_row[3]), candidate_row[4], bool(candidate_row[5]), int(candidate_row[6]))
+                        spec = self.calendar_spec(candidate)
+                        if spec is not None and candidate.task_payload().get("task") == task:
+                            return candidate
+                    if existing.enabled:
+                        db.execute("UPDATE schedules SET enabled=0,claim=NULL WHERE id=?", (existing.id,))
+        try:
+            payload = json.loads(task)
+        except (TypeError, json.JSONDecodeError):
+            payload = None
+        if isinstance(payload, dict) and payload.get("kind") == "adaptive_learning":
+            return self.add_last_day_of_month(task)
+        return None
 
     def disable_task(self, task: str) -> int:
         """Disable all exact-match schedules without deleting their history."""
@@ -67,8 +86,6 @@ class AutomationScheduler(_AutomationScheduler):
             scheduled_time = time(hour=hour, minute=minute)
         except (TypeError, ValueError) as exc:
             raise ValueError("at_time must be HH:MM") from exc
-        if not (0 <= hour <= 23 and 0 <= minute <= 59):
-            raise ValueError("at_time must be HH:MM")
         tz = cls._calendar_timezone(timezone_name)
         current = (now or datetime.now(timezone.utc)).astimezone(tz)
         year, month = current.year, current.month
@@ -96,6 +113,14 @@ class AutomationScheduler(_AutomationScheduler):
         if not isinstance(at_time, str) or not isinstance(timezone_name, str):
             return None
         return {"at_time": at_time, "timezone": timezone_name}
+
+    @staticmethod
+    def task_payload(schedule: Schedule) -> dict[str, object]:
+        try:
+            value = json.loads(schedule.task)
+        except (TypeError, json.JSONDecodeError):
+            return {}
+        return value if isinstance(value, dict) else {}
 
     def add_last_day_of_month(
         self,
@@ -128,17 +153,15 @@ class AutomationScheduler(_AutomationScheduler):
     def finish_calendar(self, schedule_id: str, claim: str, status: str, detail: str = "", *, now: datetime | None = None) -> None:
         """Finish a run and advance a monthly schedule only after success."""
         finished_at = now or datetime.now(timezone.utc)
-        schedule = None
         with sqlite3.connect(self.path) as db:
             row = db.execute(
                 "SELECT id,task,interval_seconds,max_attempts,next_run,enabled,attempts "
                 "FROM schedules WHERE id=? AND claim=?",
                 (schedule_id, claim),
             ).fetchone()
-            if row:
-                schedule = Schedule(row[0], row[1], int(row[2]), int(row[3]), row[4], bool(row[5]), int(row[6]))
-        if schedule is None:
+        if row is None:
             raise KeyError("invalid scheduler claim")
+        schedule = Schedule(row[0], row[1], int(row[2]), int(row[3]), row[4], bool(row[5]), int(row[6]))
         super().finish(schedule_id, claim, status, detail, now=finished_at)
         if status == "success" and self.calendar_spec(schedule) is not None:
             next_run = self.next_calendar_run(schedule, now=finished_at)
