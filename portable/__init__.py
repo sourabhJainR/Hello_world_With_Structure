@@ -55,9 +55,10 @@ from .cognitive_loop import CognitiveEpisode, CognitiveEpisodeReceipt, Cognitive
 from .learning_transfer import ConsolidationReceipt, LearningExperience, LearningTransfer, TransferCandidate
 from .generalization import Abstraction, AnalogyCandidate, GeneralizationEngine
 from .skill_graph import SkillGraph, SkillNode
+from .curiosity import CuriosityEngine, LearningChoice, LearningNeed
 from .continual_learning import BenchmarkObservation, ContinualLearningGuard, RegressionResult
-from .capability_acquisition import CapabilityAcquirer, CapabilityNeed, CapabilityProposal, ValidationEvidence, ValidationReceipt
-from .autonomy_graduation import AutonomyEvidence, AutonomyGraduator, GraduationPolicy, GraduationReceipt, LEVELS
+from .capability_acquisition import CapabilityAcquirer, CapabilityNeed, CapabilityProposal, GraduationReceipt, PracticeResult, ValidationEvidence, ValidationReceipt
+from .autonomy_graduation import AutonomyEvidence, AutonomyGraduator, GraduationPolicy, GraduationReceipt as AutonomyGraduationReceipt, LEVELS
 from .deep_evaluation import BenchmarkCase, DeepBenchmarkReport, DeepEvaluator
 
 __all__ = [
@@ -82,9 +83,9 @@ __all__ = [
     "Goal", "GoalManager", "InformationAction", "InformationPlan", "InformationPlanner", "CapabilityProfile", "SelfModel",
     "CapabilityCase", "CapabilityEvaluator", "CaseResult", "EvaluationReport", "KINDS", "CognitiveRuntime",
     "CognitiveEpisode", "CognitiveEpisodeReceipt", "CognitiveLoop", "LearningExperience", "TransferCandidate", "ConsolidationReceipt", "LearningTransfer",
-    "Abstraction", "AnalogyCandidate", "GeneralizationEngine", "SkillGraph", "SkillNode",
+    "Abstraction", "AnalogyCandidate", "GeneralizationEngine", "SkillGraph", "SkillNode", "CuriosityEngine", "LearningChoice", "LearningNeed",
     "BenchmarkObservation", "RegressionResult", "ContinualLearningGuard",
-    "CapabilityAcquirer", "CapabilityNeed", "CapabilityProposal", "ValidationEvidence", "ValidationReceipt",
-    "AutonomyEvidence", "AutonomyGraduator", "GraduationPolicy", "GraduationReceipt", "LEVELS",
+    "CapabilityAcquirer", "CapabilityNeed", "CapabilityProposal", "PracticeResult", "GraduationReceipt", "ValidationEvidence", "ValidationReceipt",
+    "AutonomyEvidence", "AutonomyGraduator", "GraduationPolicy", "AutonomyGraduationReceipt", "LEVELS",
     "BenchmarkCase", "DeepBenchmarkReport", "DeepEvaluator",
 ]
