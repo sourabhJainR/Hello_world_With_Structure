@@ -1,0 +1,40 @@
+import tempfile
+import unittest
+from pathlib import Path
+
+from portable.persistent_memory import PersistentMemory
+from portable.skill_graph import SkillGraph, SkillNode
+
+
+class SkillGraphTests(unittest.TestCase):
+    def _graph(self, directory: str) -> SkillGraph:
+        return SkillGraph(PersistentMemory(Path(directory) / "memory.db", require_approval=False), "project-x")
+
+    def test_skill_graph_tracks_prerequisites_and_readiness(self):
+        with tempfile.TemporaryDirectory() as directory:
+            graph = self._graph(directory)
+            graph.upsert(SkillNode("parse", "skill", frozenset(), frozenset({"e1"}), frozenset({"parse_error"}), frozenset(), True))
+            graph.upsert(SkillNode("recover", "skill", frozenset({"parse"}), frozenset({"e2"}), frozenset({"bad_retry"}), frozenset(), False))
+            self.assertTrue(graph.ready("parse"))
+            self.assertFalse(graph.ready("recover"))
+            self.assertEqual(graph.missing_prerequisites("recover"), ("parse",))
+            self.assertEqual(graph.ancestors("recover"), ("parse",))
+
+    def test_skill_graph_rejects_dependency_cycles(self):
+        with tempfile.TemporaryDirectory() as directory:
+            graph = self._graph(directory)
+            graph.upsert(SkillNode("a"))
+            graph.upsert(SkillNode("b"))
+            graph.add_dependency("b", "a")
+            with self.assertRaises(ValueError):
+                graph.add_dependency("a", "b")
+
+    def test_unknown_skill_is_not_ready(self):
+        with tempfile.TemporaryDirectory() as directory:
+            graph = self._graph(directory)
+            self.assertFalse(graph.ready("missing"))
+            self.assertEqual(graph.missing_prerequisites("missing"), ())
+
+
+if __name__ == "__main__":
+    unittest.main()
