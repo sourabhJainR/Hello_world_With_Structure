@@ -55,6 +55,7 @@ from .learning_transfer import ConsolidationReceipt, LearningExperience, Learnin
 from .continual_learning import BenchmarkObservation, ContinualLearningGuard, RegressionResult
 from .capability_acquisition import CapabilityAcquirer, CapabilityNeed, CapabilityProposal, ValidationEvidence, ValidationReceipt
 from .autonomy_graduation import AutonomyEvidence, AutonomyGraduator, GraduationPolicy, GraduationReceipt, LEVELS
+from .deep_evaluation import BenchmarkCase, DeepBenchmarkReport, DeepEvaluator
 
 __all__ = [
     "main", "AdaptiveRuntime", "HookBus", "HookDecision", "HookEvent", "HookPhase", "HookedExecution",
@@ -81,4 +82,5 @@ __all__ = [
     "BenchmarkObservation", "RegressionResult", "ContinualLearningGuard",
     "CapabilityAcquirer", "CapabilityNeed", "CapabilityProposal", "ValidationEvidence", "ValidationReceipt",
     "AutonomyEvidence", "AutonomyGraduator", "GraduationPolicy", "GraduationReceipt", "LEVELS",
+    "BenchmarkCase", "DeepBenchmarkReport", "DeepEvaluator",
 ]
