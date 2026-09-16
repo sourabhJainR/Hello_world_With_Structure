@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -66,8 +65,6 @@ class AdaptiveRuntime:
         self.trigger_runtime = TriggerRuntime(self.automation_scheduler)
         self.maintenance_interval_seconds = maintenance_interval_seconds
         self.maintenance_budget = maintenance_budget
-        self._maintenance_lock = threading.RLock()
-        self._maintenance_inflight: set[str] = set()
         self.last_cognitive_episode: CognitiveEpisodeReceipt | None = None
         self.last_cognitive_plan: dict[str, object] | None = None
         self.last_learning_signal: LearningSignal | None = None
@@ -143,7 +140,6 @@ class AdaptiveRuntime:
             processed = len(processed_jobs)
             history = tuner.history(scope="global", limit=1000)
             scopes = sorted({record.capability for record in history if record.capability}) or ["global"]
-            latest_decision = None
             for scope in scopes:
                 policy = tuner.current_policy(scope)
                 strategies = sorted({record.strategy for record in history if record.capability == scope and record.strategy != policy.strategy})
@@ -151,8 +147,6 @@ class AdaptiveRuntime:
                 if strategies:
                     candidate = max(strategies, key=lambda item: sum(1 for record in history if record.capability == scope and record.strategy == item))
                 decision = tuner.evaluate(scope, candidate_strategy=candidate)
-                if latest_decision is None or decision.action != "hold":
-                    latest_decision = decision
                 if decision.action != "hold":
                     strategy_action = decision.action
                     policy_version = decision.policy_version
@@ -169,22 +163,6 @@ class AdaptiveRuntime:
         self.last_maintenance_receipt = receipt
         self.automation_scheduler.finish(schedule.id, claim, status, receipt.digest)
         return receipt
-
-    def _kick_maintenance(self, project_root: Path | str) -> None:
-        root = str(Path(project_root).expanduser().resolve())
-        with self._maintenance_lock:
-            if root in self._maintenance_inflight:
-                return
-            self._maintenance_inflight.add(root)
-
-        def worker() -> None:
-            try:
-                self.maintenance_tick(Path(root))
-            finally:
-                with self._maintenance_lock:
-                    self._maintenance_inflight.discard(root)
-
-        threading.Thread(target=worker, name="aer-adaptive-maintenance", daemon=True).start()
 
     def recent_maintenance(self, project_root: Path | str, limit: int = 20) -> tuple[MaintenanceReceipt, ...]:
         project_key = self.session_store.project_key(project_root)
@@ -348,7 +326,6 @@ class AdaptiveRuntime:
             self.last_learning_signal = None
             self.last_cognitive_episode = cognitive_loop.complete(episode, result.status.value)
             execution.gate(HookPhase.SESSION_END, task_id=task_id, payload={"status": result.status.value})
-            self._kick_maintenance(project_root)
             return result
         except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
@@ -378,7 +355,6 @@ class AdaptiveRuntime:
             self.session_store.save(checkpoint)
             self.last_cognitive_episode = cognitive_loop.complete(episode, "failed", error)
             execution.gate(HookPhase.RECOVERY, task_id=task_id, payload={"error": checkpoint.last_error})
-            self._kick_maintenance(project_root)
             raise
 
     def process_learning(self, project_root: Path | str, *, limit: int = 20, dream: bool = True) -> list[dict[str, object]]:
