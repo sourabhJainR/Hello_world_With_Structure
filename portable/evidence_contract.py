@@ -1,7 +1,8 @@
-"""Validation-only adapter for the canonical engineering evidence ledger."""
+"""Validation-only adapters for the canonical engineering evidence ledger."""
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 from typing import Iterable, Mapping
 
 CONFIDENCE = {"high", "medium", "low"}
@@ -30,6 +31,48 @@ class EvidenceClaim:
             raise ValueError(f"evidence snapshot is required: {self.id}")
         if not self.provenance:
             raise ValueError(f"evidence provenance is required: {self.id}")
+
+@dataclass(frozen=True)
+class DecisionRecord:
+    id: str
+    decision: str
+    evidence_ids: tuple[str, ...]
+    typed_output: str = ""
+    probability: float | None = None
+    calibration_group: str = ""
+    model_id: str = ""
+    method: str = ""
+    abstained: bool = False
+    observed_outcome: bool | None = None
+
+    def validate(self, known_evidence: Iterable[str] = ()) -> None:
+        if not self.id or not self.decision:
+            raise ValueError("decision id and decision are required")
+        if not self.evidence_ids:
+            raise ValueError(f"decision evidence is required: {self.id}")
+        available = set(known_evidence)
+        if available and any(evidence_id not in available for evidence_id in self.evidence_ids):
+            raise ValueError(f"decision references missing evidence: {self.id}")
+        if self.probability is not None and (not isfinite(self.probability) or not 0.0 <= self.probability <= 1.0):
+            raise ValueError(f"decision probability must be between 0 and 1: {self.id}")
+        if self.probability is not None and not self.model_id:
+            raise ValueError(f"probabilistic decision requires model_id: {self.id}")
+        if self.abstained and self.observed_outcome is not None:
+            raise ValueError(f"abstained decision cannot carry an observed outcome: {self.id}")
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "id": self.id,
+            "decision": self.decision,
+            "evidence_ids": list(self.evidence_ids),
+            "typed_output": self.typed_output,
+            "probability": self.probability,
+            "calibration_group": self.calibration_group,
+            "model_id": self.model_id,
+            "method": self.method,
+            "abstained": self.abstained,
+            "observed_outcome": self.observed_outcome,
+        }
 
 class EvidenceSpine:
     """Validated in-memory view over canonical evidence records; not a store."""
@@ -79,4 +122,28 @@ def evidence_from_state(rows: Iterable[Mapping[str, object]]) -> EvidenceSpine:
         ) for row in rows
     )
 
-__all__ = ["CONFIDENCE", "EvidenceClaim", "EvidenceSpine", "KINDS", "evidence_from_state"]
+def decisions_from_state(rows: Iterable[Mapping[str, object]], *, evidence_ids: Iterable[str] = ()) -> tuple[DecisionRecord, ...]:
+    available = tuple(evidence_ids)
+    decisions = tuple(
+        DecisionRecord(
+            id=str(row.get("id", "")),
+            decision=str(row.get("decision", "")),
+            evidence_ids=tuple(str(x) for x in row.get("evidence_ids", ())),
+            typed_output=str(row.get("typed_output", "")),
+            probability=float(row["probability"]) if row.get("probability") is not None else None,
+            calibration_group=str(row.get("calibration_group", "")),
+            model_id=str(row.get("model_id", "")),
+            method=str(row.get("method", "")),
+            abstained=bool(row.get("abstained", False)),
+            observed_outcome=row.get("observed_outcome") if isinstance(row.get("observed_outcome"), bool) else None,
+        ) for row in rows
+    )
+    seen: set[str] = set()
+    for decision in decisions:
+        decision.validate(available)
+        if decision.id in seen:
+            raise ValueError(f"duplicate decision id: {decision.id}")
+        seen.add(decision.id)
+    return decisions
+
+__all__ = ["CONFIDENCE", "DecisionRecord", "EvidenceClaim", "EvidenceSpine", "KINDS", "decisions_from_state", "evidence_from_state"]
