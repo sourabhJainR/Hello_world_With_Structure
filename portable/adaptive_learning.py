@@ -10,10 +10,13 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any, Iterable, Mapping
 from uuid import uuid4
 
+from .cognitive_learning import CognitiveLearningLoop
 from .dream_memory import DreamMemory
+from .hypothesis_engine import BeliefEvidence
 from .persistent_memory import PersistentMemory
 
 
@@ -84,6 +87,10 @@ class AdaptiveLearningStore:
         context: str | None = None,
         evidence: Iterable[str] = (),
         verified: bool = True,
+        capability: str | None = None,
+        belief_evidence: Iterable[BeliefEvidence] = (),
+        prediction_id: str | None = None,
+        prediction_correct: bool | None = None,
     ) -> DeferredLearningJob:
         if not task_id.strip() or not intent.strip() or not status.strip():
             raise ValueError("task_id, intent and status are required")
@@ -92,6 +99,17 @@ class AdaptiveLearningStore:
         if iterations < 1:
             raise ValueError("iterations must be positive")
         clean_evidence = tuple(sorted(set(item.strip() for item in evidence if isinstance(item, str) and item.strip())))
+        clean_belief_evidence = []
+        for item in belief_evidence:
+            clean_belief_evidence.append({
+                "evidence_id": item.evidence_id,
+                "hypothesis_id": item.hypothesis_id,
+                "supports": item.supports,
+                "detail": item.detail,
+                "source": item.source,
+                "confidence": item.confidence,
+                "observed_at": item.observed_at,
+            })
         job_id = uuid4().hex
         payload: dict[str, object] = {
             "intent": intent.strip(),
@@ -101,6 +119,10 @@ class AdaptiveLearningStore:
             "context": context.strip() if isinstance(context, str) and context.strip() else None,
             "evidence": clean_evidence,
             "verified": bool(verified),
+            "capability": capability,
+            "belief_evidence": clean_belief_evidence,
+            "prediction_id": prediction_id,
+            "prediction_correct": prediction_correct,
         }
         with self.memory._lock, self.memory._connect() as db:
             count = db.execute("SELECT COUNT(*) FROM deferred_learning_jobs WHERE project=? AND status='pending'", (self.project,)).fetchone()[0]
@@ -139,12 +161,30 @@ class AdaptiveLearningStore:
             payload = dict(job.payload)
             if payload.get("verified"):
                 self._apply_profile(payload)
+                try:
+                    belief_items = tuple(BeliefEvidence(**item) for item in payload.get("belief_evidence", []))
+                    prediction = None
+                    if payload.get("prediction_id") is not None and payload.get("prediction_correct") is not None:
+                        prediction = SimpleNamespace(
+                            prediction_id=str(payload["prediction_id"]),
+                            absolute_match=bool(payload["prediction_correct"]),
+                        )
+                    CognitiveLearningLoop(self.memory, self.project).record(
+                        task_id=job.task_id,
+                        intent=str(payload["intent"]),
+                        status=str(payload["status"]),
+                        capability=str(payload["capability"]) if payload.get("capability") else None,
+                        evidence=tuple(payload.get("evidence", ())),
+                        context=str(payload["context"]) if payload.get("context") else None,
+                        belief_evidence=belief_items,
+                        prediction_error=prediction,
+                    )
+                except Exception:
+                    pass
                 if dream:
                     try:
                         DreamMemory(self.memory.path.parent).dream(job.task_id)
                     except Exception:
-                        # Consolidation is auxiliary and must never prevent the
-                        # remaining maintenance jobs from being processed.
                         pass
             with self.memory._lock, self.memory._connect() as db:
                 db.execute(
@@ -158,9 +198,6 @@ class AdaptiveLearningStore:
         quality = float(payload.get("quality", 0.0))
         iterations = int(payload.get("iterations", 1))
         context = str(payload.get("context") or "balanced")
-        verified = bool(payload.get("verified"))
-        if not verified:
-            return
         current = self.profile()
         observations = current.observations + 1
         alpha = 1.0 / observations
