@@ -44,6 +44,7 @@ from .agent_patterns import (
 from .world_model import Observation, WorldFact, WorldModel
 from .hypothesis_engine import BeliefEvidence, Hypothesis, HypothesisEngine
 from .reasoning_ledger import ReasoningLedger, ReasoningRecord
+from .causal_model import CausalLink, CausalModel
 
 __all__ = [
     "main", "AdaptiveRuntime", "HookBus", "HookDecision", "HookEvent", "HookPhase", "HookedExecution",
@@ -63,5 +64,5 @@ __all__ = [
     "ResearchTask", "ResearchPlan", "ResearchPlanner", "EvidenceItem", "ConsensusResult", "MixtureOfAgents",
     "OptimizationRound", "OptimizationResult", "OneChangeOptimizer", "ScopeFinding", "ScopeReport", "ScopeChecker",
     "Observation", "WorldFact", "WorldModel", "BeliefEvidence", "Hypothesis", "HypothesisEngine",
-    "ReasoningLedger", "ReasoningRecord",
+    "ReasoningLedger", "ReasoningRecord", "CausalLink", "CausalModel",
 ]
