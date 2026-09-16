@@ -60,7 +60,9 @@ class DeepBenchmarkReport:
 class DeepEvaluator:
     """Run benchmark cases and expose granular, replay-friendly metrics."""
 
-    def run(self, cases: Iterable[BenchmarkCase], *, required_kinds: Iterable[str] = ()) -> DeepBenchmarkReport:
+    def run(self, cases: Iterable[BenchmarkCase], *, required_kinds: Iterable[str] = (), min_cases_per_kind: int = 1) -> DeepBenchmarkReport:
+        if min_cases_per_kind < 1:
+            raise ValueError("min_cases_per_kind must be positive")
         materialized = list(cases)
         seen: set[str] = set()
         for case in materialized:
@@ -74,6 +76,9 @@ class DeepEvaluator:
         missing = sorted(set(required).difference(coverage))
         if missing:
             raise ValueError(f"missing required benchmark kinds: {', '.join(missing)}")
+        under_sampled = [kind for kind in required if sum(case.kind == kind for case in materialized) < min_cases_per_kind]
+        if under_sampled:
+            raise ValueError(f"required benchmark kinds lack cases: {', '.join(under_sampled)}")
 
         def passed_case(case: BenchmarkCase) -> bool:
             return bool(case.evidence) and case.expected.strip() == case.observed.strip()
