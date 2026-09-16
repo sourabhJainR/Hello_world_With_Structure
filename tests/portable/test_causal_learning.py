@@ -21,7 +21,7 @@ class CausalLearningTests(unittest.TestCase):
 
     def test_intervention_outcome_records_empirical_causal_link(self):
         with tempfile.TemporaryDirectory() as directory:
-            memory, causal = self._causal(directory)
+            _, causal = self._causal(directory)
             learner = CausalLearner(causal)
             learner.propose(Intervention("i1", "cause", True, "effect"))
             link = learner.observe(InterventionOutcome("i1", "effect", True, "e1", 0.9))
@@ -36,6 +36,14 @@ class CausalLearningTests(unittest.TestCase):
             learner.propose(Intervention("i1", "cause", False, "effect"))
             self.assertIsNone(learner.observe(InterventionOutcome("i1", "effect", False, "e1", 0.8)))
             self.assertEqual(causal.effects_of("cause"), ())
+
+    def test_observed_effect_must_match_proposed_effect(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _, causal = self._causal(directory)
+            learner = CausalLearner(causal)
+            learner.propose(Intervention("i1", "cause", True, "effect"))
+            with self.assertRaisesRegex(ValueError, "does not match"):
+                learner.observe(InterventionOutcome("i1", "other", True, "e1", 0.9))
 
 
 class CounterfactualAndSelfModelTests(unittest.TestCase):
@@ -54,6 +62,21 @@ class CounterfactualAndSelfModelTests(unittest.TestCase):
             self.assertEqual(result.alternate_predictions, {"effect": "on"})
             self.assertTrue(result.reaches_target)
 
+    def test_counterfactual_does_not_mutate_initial_state(self):
+        with tempfile.TemporaryDirectory() as directory:
+            memory = PersistentMemory(Path(directory) / "memory.db", require_approval=False)
+            graph = ContextGraph(memory, "project-x")
+            graph.upsert_node(ContextNode("cause", "concept", "cause"))
+            graph.upsert_node(ContextNode("effect", "concept", "effect"))
+            graph.link("cause", "causes", "effect", source="test", confidence=0.9)
+            initial = {"effect": "off"}
+            CounterfactualEngine(CausalModel(graph)).simulate(
+                CounterfactualQuery(("cause",), ("effect",)),
+                initial_state=initial,
+                transition=lambda state, intervention: {**state, "effect": "on"},
+            )
+            self.assertEqual(initial, {"effect": "off"})
+
     def test_self_model_can_segment_by_context_and_difficulty(self):
         with tempfile.TemporaryDirectory() as directory:
             model = SelfModel(PersistentMemory(Path(directory) / "memory.db", require_approval=False), "project-x")
@@ -62,6 +85,12 @@ class CounterfactualAndSelfModelTests(unittest.TestCase):
             profile = model.profile("parser", context="repo", difficulty=2)
             self.assertEqual(profile.confidence, 1.0)
             self.assertEqual(model.profile("parser", context="repo", difficulty=8).confidence, 0.0)
+
+    def test_self_model_rejects_invalid_context_type(self):
+        with tempfile.TemporaryDirectory() as directory:
+            model = SelfModel(PersistentMemory(Path(directory) / "memory.db", require_approval=False), "project-x")
+            with self.assertRaises(ValueError):
+                model.record("a", "parser", success=True, context=123)  # type: ignore[arg-type]
 
 
 if __name__ == "__main__":
