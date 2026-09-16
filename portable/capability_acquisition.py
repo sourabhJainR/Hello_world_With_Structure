@@ -78,9 +78,9 @@ class CapabilityAcquirer:
             )""")
 
     def propose(self, need: CapabilityNeed) -> CapabilityProposal | None:
-        if not need.verified or need.missing_count < self.min_missing or len(need.evidence_ids) < self.min_missing:
-            return None
         evidence = tuple(sorted(set(need.evidence_ids)))
+        if not need.verified or need.missing_count < self.min_missing or len(evidence) < self.min_missing:
+            return None
         payload = f"{self.project}|{need.task_family.strip()}|{need.capability.strip()}|{need.missing_count}|{json.dumps(evidence)}"
         proposal_id = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]
         proposal = CapabilityProposal(proposal_id, need.task_family.strip(), need.capability.strip(), need.missing_count, evidence)
@@ -93,14 +93,17 @@ class CapabilityAcquirer:
     def validate(self, proposal_id: str, evidence: ValidationEvidence) -> ValidationReceipt:
         if not isinstance(proposal_id, str) or not proposal_id.strip():
             raise ValueError("proposal_id is required")
-        if any(not isinstance(value, str) or not value.strip() for value in evidence.evidence_ids):
+        if not isinstance(evidence, ValidationEvidence):
+            raise ValueError("evidence must be ValidationEvidence")
+        validation_ids = tuple(sorted(set(evidence.evidence_ids)))
+        if any(not isinstance(value, str) or not value.strip() for value in validation_ids):
             raise ValueError("validation evidence must contain non-empty ids")
         with self.memory._lock, self.memory._connect() as db:
             row = db.execute("SELECT id,evidence_ids FROM capability_proposals WHERE id=? AND project=?", (proposal_id, self.project)).fetchone()
         if row is None:
             raise KeyError(f"unknown capability proposal: {proposal_id}")
         reasons: list[str] = []
-        if not evidence.evidence_ids:
+        if not validation_ids:
             reasons.append("missing validation evidence")
         if not evidence.tests_passed:
             reasons.append("validation tests did not pass")
@@ -109,7 +112,7 @@ class CapabilityAcquirer:
         if self.memory.require_approval and not evidence.approved:
             reasons.append("approval is required")
         accepted = not reasons
-        return ValidationReceipt(proposal_id, accepted, False, tuple(sorted(set(evidence.evidence_ids))), tuple(reasons))
+        return ValidationReceipt(proposal_id, accepted, False, validation_ids, tuple(reasons))
 
 
 __all__ = ["CapabilityAcquirer", "CapabilityNeed", "CapabilityProposal", "ValidationEvidence", "ValidationReceipt"]
