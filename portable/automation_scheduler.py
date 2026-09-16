@@ -27,6 +27,18 @@ class AutomationScheduler(_AutomationScheduler):
             return super().finish(row[0], claim, status, resolved_detail or detail, now=now)
         return super().finish(schedule_or_claim, claim_or_status, status_or_detail, detail, now=now)
 
+    def find_task(self, task: str) -> Schedule | None:
+        """Return the existing durable schedule for an exact task, if any."""
+        with sqlite3.connect(self.path) as db:
+            row = db.execute(
+                "SELECT id,task,interval_seconds,max_attempts,next_run,enabled,attempts "
+                "FROM schedules WHERE task=? ORDER BY id LIMIT 1",
+                (task,),
+            ).fetchone()
+        if row is None:
+            return None
+        return Schedule(row[0], row[1], int(row[2]), int(row[3]), row[4], bool(row[5]), int(row[6]))
+
     def recent_runs(self, schedule_id: str, limit: int = 20) -> list[dict[str, str | None]]:
         with sqlite3.connect(self.path) as db:
             rows = db.execute(

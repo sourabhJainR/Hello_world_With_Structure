@@ -1,11 +1,13 @@
 """Reusable facade that composes AER orchestration and agent capabilities."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .adaptive_learning import AdaptiveLearningStore, DeferredLearningJob
+from .adaptive_tuning import AdaptiveTuner, MaintenanceReceipt
 from .automation_scheduler import AutomationScheduler
 from .capability_fabric import Capability, CapabilityFabric, ProviderAdapter, ProviderAdapterRegistry
 from .context_graph import ContextGraph
@@ -43,7 +45,13 @@ class AdaptiveRuntime:
         output_quality: OutputQualityGate | None = None,
         provider_adapters: ProviderAdapterRegistry | None = None,
         max_total_attempts: int = 32,
+        maintenance_interval_seconds: int = 300,
+        maintenance_budget: int = 20,
     ) -> None:
+        if maintenance_interval_seconds < 1:
+            raise ValueError("maintenance_interval_seconds must be positive")
+        if maintenance_budget < 1:
+            raise ValueError("maintenance_budget must be positive")
         self.orchestrator = Orchestrator(graph, max_total_attempts=max_total_attempts)
         self.session_store = session_store or SessionStore()
         self.provider_fabric = provider_fabric or ProviderFabric()
@@ -55,10 +63,13 @@ class AdaptiveRuntime:
         self.output_quality = output_quality or OutputQualityGate()
         self.provider_adapters = provider_adapters or ProviderAdapterRegistry()
         self.trigger_runtime = TriggerRuntime(self.automation_scheduler)
+        self.maintenance_interval_seconds = maintenance_interval_seconds
+        self.maintenance_budget = maintenance_budget
         self.last_cognitive_episode: CognitiveEpisodeReceipt | None = None
         self.last_cognitive_plan: dict[str, object] | None = None
         self.last_learning_signal: LearningSignal | None = None
         self.last_deferred_learning_job: DeferredLearningJob | None = None
+        self.last_maintenance_receipt: MaintenanceReceipt | None = None
 
     def capability(self, name: str, preferred: tuple[str, ...] = ()) -> RoutingDecision:
         return self.provider_fabric.route(CapabilityRequest(name, preferred))
@@ -101,6 +112,68 @@ class AdaptiveRuntime:
     def dispatch_triggers(self, handler: Any, *, limit: int = 20) -> list[Any]:
         return self.trigger_runtime.dispatch_due(handler, limit=limit)
 
+    def ensure_learning_maintenance(self, project_root: Path | str, *, interval_seconds: int | None = None) -> object:
+        """Create the project learning schedule once and return its durable receipt."""
+        root = Path(project_root).expanduser().resolve()
+        interval = interval_seconds or self.maintenance_interval_seconds
+        task = json.dumps({"kind": "adaptive_learning", "project_root": str(root)}, sort_keys=True)
+        existing = self.automation_scheduler.find_task(task)
+        if existing is not None:
+            return existing
+        start = datetime.now(timezone.utc) - timedelta(seconds=interval)
+        return self.automation_scheduler.add(task, interval, max_attempts=3, start=start)
+
+    def maintenance_tick(self, project_root: Path | str, *, budget: int | None = None) -> MaintenanceReceipt | None:
+        """Claim and execute one due maintenance cycle without entering orchestration."""
+        root = Path(project_root).expanduser().resolve()
+        schedule = self.ensure_learning_maintenance(root)
+        claim = self.automation_scheduler.claim(schedule.id)
+        if claim is None:
+            return None
+        started = datetime.now(timezone.utc).isoformat()
+        tuner = AdaptiveTuner(self.persistent_memory, self.session_store.project_key(root))
+        errors: list[str] = []
+        strategy_action = "hold"
+        policy_version = tuner.current_policy().version
+        processed = 0
+        status = "success"
+        try:
+            processed_jobs = self.process_learning(root, limit=budget or self.maintenance_budget, dream=True)
+            processed = len(processed_jobs)
+            history = tuner.history(scope="global", limit=1000)
+            scopes = sorted({record.capability for record in history if record.capability}) or ["global"]
+            for scope in scopes:
+                policy = tuner.current_policy(scope)
+                strategies = sorted({record.strategy for record in history if record.capability == scope and record.strategy != policy.strategy})
+                candidate = None
+                if strategies:
+                    candidate = max(strategies, key=lambda item: sum(1 for record in history if record.capability == scope and record.strategy == item))
+                decision = tuner.evaluate(scope, candidate_strategy=candidate)
+                if decision.action != "hold":
+                    strategy_action = decision.action
+                    policy_version = decision.policy_version
+        except Exception as exc:
+            status = "retryable"
+            errors.append(f"{type(exc).__name__}: {exc}")
+        receipt = tuner.record_maintenance_receipt(
+            started_at=started,
+            jobs_processed=processed,
+            strategy_action=strategy_action,
+            policy_version=policy_version,
+            errors=errors,
+        )
+        self.last_maintenance_receipt = receipt
+        self.automation_scheduler.finish(schedule.id, claim, status, receipt.digest)
+        return receipt
+
+    def recent_maintenance(self, project_root: Path | str, limit: int = 20) -> tuple[MaintenanceReceipt, ...]:
+        project_key = self.session_store.project_key(project_root)
+        return AdaptiveTuner(self.persistent_memory, project_key).recent_receipts(limit)
+
+    def current_adaptive_policy(self, project_root: Path | str, scope: str = "global"):
+        project_key = self.session_store.project_key(project_root)
+        return AdaptiveTuner(self.persistent_memory, project_key).current_policy(scope)
+
     def run(
         self,
         *,
@@ -131,6 +204,8 @@ class AdaptiveRuntime:
         learning_quality: float | None = None,
         learning_iterations: int | None = None,
         learning_verified: bool | None = None,
+        learning_strategy: str = "default",
+        learning_confidence: float = 0.5,
     ) -> OrchestrationRun:
         project_key = self.session_store.project_key(project_root)
         provider_name = provider or "aer"
@@ -138,6 +213,10 @@ class AdaptiveRuntime:
         start = execution.gate(HookPhase.SESSION_START, task_id=task_id, payload={"project_key": project_key})
         if not start.allow:
             raise RuntimeError(f"session_start vetoed: {start.reason}")
+        self.ensure_learning_maintenance(project_root)
+        tuner = AdaptiveTuner(self.persistent_memory, project_key)
+        policy_scope = cognitive_capability or "global"
+        policy = tuner.current_policy(policy_scope)
         checkpoint = SessionCheckpoint(session_id=session_id, task_id=task_id, project_key=project_key,
                                        stage="execute", remaining_batches=["verify", "review", "learn"], active_provider=provider_name)
         self.session_store.save(checkpoint)
@@ -149,9 +228,15 @@ class AdaptiveRuntime:
             before = execution.gate(HookPhase.BEFORE_AGENT, task_id=task_id)
             if not before.allow:
                 raise RuntimeError(f"before_agent vetoed: {before.reason}")
-            cognitive_loop.observe(episode, {"event": "before_agent", "status": "running"})
+            cognitive_loop.observe(episode, {"event": "before_agent", "status": "running", "policy_version": policy.version})
             effective_context = dict(context or {})
             effective_context["aer_workstyle_guidance"] = learning_store.guidance()
+            effective_context["aer_adaptive_policy"] = {
+                "version": policy.version,
+                "strategy": policy.strategy,
+                "confidence_adjustment": policy.confidence_adjustment,
+                "iteration_target": policy.iteration_target,
+            }
             if enrich_context:
                 resolution = self.resolve_context(project_root, intent, node_id=context_node_id,
                                                   workspace_id=workspace_id, required=required_context)
@@ -225,7 +310,19 @@ class AdaptiveRuntime:
                     prediction_id=prediction_error.prediction_id if prediction_error else None,
                     prediction_correct=prediction_error.absolute_match if prediction_error else None,
                 )
-                cognitive_loop.observe(episode, {"event": "learning_deferred", "job_id": self.last_deferred_learning_job.job_id})
+                tuner.record_experience(
+                    task_id=task_id,
+                    capability=cognitive_capability or "general",
+                    strategy=learning_strategy,
+                    quality=quality,
+                    iterations=iterations,
+                    confidence=learning_confidence,
+                    verified=verified,
+                    evidence=evidence,
+                    evaluation_class="experience",
+                )
+                cognitive_loop.observe(episode, {"event": "learning_deferred", "job_id": self.last_deferred_learning_job.job_id,
+                                                 "policy_version": policy.version})
             except Exception as exc:
                 cognitive_loop.observe(episode, {"event": "learning_defer_error", "error": f"{type(exc).__name__}: {exc}"})
             self.last_learning_signal = None
@@ -240,6 +337,18 @@ class AdaptiveRuntime:
                     task_id=task_id, intent=intent, status="failed", quality=0.0,
                     iterations=1, context=learning_context, evidence=learning_evidence, verified=False,
                     capability=cognitive_capability,
+                )
+                tuner.record_experience(
+                    task_id=task_id,
+                    capability=cognitive_capability or "general",
+                    strategy=learning_strategy,
+                    quality=0.0,
+                    iterations=1,
+                    confidence=learning_confidence,
+                    verified=False,
+                    evidence=learning_evidence,
+                    evaluation_class="experience",
+                    realized_success=False,
                 )
             except Exception as learning_exc:
                 cognitive_loop.observe(episode, {"event": "learning_defer_error", "error": f"{type(learning_exc).__name__}: {learning_exc}"})

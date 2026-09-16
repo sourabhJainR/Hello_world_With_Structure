@@ -2,6 +2,7 @@
 
 from .adaptive_runtime import AdaptiveRuntime
 from .adaptive_learning import AdaptiveLearningStore, DeferredLearningJob, WorkStyleProfile
+from .adaptive_tuning import AdaptivePolicy, AdaptiveTuner, ExperienceRecord, MaintenanceReceipt, TuningDecision
 from .empirical_improvement import EmpiricalImprovement, ImprovementObservation, ImprovementReport
 from .aer_runtime import main
 from .impact_analysis import ImpactRecord, ImpactReport, analyze
@@ -57,7 +58,7 @@ from .autonomy_graduation import AutonomyEvidence, AutonomyGraduator, Graduation
 from .deep_evaluation import BenchmarkCase, DeepBenchmarkReport, DeepEvaluator
 
 __all__ = [
-    "main", "AdaptiveRuntime", "AdaptiveLearningStore", "DeferredLearningJob", "WorkStyleProfile", "EmpiricalImprovement", "ImprovementObservation", "ImprovementReport",
+    "main", "AdaptiveRuntime", "AdaptiveLearningStore", "DeferredLearningJob", "WorkStyleProfile", "AdaptivePolicy", "AdaptiveTuner", "ExperienceRecord", "MaintenanceReceipt", "TuningDecision", "EmpiricalImprovement", "ImprovementObservation", "ImprovementReport",
     "HookBus", "HookDecision", "HookEvent", "HookPhase", "HookedExecution",
     "CapabilityRequest", "ProviderCapability", "ProviderFabric", "RoutingDecision", "SessionCheckpoint", "SessionStore",
     "ImpactRecord", "ImpactReport", "analyze", "Task", "TaskPlan", "STATUSES", "PRIORITIES",
