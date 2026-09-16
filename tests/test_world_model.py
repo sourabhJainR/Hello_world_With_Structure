@@ -41,3 +41,5 @@ def test_bounds_and_validation(tmp_path: Path) -> None:
         model.observe(Observation("o2", "x", "state", False, "test"))
     with pytest.raises(ValueError):
         Observation("o3", "x", "state", True, "test", confidence=1.1)
+    with pytest.raises(ValueError, match="timezone"):
+        Observation("o4", "x", "state", True, "test", observed_at="2026-01-03T00:00:00")
