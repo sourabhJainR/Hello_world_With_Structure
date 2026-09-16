@@ -9,6 +9,7 @@ from __future__ import annotations
 from atexit import register
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Mapping
@@ -118,8 +119,18 @@ class AdaptiveTrigger:
                 _BACKGROUND_EXECUTOR.submit(self._dispatch_event, event.event_id)
         return TriggerReceipt(event.event_id, event.status, event.created_at)
 
-    def _dispatch_event(self, event_id: str) -> list[TriggerOutcome]:
-        return self.trigger_runtime.dispatch_due(self._handle_event, limit=1)
+    def _dispatch_event(self, event_id: str) -> TriggerOutcome | None:
+        claim = self.trigger_runtime.claim(event_id)
+        if claim is None:
+            return None
+        now = datetime.now(timezone.utc)
+        try:
+            outcome = self._handle_event(claim.event)
+            self.trigger_runtime.complete(event_id, claim.claim_id, "success", now=now)
+            return outcome
+        except Exception as exc:
+            self.trigger_runtime.complete(event_id, claim.claim_id, "retryable", str(exc), now=now)
+            return None
 
     def _handle_event(self, event: TriggerEvent) -> TriggerOutcome:
         if event.kind != "adaptive_runtime":
@@ -138,8 +149,12 @@ class AdaptiveTrigger:
         """Synchronously drain currently due chat triggers; useful for hosts/services."""
         if limit < 1:
             return []
-        results = self.trigger_runtime.dispatch_due(self._handle_event, limit=limit)
-        return [item for item in results if isinstance(item, TriggerOutcome)]
+        results: list[TriggerOutcome] = []
+        for event in self.trigger_runtime.due(limit=limit):
+            outcome = self._dispatch_event(event.event_id)
+            if outcome is not None:
+                results.append(outcome)
+        return results
 
     def close(self) -> None:
         with self._lock:
