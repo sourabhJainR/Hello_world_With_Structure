@@ -7,11 +7,11 @@ description: Repository-aware AI coding workflow for research, implementation, r
 
 ## Purpose
 
-Use the repository as the source of truth. Keep work bounded, evidence-backed, deterministic where possible, and easy to verify. The orchestration layer is a facilitator, not a second intelligence layer.
+Use the repository as the source of truth. Keep work bounded, evidence-backed, deterministic where possible, compatible, and easy to verify. The orchestrator facilitates work; it does not create a second intelligence or ownership layer.
 
 ## Repository map first
 
-Before broad repository reading, prefer the dependency-free repository map for structural, cross-file, unfamiliar, or risk-sensitive tasks:
+For structural, cross-file, unfamiliar, or risk-sensitive tasks, prefer the dependency-free repository map before broad reading:
 
 ```bash
 python -m portable.repo_intelligence . --for="<task>" --token-budget=4000
@@ -27,71 +27,75 @@ python -m portable.repo_intelligence . --mode=tests --symbol="<symbol>"
 python -m portable.repo_intelligence . --mode=situ --base=HEAD
 ```
 
-The map is a bounded evidence accelerator, not a proof oracle. Its output carries a stable snapshot digest, confidence on graph edges, skipped-file inventory, parse-error disclosure, and explicit unknowns. A zero result means no evidence was found, not that the thing does not exist. Candidate test relationships are not proof of execution coverage.
+The map is evidence acceleration, not proof. Preserve its snapshot digest, confidence, skipped files, parse errors, and unknowns. Use the detail ladder: `map -> ranked files/symbols -> signatures/windows -> full bodies only for selected items`.
 
-Use the detail ladder:
+## Single-agent-first
 
-`map -> ranked files/symbols -> signatures/windows -> full bodies only for selected items`
+Start with one capable agent: `one agent -> observe -> verify -> stop or continue`. Use multi-agent execution only when independent work, prior failure, measurable benchmark value, or a clear safety/ownership boundary justifies the coordination cost. Remain provider/model neutral.
 
-If the map cannot answer a question completely, preserve its unknowns and acquire the smallest additional evidence needed.
+## Canonical state and context
 
-## Single-agent-first execution
-
-Start with one capable agent unless evidence shows decomposition will improve the result.
-
-`one agent -> observe -> verify -> stop or continue`
-
-Use multi-agent execution only for genuinely independent work, a prior failure another specialist can address, measurable benchmark improvement that justifies coordination cost, or an explicit safety/ownership boundary.
-
-Remain provider/model neutral. The harness supplies context, evidence, verification, and safe boundaries.
-
-## Engineering State Ledger
-
-Preserve:
+Preserve the ledger:
 
 `intent -> context -> plan -> evidence -> change -> verification -> review -> artifact -> rollout -> observation`
 
-Never silently replace evidence or intent after a decision.
-
-## State and context
-
-Use the canonical `RepositoryIntelligence`, `CodebaseIndex`, `SymbolLocator`, context planning, graph expansion, and immutable `ContextEvidence` envelope. Do not create parallel repository indexes, memory stores, capability catalogs, or evidence stores.
-
-The envelope binds intent, plan, repository snapshot, selected paths, symbols, graph paths, bounded evidence, unknowns, and evidence digest.
-
-## Team execution
-
-Only decompose when the single-agent-first decision says it has expected value. Independent read-only units may run in bounded waves; mutating units serialize on resource conflict. Carry the same evidence digest into verification gates.
+Use canonical `RepositoryIntelligence`, `CodebaseIndex`, `SymbolLocator`, context planning, graph expansion, and immutable `ContextEvidence`. Do not create parallel repository indexes, memory stores, capability catalogs, evidence stores, or workflow engines.
 
 ## Retrieval and feedback
 
-Prefer semantic and symbol-aware retrieval over whole-repository prompts. Use bounded deterministic packing when useful. Respect ignore files, secret filtering, deterministic ordering, file-size limits, and token budgets.
+Prefer symbol-aware and semantic retrieval over whole-repository prompts. Use bounded deterministic packing, ignore files, secret filtering, deterministic ordering, file-size limits, and token budgets. Use `.ai-harness/runtime/feedback_loop.py` only when fresh evidence can change the next bounded action.
 
-Use `.ai-harness/runtime/feedback_loop.py` only when repeated evidence can change the next action:
+## Curated change quality
 
-`observe fresh state -> choose one bounded action -> act -> verify -> record -> repeat or stop`
+Use `.ai-harness/ENGINEERING_DESIGN_POLICY.md` and `portable.engineering_design_guard.EngineeringDesignGuard.review(...)` for substantial implementation.
 
-## Engineering design
+For code changes, make this evidence explicit:
 
-Use `.ai-harness/ENGINEERING_DESIGN_POLICY.md` as the canonical synthesis of engineering design sources. Before substantial implementation, use `portable.engineering_design_guard.EngineeringDesignGuard.review(...)` for relevant dimensions.
+`reuse candidates -> usage compatibility -> data/DB access -> performance -> logging/telemetry -> exception handling -> regression safety net`
+
+### Reuse before creation
+
+Search first for existing implementations, extension points, interfaces, helpers, clients, repositories, query paths, tests, configuration, loggers, and exception types serving the same responsibility. Prefer reuse, composition, narrow extension, or adapters over duplication. When reuse is rejected, record the candidate and concrete reason.
+
+### Preserve usage patterns
+
+Treat existing API shapes, caller behavior, configuration semantics, persisted contracts, lifecycle ordering, CLI/HTTP flows, and user-visible workflows as compatibility surfaces. Keep them unchanged unless the request explicitly requires a contract or behavior change.
+
+### Minimize data and database calls
+
+Inspect the existing data-access path before adding one. Prefer already-fetched state, existing caches, batching/set-based operations, joins or bulk APIs already used, and shared transaction/connection handling. Avoid N+1 queries, per-record reads, duplicate round trips, repeated hydration, and needless remote calls without weakening correctness or consistency.
+
+### Keep performance at parity
+
+Identify hot paths and resource-sensitive behavior. Preserve expected latency, throughput, CPU, memory, allocation, I/O, concurrency, and queue characteristics unless the request intentionally changes them. Reuse existing pooling, batching, caching, serialization, and scheduling. Measure when static reasoning cannot establish parity safely.
+
+### Follow local logging and exception conventions
+
+Use the repository's logger/telemetry framework, severity levels, structured fields, correlation/context, redaction, and sampling rules. Reuse existing exception types and propagation/translation patterns, preserve diagnostic context, clean up owned resources, and never swallow failures. Do not introduce a second logging/error abstraction.
+
+### Regression is part of implementation
+
+Verify the new requirement and affected existing behavior. Start with focused tests, then run relevant repository-native build, integration, contract, static, security, data, and performance checks. A new test passing does not prove an existing workflow was preserved.
+
+`not_applicable: reason` is valid for a genuinely irrelevant concern; silent omission is not evidence. Higher-risk code changes block when configured quality/safety evidence is missing.
 
 ## Skill composition
 
-- Use `research` for evidence acquisition before implementation when uncertainty is external, architectural or technological.
-- Use `prototype` when a bounded experiment can resolve uncertainty faster than production implementation.
-- Use `resolving-merge-conflicts` only for an active merge/rebase conflict; it must preserve intent and end with verification.
-- Use `interactive-documentation` when architecture, workflow, sequence, data-flow, or lifecycle evidence needs a portable visual HTML artifact.
-- Use `retro` after meaningful sessions to convert observed failures into small, durable environment improvements.
+- `research`: acquire uncertain external/architectural evidence before implementation.
+- `prototype`: use a bounded experiment when it resolves uncertainty faster.
+- `resolving-merge-conflicts`: only for active merge/rebase conflicts; preserve intent and verify.
+- `interactive-documentation`: produce portable visual architecture/workflow evidence.
+- `retro`: turn verified session outcomes into small durable improvements.
 
-These skills are orchestration surfaces. They reuse the canonical repository/context/evidence/provenance stores and never create parallel ownership.
+These are orchestration surfaces that reuse canonical repository/context/evidence/provenance stores.
 
 ## Minimal safe change
 
-Prefer the smallest change that satisfies intent and preserves contracts. Do not introduce parallel stores or duplicate ownership.
+Prefer the smallest change that fully satisfies intent and preserves contracts. Reuse existing maintained implementations before adding new ones. Do not combine feature delivery with unrelated refactoring or introduce duplicate ownership.
 
 ## Runtime contracts
 
-Keep these aligned with the workflow:
+Keep these aligned:
 
 - `portable.task_planner.TaskPlan`
 - `portable.repo_intelligence.RepositoryMap`
@@ -109,37 +113,27 @@ Keep these aligned with the workflow:
 - `ENGINEERING_DESIGN_POLICY.md`, `EXECUTION_POLICY.md`, `VERIFICATION_POLICY.md`, `REVIEW_POLICY.md`
 - `LEARNING_POLICY.md`, `TOKEN_POLICY.md`, `PROVIDER_CONTRACT.md`, `QUALITY_GOVERNANCE.md`
 
-## Evidence and lifecycle
+## Evidence, rollout, and safety
 
-Evidence must be traceable and sufficient for the claim. Verification is independent of generation. Review gates the verified artifact and same evidence. For bugs: reproduce -> isolate -> identify owner -> minimal fix -> regression test -> verify -> review adjacent behavior.
+Evidence must be traceable and sufficient for the claim. Verification is independent of generation; review gates the verified artifact and same evidence.
 
-Deployment lineage:
+For bugs: `reproduce -> isolate -> identify owner -> minimal fix -> regression test -> verify -> review adjacent behavior`.
 
-`research -> plan -> implement -> verify -> review -> shadow -> canary -> promote`
-
-or, after a failed rollout gate, rollback. Never bypass deployment gates.
-
-## Safety boundaries
-
-- Never treat model output as evidence without source or verification.
-- Never bypass security, permission, scope, or regression gates.
-- Keep external/network capabilities behind existing provider and capability contracts.
-- Keep rollout decisions reversible and auditable.
-- Require explicit approval for destructive, irreversible, production, financial, privacy-sensitive, or external-message actions.
+Deployment lineage is `research -> plan -> implement -> verify -> review -> shadow -> canary -> promote`, or rollback after a failed gate. Never bypass security, permission, scope, or regression gates. Require explicit approval for destructive, irreversible, production, financial, privacy-sensitive, or external-message actions.
 
 ## Working sequence
 
 Normal coding:
 
-`understand intent -> repository map -> acquire bounded context -> choose single-agent or team from evidence -> implement -> verify -> review -> integrate -> regression -> bounded feedback where useful -> artifact -> shadow -> canary -> promote or rollback`
+`understand intent -> repository map -> find reusable implementation -> acquire bounded context -> declare quality evidence -> choose execution strategy -> implement -> verify -> review -> integrate -> regression -> artifact -> shadow -> canary -> promote or rollback`
 
 Research/POC:
 
-`define question -> acquire bounded evidence -> research -> prototype when useful -> measure -> decide -> record unknowns -> implement through normal gates`
+`define question -> bounded evidence -> research -> prototype when useful -> measure -> decide -> record unknowns -> normal implementation gates`
 
 Visual documentation:
 
-`define audience -> repository map -> context/evidence -> author typed topology -> validate -> render standalone HTML -> inspect -> publish/share`
+`audience -> repository map -> context/evidence -> typed topology -> validate -> standalone HTML -> inspect -> publish`
 
 Review:
 
@@ -147,4 +141,4 @@ Review:
 
 ## Output discipline
 
-State what changed, why, what was verified/reviewed, evidence identifiers, receipts when applicable, and remaining uncertainty. Prefer concrete paths, symbols, tests, receipts, graph edges, snapshot digests, and lifecycle state over broad claims.
+Report what changed, why, what was verified/reviewed, evidence/receipts, remaining uncertainty, reusable implementations inspected and reuse decisions, placement/dependency decisions, and relevant risks. Prefer concrete paths, symbols, tests, graph edges, snapshot digests, and lifecycle state over broad claims.
