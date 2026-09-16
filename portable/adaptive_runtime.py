@@ -142,6 +142,7 @@ class AdaptiveRuntime:
         learning_loop = CognitiveLearningLoop(self.persistent_memory, project_key, self_model=cognitive_runtime.self_model)
         episode = cognitive_loop.begin(project_key, task_id, intent)
         prediction_error: PredictionError | None = None
+        cognitive_plan_payload: dict[str, object] | None = None
         try:
             before = execution.gate(HookPhase.BEFORE_AGENT, task_id=task_id)
             if not before.allow:
@@ -163,16 +164,17 @@ class AdaptiveRuntime:
                     current_value=cognitive_current_value, beliefs=cognitive_beliefs,
                     belief_limit=cognitive_belief_limit, context=effective_context,
                 )
-                self.last_cognitive_plan = dict(effective_context["aer_cognitive_plan"])  # type: ignore[arg-type]
+                cognitive_plan_payload = dict(effective_context["aer_cognitive_plan"])  # type: ignore[arg-type]
+                self.last_cognitive_plan = dict(cognitive_plan_payload)
                 cognitive_loop.observe(episode, {
                     "event": "cognitive_plan_created",
-                    "belief_count": len(self.last_cognitive_plan.get("belief_ids", [])),
-                    "prediction_id": (self.last_cognitive_plan.get("prediction") or {}).get("prediction_id")
-                    if isinstance(self.last_cognitive_plan.get("prediction"), dict) else None,
+                    "belief_count": len(cognitive_plan_payload.get("belief_ids", [])),
+                    "prediction_id": (cognitive_plan_payload.get("prediction") or {}).get("prediction_id")
+                    if isinstance(cognitive_plan_payload.get("prediction"), dict) else None,
                 })
             result = self.orchestrator.run(task_id, intent, effective_context)
             cognitive_loop.observe(episode, {"event": "execution_completed", "status": result.status.value})
-            prediction = self.last_cognitive_plan.get("prediction") if self.last_cognitive_plan else None
+            prediction = cognitive_plan_payload.get("prediction") if cognitive_plan_payload else None
             if cognitive_actual_value is not None and isinstance(prediction, dict):
                 predicted_value = prediction.get("predicted_value")
                 actual_digest = hashlib.sha256(json.dumps({"predicted": predicted_value, "actual": cognitive_actual_value},
