@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adaptive-ai-coding-orchestrator.dev/schemas/execution-envelope/v1",
+  "title": "AER Execution Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "intent",
+    "repository",
+    "plan",
+    "evidence",
+    "decisions",
+    "changeset_id",
+    "verification_ids",
+    "review_ids",
+    "regression_ids",
+    "release_ids",
+    "metadata"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "goal", "non_goals"],
+      "properties": {
+        "task_id": {"type": "string", "minLength": 1},
+        "goal": {"type": "string", "minLength": 1},
+        "non_goals": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "root", "model"],
+      "properties": {
+        "digest": {"type": "string", "minLength": 1},
+        "root": {"type": "string"},
+        "model": {"const": "portable.agency_codebase_context.CodebaseIndex"}
+      }
+    },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plan_id", "task_ids"],
+      "properties": {
+        "plan_id": {"type": "string", "minLength": 1},
+        "task_ids": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["evidence_id", "snapshot", "freshness"],
+        "properties": {
+          "evidence_id": {"type": "string", "minLength": 1},
+          "snapshot": {"type": "string"},
+          "freshness": {"type": "string"}
+        }
+      }
+    },
+    "decisions": {"type": "array", "items": {"type": "string"}},
+    "changeset_id": {"type": "string"},
+    "verification_ids": {"type": "array", "items": {"type": "string"}},
+    "review_ids": {"type": "array", "items": {"type": "string"}},
+    "regression_ids": {"type": "array", "items": {"type": "string"}},
+    "release_ids": {"type": "array", "items": {"type": "string"}},
+    "metadata": {"type": "object", "additionalProperties": true}
+  }
+}
