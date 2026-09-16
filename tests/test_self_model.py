@@ -33,6 +33,14 @@ class SelfModelTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 model.should_escalate("python", min_confidence=1.1)
 
+    def test_invalid_identifiers_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            model = SelfModel(PersistentMemory(Path(directory) / "memory.db", require_approval=False), "demo")
+            with self.assertRaises(ValueError):
+                model.record(123, "python", success=True)  # type: ignore[arg-type]
+            with self.assertRaises(ValueError):
+                model.profile(123)  # type: ignore[arg-type]
+
 
 if __name__ == "__main__":
     unittest.main()
