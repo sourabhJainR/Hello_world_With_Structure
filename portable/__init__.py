@@ -36,15 +36,19 @@ from .causal_learning import CausalLearner, Intervention, InterventionOutcome
 from .counterfactual import CounterfactualEngine, CounterfactualQuery, CounterfactualResult
 from .goal_manager import Goal, GoalManager
 from .information_planner import InformationAction, InformationPlan, InformationPlanner
+from .active_information import ActiveInformationLoop, InformationExecution, InformationReceipt
 from .self_model import CapabilityProfile, SelfModel
 from .agi_evaluation import CapabilityCase, CapabilityEvaluator, CaseResult, EvaluationReport, KINDS
 from .cognitive_runtime import CognitiveRuntime
 from .cognitive_loop import CognitiveEpisode, CognitiveEpisodeReceipt, CognitiveLoop
 from .cognitive_controller import CognitiveController, CognitivePlan
+from .cognitive_learning import BeliefContext, CognitiveLearningLoop, LearningSignal
 from .learning_transfer import ConsolidationReceipt, LearningExperience, LearningTransfer, TransferCandidate
+from .transfer_validation import TransferValidation, TransferValidationReceipt, TransferValidator
 from .generalization import Abstraction, AnalogyCandidate, GeneralizationEngine
 from .skill_graph import SkillGraph, SkillNode
 from .curiosity import CuriosityEngine, LearningChoice, LearningNeed
+from .interactive_benchmark import BenchmarkSuiteResult, EpisodeResult, InteractiveBenchmark, InteractiveEnvironment, KeyDoorEnvironment
 from .continual_learning import BenchmarkObservation, ContinualLearningGuard, RegressionResult
 from .capability_acquisition import CapabilityAcquirer, CapabilityNeed, CapabilityProposal, GraduationReceipt as CapabilityGraduationReceipt, PracticeResult, ValidationEvidence, ValidationReceipt
 from .autonomy_graduation import AutonomyEvidence, AutonomyGraduator, GraduationPolicy, GraduationReceipt, LEVELS
@@ -68,11 +72,13 @@ __all__ = [
     "ScopeFinding", "ScopeReport", "ScopeChecker", "Observation", "WorldFact", "WorldPrediction", "PredictionError", "WorldModel",
     "BeliefEvidence", "Hypothesis", "HypothesisEngine", "ReasoningLedger", "ReasoningRecord", "CausalLink", "CausalModel",
     "CausalLearner", "Intervention", "InterventionOutcome", "CounterfactualEngine", "CounterfactualQuery", "CounterfactualResult",
-    "Goal", "GoalManager", "InformationAction", "InformationPlan", "InformationPlanner", "CapabilityProfile", "SelfModel",
-    "CapabilityCase", "CapabilityEvaluator", "CaseResult", "EvaluationReport", "KINDS", "CognitiveRuntime", "CognitiveEpisode",
-    "CognitiveEpisodeReceipt", "CognitiveLoop", "CognitiveController", "CognitivePlan", "LearningExperience", "TransferCandidate",
-    "ConsolidationReceipt", "LearningTransfer", "Abstraction", "AnalogyCandidate", "GeneralizationEngine", "SkillGraph", "SkillNode",
-    "CuriosityEngine", "LearningChoice", "LearningNeed", "BenchmarkObservation", "RegressionResult", "ContinualLearningGuard",
+    "Goal", "GoalManager", "InformationAction", "InformationPlan", "InformationPlanner", "ActiveInformationLoop", "InformationExecution", "InformationReceipt",
+    "CapabilityProfile", "SelfModel", "CapabilityCase", "CapabilityEvaluator", "CaseResult", "EvaluationReport", "KINDS", "CognitiveRuntime",
+    "CognitiveEpisode", "CognitiveEpisodeReceipt", "CognitiveLoop", "CognitiveController", "CognitivePlan", "BeliefContext", "CognitiveLearningLoop", "LearningSignal",
+    "LearningExperience", "TransferCandidate", "ConsolidationReceipt", "LearningTransfer", "TransferValidation", "TransferValidationReceipt", "TransferValidator",
+    "Abstraction", "AnalogyCandidate", "GeneralizationEngine", "SkillGraph", "SkillNode", "CuriosityEngine", "LearningChoice", "LearningNeed",
+    "BenchmarkSuiteResult", "EpisodeResult", "InteractiveBenchmark", "InteractiveEnvironment", "KeyDoorEnvironment",
+    "BenchmarkObservation", "RegressionResult", "ContinualLearningGuard",
     "CapabilityAcquirer", "CapabilityNeed", "CapabilityProposal", "PracticeResult", "CapabilityGraduationReceipt", "ValidationEvidence", "ValidationReceipt",
     "AutonomyEvidence", "AutonomyGraduator", "GraduationPolicy", "GraduationReceipt", "LEVELS", "BenchmarkCase", "DeepBenchmarkReport", "DeepEvaluator",
 ]
