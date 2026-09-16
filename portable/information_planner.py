@@ -21,8 +21,8 @@ class InformationAction:
     def __post_init__(self) -> None:
         if not self.action_id.strip() or not self.description.strip():
             raise ValueError("action_id and description are required")
-        if self.expected_gain < 0 or self.cost <= 0 or not 0 <= self.risk <= 1:
-            raise ValueError("expected_gain must be non-negative, cost positive, and risk bounded")
+        if not 0 <= self.expected_gain <= 1 or self.cost <= 0 or not 0 <= self.risk <= 1:
+            raise ValueError("expected_gain and risk must be between 0 and 1, and cost positive")
         if any(not item.strip() for item in self.evidence_ids):
             raise ValueError("evidence_ids must contain non-empty strings")
 
