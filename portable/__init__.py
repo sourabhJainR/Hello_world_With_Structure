@@ -46,6 +46,7 @@ from .hypothesis_engine import BeliefEvidence, Hypothesis, HypothesisEngine
 from .reasoning_ledger import ReasoningLedger, ReasoningRecord
 from .causal_model import CausalLink, CausalModel
 from .goal_manager import Goal, GoalManager
+from .information_planner import InformationAction, InformationPlan, InformationPlanner
 
 __all__ = [
     "main", "AdaptiveRuntime", "HookBus", "HookDecision", "HookEvent", "HookPhase", "HookedExecution",
@@ -62,8 +63,9 @@ __all__ = [
     "AgencyReceipt", "CycleObservation", "RecursiveAgency", "WorkItem",
     "PackedFile", "RepositoryPack", "RepositoryEvidence", "RepositoryAnswer", "RepositoryIntelligence", "RepositoryMap", "render_compact",
     "Specialist", "SpecialistRouter", "RouteRequest", "RouteDecision",
-    "ResearchTask", "ResearchPlan", "ResearchPlanner", "EvidenceItem", "ConsensusResult", "MixtureOfAgents",
+    "ResearchTask", "ResearchPlan", "ResearchPlanner", "ResearchTask", "EvidenceItem", "ConsensusResult", "MixtureOfAgents",
     "OptimizationRound", "OptimizationResult", "OneChangeOptimizer", "ScopeFinding", "ScopeReport", "ScopeChecker",
     "Observation", "WorldFact", "WorldModel", "BeliefEvidence", "Hypothesis", "HypothesisEngine",
     "ReasoningLedger", "ReasoningRecord", "CausalLink", "CausalModel", "Goal", "GoalManager",
+    "InformationAction", "InformationPlan", "InformationPlanner",
 ]
