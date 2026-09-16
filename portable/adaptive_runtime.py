@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -115,11 +115,13 @@ class AdaptiveRuntime:
     def ensure_learning_maintenance(self, project_root: Path | str, *, interval_seconds: int | None = None) -> object:
         """Create the project learning schedule once and return its durable receipt."""
         root = Path(project_root).expanduser().resolve()
+        interval = interval_seconds or self.maintenance_interval_seconds
         task = json.dumps({"kind": "adaptive_learning", "project_root": str(root)}, sort_keys=True)
         existing = self.automation_scheduler.find_task(task)
         if existing is not None:
             return existing
-        return self.automation_scheduler.add(task, interval_seconds or self.maintenance_interval_seconds, max_attempts=3)
+        start = datetime.now(timezone.utc) - timedelta(seconds=interval)
+        return self.automation_scheduler.add(task, interval, max_attempts=3, start=start)
 
     def maintenance_tick(self, project_root: Path | str, *, budget: int | None = None) -> MaintenanceReceipt | None:
         """Claim and execute one due maintenance cycle without entering orchestration."""
