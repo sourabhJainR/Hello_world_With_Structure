@@ -24,27 +24,15 @@ from .repository_intelligence import (
     PackedFile, RepositoryAnswer, RepositoryEvidence, RepositoryIntelligence, RepositoryMap, RepositoryPack, render_compact,
 )
 from .agent_patterns import (
-    ConsensusResult,
-    EvidenceItem,
-    MixtureOfAgents,
-    OneChangeOptimizer,
-    OptimizationResult,
-    OptimizationRound,
-    ResearchPlan,
-    ResearchPlanner,
-    ResearchTask,
-    RouteDecision,
-    RouteRequest,
-    ScopeChecker,
-    ScopeFinding,
-    ScopeReport,
-    Specialist,
-    SpecialistRouter,
+    ConsensusResult, EvidenceItem, MixtureOfAgents, OneChangeOptimizer, OptimizationResult, OptimizationRound,
+    ResearchPlan, ResearchPlanner, ResearchTask, RouteDecision, RouteRequest, ScopeChecker, ScopeFinding, ScopeReport,
+    Specialist, SpecialistRouter,
 )
 from .world_model import Observation, PredictionError, WorldFact, WorldModel, WorldPrediction
 from .hypothesis_engine import BeliefEvidence, Hypothesis, HypothesisEngine
 from .reasoning_ledger import ReasoningLedger, ReasoningRecord
 from .causal_model import CausalLink, CausalModel
+from .causal_learning import CausalLearner, Intervention, InterventionOutcome
 from .counterfactual import CounterfactualEngine, CounterfactualQuery, CounterfactualResult
 from .goal_manager import Goal, GoalManager
 from .information_planner import InformationAction, InformationPlan, InformationPlanner
@@ -70,24 +58,21 @@ __all__ = [
     "MemoryRecord", "PersistentMemory", "AgentMemory", "ContextEngine", "ContextItem", "ContextPolicy",
     "Handoff", "handoff_from_output", "DreamMemory", "AutomationScheduler", "Schedule", "OutputQualityGate", "QualityResult",
     "BoundedLoop", "LoopAction", "LoopDefinition", "LoopPass", "LoopRunReceipt", "VerificationResult",
-    "ProvenanceLedger", "ProvenanceRecord", "DesignDimension", "DesignFinding", "DesignReviewReceipt",
-    "EngineeringDesignGuard", "FindingSeverity", "Checkpoint", "CompiledStateGraph", "GraphEvent",
-    "GraphInterrupt", "GraphRun", "InMemoryCheckpointStore", "RetryPolicy", "StateGraph",
+    "ProvenanceLedger", "ProvenanceRecord", "DesignDimension", "DesignFinding", "DesignReviewReceipt", "EngineeringDesignGuard", "FindingSeverity",
+    "Checkpoint", "CompiledStateGraph", "GraphEvent", "GraphInterrupt", "GraphRun", "InMemoryCheckpointStore", "RetryPolicy", "StateGraph",
     "ChoiceDecision", "DecisionBatch", "DecisionFabric", "DecisionPolicy", "DecisionQuestion", "NoulDecision", "PolicyDecision", "ScoreDecision",
     "AgencyReceipt", "CycleObservation", "RecursiveAgency", "WorkItem",
     "PackedFile", "RepositoryPack", "RepositoryEvidence", "RepositoryAnswer", "RepositoryIntelligence", "RepositoryMap", "render_compact",
-    "Specialist", "SpecialistRouter", "RouteRequest", "RouteDecision",
-    "ResearchTask", "ResearchPlan", "ResearchPlanner", "EvidenceItem", "ConsensusResult", "MixtureOfAgents",
-    "OptimizationRound", "OptimizationResult", "OneChangeOptimizer", "ScopeFinding", "ScopeReport", "ScopeChecker",
-    "Observation", "WorldFact", "WorldPrediction", "PredictionError", "WorldModel", "BeliefEvidence", "Hypothesis", "HypothesisEngine",
-    "ReasoningLedger", "ReasoningRecord", "CausalLink", "CausalModel", "CounterfactualEngine", "CounterfactualQuery", "CounterfactualResult",
+    "Specialist", "SpecialistRouter", "RouteRequest", "RouteDecision", "ResearchTask", "ResearchPlan", "ResearchPlanner",
+    "EvidenceItem", "ConsensusResult", "MixtureOfAgents", "OptimizationRound", "OptimizationResult", "OneChangeOptimizer",
+    "ScopeFinding", "ScopeReport", "ScopeChecker", "Observation", "WorldFact", "WorldPrediction", "PredictionError", "WorldModel",
+    "BeliefEvidence", "Hypothesis", "HypothesisEngine", "ReasoningLedger", "ReasoningRecord", "CausalLink", "CausalModel",
+    "CausalLearner", "Intervention", "InterventionOutcome", "CounterfactualEngine", "CounterfactualQuery", "CounterfactualResult",
     "Goal", "GoalManager", "InformationAction", "InformationPlan", "InformationPlanner", "CapabilityProfile", "SelfModel",
-    "CapabilityCase", "CapabilityEvaluator", "CaseResult", "EvaluationReport", "KINDS", "CognitiveRuntime",
-    "CognitiveEpisode", "CognitiveEpisodeReceipt", "CognitiveLoop", "CognitiveController", "CognitivePlan",
-    "LearningExperience", "TransferCandidate", "ConsolidationReceipt", "LearningTransfer",
-    "Abstraction", "AnalogyCandidate", "GeneralizationEngine", "SkillGraph", "SkillNode", "CuriosityEngine", "LearningChoice", "LearningNeed",
-    "BenchmarkObservation", "RegressionResult", "ContinualLearningGuard",
+    "CapabilityCase", "CapabilityEvaluator", "CaseResult", "EvaluationReport", "KINDS", "CognitiveRuntime", "CognitiveEpisode",
+    "CognitiveEpisodeReceipt", "CognitiveLoop", "CognitiveController", "CognitivePlan", "LearningExperience", "TransferCandidate",
+    "ConsolidationReceipt", "LearningTransfer", "Abstraction", "AnalogyCandidate", "GeneralizationEngine", "SkillGraph", "SkillNode",
+    "CuriosityEngine", "LearningChoice", "LearningNeed", "BenchmarkObservation", "RegressionResult", "ContinualLearningGuard",
     "CapabilityAcquirer", "CapabilityNeed", "CapabilityProposal", "PracticeResult", "CapabilityGraduationReceipt", "ValidationEvidence", "ValidationReceipt",
-    "AutonomyEvidence", "AutonomyGraduator", "GraduationPolicy", "GraduationReceipt", "LEVELS",
-    "BenchmarkCase", "DeepBenchmarkReport", "DeepEvaluator",
+    "AutonomyEvidence", "AutonomyGraduator", "GraduationPolicy", "GraduationReceipt", "LEVELS", "BenchmarkCase", "DeepBenchmarkReport", "DeepEvaluator",
 ]
