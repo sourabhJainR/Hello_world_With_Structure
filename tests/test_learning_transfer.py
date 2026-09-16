@@ -22,6 +22,34 @@ class LearningTransferTests(unittest.TestCase):
             self.assertEqual(candidates[0].detail, "Use bounded batches")
             self.assertEqual(candidates[0].source_projects, ("source-a", "source-b"))
 
+    def test_structural_transfer_finds_related_verified_experience(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            memory = PersistentMemory(Path(directory) / "memory.db", require_approval=False)
+            learning = LearningTransfer(memory, "target")
+            learning.record(LearningExperience(
+                "e1", "source-a", "parser", "recovery", "worked", "retry after timeout",
+                ("ev1",), 0.9, True, ("retry", "timeout"),
+            ))
+            candidates = learning.transfer_structural("parser", "recovery", ("retry", "timeout", "backoff"))
+            self.assertEqual(len(candidates), 1)
+            self.assertEqual(candidates[0].detail, "retry after timeout")
+            self.assertGreater(candidates[0].similarity, 0.5)
+
+    def test_structural_transfer_rejects_negative_context(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            memory = PersistentMemory(Path(directory) / "memory.db", require_approval=False)
+            learning = LearningTransfer(memory, "target")
+            learning.record(LearningExperience(
+                "e1", "source-a", "parser", "recovery", "worked", "retry safely",
+                ("ev1",), 0.9, True, ("retry", "timeout"), ("non_idempotent_action",),
+            ))
+            self.assertEqual(
+                learning.transfer_structural(
+                    "parser", "recovery", ("retry", "timeout"),
+                    target_conditions=("non_idempotent_action",),
+                ), []
+            )
+
     def test_consolidation_requires_independent_verified_projects(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             memory = PersistentMemory(Path(directory) / "memory.db", require_approval=False)
