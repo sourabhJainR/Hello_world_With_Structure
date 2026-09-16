@@ -15,10 +15,12 @@ class TriggerRuntimeTests(unittest.TestCase):
             event = runtime.emit("email.received", {"message_id": "m1"}, event_id="evt-1")
             duplicate = runtime.emit("email.received", {"message_id": "m1"}, event_id="evt-1")
             self.assertEqual(event.event_id, duplicate.event_id)
+            with self.assertRaisesRegex(ValueError, "different content"):
+                runtime.emit("email.received", {"message_id": "m2"}, event_id="evt-1")
             claim = runtime.claim("evt-1")
             self.assertIsNotNone(claim)
             self.assertIsNone(runtime.claim("evt-1"))
-            runtime.complete("evt-1", claim.claim_id, "success")
+            runtime.complete("evt-1", claim.claim_id, "success", detail="accepted")
             self.assertIsNone(runtime.claim("evt-1"))
             scheduler.close()
 
@@ -38,7 +40,15 @@ class TriggerRuntimeTests(unittest.TestCase):
             self.assertEqual(runtime.due(now=future + timedelta(seconds=20)), ())
             scheduler.close()
 
-    def test_dispatch_hands_off_to_handler_and_records_failure(self):
+    def test_timezone_is_required_for_explicit_trigger_time(self):
+        with tempfile.TemporaryDirectory() as directory:
+            scheduler = AutomationScheduler(Path(directory) / "runtime.sqlite")
+            runtime = TriggerRuntime(scheduler)
+            with self.assertRaisesRegex(ValueError, "timezone-aware"):
+                runtime.emit("job", {}, event_id="evt-naive", not_before=datetime.now())
+            scheduler.close()
+
+    def test_dispatch_hands_off_to_handler_and_records_success(self):
         with tempfile.TemporaryDirectory() as directory:
             scheduler = AutomationScheduler(Path(directory) / "runtime.sqlite")
             runtime = TriggerRuntime(scheduler)
