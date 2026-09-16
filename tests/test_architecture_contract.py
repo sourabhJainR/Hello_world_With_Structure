@@ -34,11 +34,14 @@ class ArchitectureContractTests(unittest.TestCase):
 
     def test_enforcement_points_exist(self) -> None:
         contract = self.validator.load_contract()
-        for relative_path in contract["enforcement"].values():
+        for key in ("validator", "tests", "ci"):
+            relative_path = contract["enforcement"][key]
+            self.assertIsInstance(relative_path, str)
             self.assertTrue(
                 (ROOT / relative_path).is_file(),
                 f"missing architecture enforcement point: {relative_path}",
             )
+        self.assertIs(contract["enforcement"]["hard_fail"], True)
 
     def test_learning_remains_advisory(self) -> None:
         contract = self.validator.load_contract()
