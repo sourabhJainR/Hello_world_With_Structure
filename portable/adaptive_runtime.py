@@ -8,8 +8,10 @@ from .automation_scheduler import AutomationScheduler
 from .capability_fabric import Capability, CapabilityFabric, ProviderAdapter, ProviderAdapterRegistry
 from .context_graph import ContextGraph
 from .context_resolver import ContextResolution, ContextResolver
+from .cognitive_controller import CognitiveController
 from .cognitive_loop import CognitiveEpisodeReceipt, CognitiveLoop
 from .cognitive_runtime import CognitiveRuntime
+from .information_planner import InformationAction
 from .lifecycle_hooks import HookBus, HookPhase, HookedExecution
 from .orchestration import Graph, OrchestrationRun, Orchestrator
 from .output_quality import OutputQualityGate, QualityResult
@@ -48,16 +50,15 @@ class AdaptiveRuntime:
         self.provider_adapters = provider_adapters or ProviderAdapterRegistry()
         self.trigger_runtime = TriggerRuntime(self.automation_scheduler)
         self.last_cognitive_episode: CognitiveEpisodeReceipt | None = None
+        self.last_cognitive_plan: dict[str, object] | None = None
 
     def capability(self, name: str, preferred: tuple[str, ...] = ()) -> RoutingDecision:
         return self.provider_fabric.route(CapabilityRequest(name, preferred))
 
     def plan_capabilities(self, requested: Iterable[str], *, network_allowed: bool,
                           sandbox_available: bool = True, max_risk: str = "high") -> list[Capability]:
-        return self.capability_fabric.plan(
-            requested, network_allowed=network_allowed,
-            sandbox_available=sandbox_available, max_risk=max_risk,
-        )
+        return self.capability_fabric.plan(requested, network_allowed=network_allowed,
+                                           sandbox_available=sandbox_available, max_risk=max_risk)
 
     def register_provider_adapter(self, name: str, capabilities: Iterable[str], *, priority: int = 0) -> None:
         self.provider_adapters.register(ProviderAdapter(name, frozenset(capabilities), priority=priority))
@@ -68,19 +69,13 @@ class AdaptiveRuntime:
     def quality_check(self, *, acceptance_met: bool, verification_passed: bool,
                       evidence_count: int, diff_clean: bool, scope_clean: bool,
                       unresolved: int = 0) -> QualityResult:
-        return self.output_quality.evaluate(
-            acceptance_met=acceptance_met,
-            verification_passed=verification_passed,
-            evidence_count=evidence_count,
-            diff_clean=diff_clean,
-            scope_clean=scope_clean,
-            unresolved=unresolved,
-        )
+        return self.output_quality.evaluate(acceptance_met=acceptance_met, verification_passed=verification_passed,
+                                            evidence_count=evidence_count, diff_clean=diff_clean,
+                                            scope_clean=scope_clean, unresolved=unresolved)
 
     def resolve_context(self, project_root: Path | str, task: str, *, node_id: str | None = None,
                         workspace_id: str | None = None, required: Sequence[str] = (),
                         memory_limit: int = 12, graph_limit: int = 24) -> ContextResolution:
-        """Resolve durable context through the canonical memory/graph path."""
         project_key = self.session_store.project_key(project_root)
         graph = ContextGraph(self.persistent_memory, project_key)
         resolver = ContextResolver(self.persistent_memory, graph)
@@ -88,7 +83,6 @@ class AdaptiveRuntime:
                                 required=required, memory_limit=memory_limit, graph_limit=graph_limit)
 
     def cognition(self, project_root: Path | str) -> CognitiveRuntime:
-        """Return the project-scoped cognitive layer without replacing orchestration."""
         project_key = self.session_store.project_key(project_root)
         return CognitiveRuntime.create(self.persistent_memory, project_key)
 
@@ -97,7 +91,6 @@ class AdaptiveRuntime:
         return self.trigger_runtime.emit(kind, payload, event_id=event_id, max_attempts=max_attempts)
 
     def dispatch_triggers(self, handler: Any, *, limit: int = 20) -> list[Any]:
-        """Dispatch claimed triggers to a caller-owned normal orchestration handler."""
         return self.trigger_runtime.dispatch_due(handler, limit=limit)
 
     def run(
@@ -113,6 +106,14 @@ class AdaptiveRuntime:
         workspace_id: str | None = None,
         required_context: Sequence[str] = (),
         enrich_context: bool = False,
+        enrich_cognition: bool = True,
+        cognitive_capability: str | None = None,
+        cognitive_uncertainty: float = 0.5,
+        cognitive_information_actions: tuple[InformationAction, ...] = (),
+        cognitive_entity_id: str | None = None,
+        cognitive_predicate: str | None = None,
+        cognitive_action: str | None = None,
+        cognitive_current_value: object | None = None,
     ) -> OrchestrationRun:
         project_key = self.session_store.project_key(project_root)
         provider_name = provider or "aer"
@@ -120,11 +121,8 @@ class AdaptiveRuntime:
         start = execution.gate(HookPhase.SESSION_START, task_id=task_id, payload={"project_key": project_key})
         if not start.allow:
             raise RuntimeError(f"session_start vetoed: {start.reason}")
-        checkpoint = SessionCheckpoint(
-            session_id=session_id, task_id=task_id, project_key=project_key,
-            stage="execute", remaining_batches=["verify", "review", "learn"],
-            active_provider=provider_name,
-        )
+        checkpoint = SessionCheckpoint(session_id=session_id, task_id=task_id, project_key=project_key,
+                                       stage="execute", remaining_batches=["verify", "review", "learn"], active_provider=provider_name)
         self.session_store.save(checkpoint)
         cognitive_loop = CognitiveLoop(self.cognition(project_root))
         episode = cognitive_loop.begin(project_key, task_id, intent)
@@ -135,14 +133,21 @@ class AdaptiveRuntime:
             cognitive_loop.observe(episode, {"event": "before_agent", "status": "running"})
             effective_context = dict(context or {})
             if enrich_context:
-                resolution = self.resolve_context(
-                    project_root, intent, node_id=context_node_id,
-                    workspace_id=workspace_id, required=required_context,
-                )
+                resolution = self.resolve_context(project_root, intent, node_id=context_node_id,
+                                                  workspace_id=workspace_id, required=required_context)
                 effective_context["aer_context_pack"] = resolution.pack
                 effective_context["aer_context_digest"] = resolution.digest
                 effective_context["aer_context_omitted"] = list(resolution.omitted)
                 cognitive_loop.observe(episode, {"event": "context_resolved", "digest": resolution.digest})
+            if enrich_cognition:
+                effective_context = CognitiveController(self.cognition(project_root)).enrich_context(
+                    intent, capability=cognitive_capability, uncertainty=cognitive_uncertainty,
+                    information_actions=cognitive_information_actions, entity_id=cognitive_entity_id,
+                    predicate=cognitive_predicate, action=cognitive_action,
+                    current_value=cognitive_current_value, context=effective_context,
+                )
+                self.last_cognitive_plan = dict(effective_context["aer_cognitive_plan"])  # type: ignore[arg-type]
+                cognitive_loop.observe(episode, {"event": "cognitive_plan_created"})
             result = self.orchestrator.run(task_id, intent, effective_context)
             cognitive_loop.observe(episode, {"event": "execution_completed", "status": result.status.value})
             after = execution.gate(HookPhase.AFTER_AGENT, task_id=task_id, payload={"status": result.status.value})
