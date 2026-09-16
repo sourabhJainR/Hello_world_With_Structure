@@ -1,12 +1,12 @@
 """Canonical execution envelope shared by planning, execution, and evidence.
 
-The envelope is intentionally provider-neutral and serializable. It carries the
-identity and freshness boundaries that must survive handoffs and state-graph
-execution without becoming a second source of truth.
+The envelope is provider-neutral and serializable. It carries the identity and
+freshness boundaries that must survive handoffs and state-graph execution
+without becoming a second source of truth.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 import hashlib
 import json
 from typing import Any, Mapping
@@ -14,8 +14,6 @@ from typing import Any, Mapping
 
 @dataclass(frozen=True)
 class RepositoryReference:
-    """Repository model identity used to prevent stale-context execution."""
-
     digest: str
     root: str = ""
     model: str = "portable.agency_codebase_context.CodebaseIndex"
@@ -77,7 +75,7 @@ class ExecutionEnvelope:
     def validate(self) -> None:
         if self.schema_version != "1.0":
             raise ValueError(f"unsupported execution envelope schema: {self.schema_version}")
-        if self.intent.task_id != (self.plan.task_ids[0] if len(self.plan.task_ids) == 1 else self.intent.task_id):
+        if self.intent.task_id not in self.plan.task_ids and self.plan.task_ids:
             raise ValueError("plan/task identity mismatch")
         seen: set[str] = set()
         for evidence in self.evidence:
@@ -87,7 +85,34 @@ class ExecutionEnvelope:
 
     def to_dict(self) -> dict[str, Any]:
         self.validate()
-        return asdict(self)
+        return {
+            "schema_version": self.schema_version,
+            "intent": {
+                "task_id": self.intent.task_id,
+                "goal": self.intent.goal,
+                "non_goals": list(self.intent.non_goals),
+            },
+            "repository": {
+                "digest": self.repository.digest,
+                "root": self.repository.root,
+                "model": self.repository.model,
+            },
+            "plan": {
+                "plan_id": self.plan.plan_id,
+                "task_ids": list(self.plan.task_ids),
+            },
+            "evidence": [
+                {"evidence_id": item.evidence_id, "snapshot": item.snapshot, "freshness": item.freshness}
+                for item in self.evidence
+            ],
+            "decisions": list(self.decisions),
+            "changeset_id": self.changeset_id,
+            "verification_ids": list(self.verification_ids),
+            "review_ids": list(self.review_ids),
+            "regression_ids": list(self.regression_ids),
+            "release_ids": list(self.release_ids),
+            "metadata": dict(self.metadata),
+        }
 
     def canonical_bytes(self) -> bytes:
         return (json.dumps(self.to_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n").encode("utf-8")
