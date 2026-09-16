@@ -1,4 +1,3 @@
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -39,8 +38,7 @@ class ContinuousLearningRuntimeTests(unittest.TestCase):
                 cognitive_capability="planning", learning_strategy="default", learning_confidence=0.8,
             )
             self.assertEqual(result.status.value, "accepted")
-            history = runtime.current_adaptive_policy(root)
-            self.assertEqual(history.strategy, "default")
+            self.assertEqual(runtime.current_adaptive_policy(root).strategy, "default")
             receipt = runtime.maintenance_tick(root)
             self.assertIsNotNone(receipt)
             self.assertEqual(receipt.jobs_processed, 1)
@@ -48,20 +46,24 @@ class ContinuousLearningRuntimeTests(unittest.TestCase):
             scheduler.close()
             memory.close()
 
-    def test_policy_snapshot_is_visible_to_future_runs_only(self):
+    def test_policy_snapshot_is_available_to_execution_context(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             captured = {}
             memory = PersistentMemory(root / "memory.db", require_approval=False)
             scheduler = AutomationScheduler(root / "automation.db")
             sessions = SessionStore(root / "sessions.db")
-            graph = Graph([Node("agent", NodeKind.AGENT, lambda context: captured.setdefault("policy", dict(context["aer_adaptive_policy"])) or "ok", critical=True, risk="low")])
+
+            def agent(context):
+                captured["policy"] = dict(context["aer_adaptive_policy"])
+                return "ok"
+
+            graph = Graph([Node("agent", NodeKind.AGENT, agent, critical=True, risk="low")])
             runtime = AdaptiveRuntime(graph, persistent_memory=memory, automation_scheduler=scheduler, session_store=sessions)
             runtime.run(session_id="s1", task_id="t1", project_root=root, intent="first", cognitive_capability="planning")
-            first_policy_version = captured["policy"]["version"]
+            self.assertTrue(captured["policy"]["version"].startswith("v"))
             scheduler.close()
             memory.close()
-            self.assertTrue(first_policy_version.startswith("v"))
 
 
 if __name__ == "__main__":
