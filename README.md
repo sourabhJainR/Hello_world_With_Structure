@@ -1,26 +1,65 @@
 # Adaptive AI Coding Orchestrator
 
-A provider-neutral AI software-engineering control plane for Claude Code and compatible coding agents. **AER (Adaptive Engineering Runtime)** turns a natural-language task, Jira issue, bug, review, research question, or POC into a repository-aware workflow with bounded context, capability routing, verification, review, durable evidence, graph orchestration, regression replay, and evidence-backed learning.
+A provider-neutral AI software-engineering control plane for Claude Code and compatible coding agents. **AER (Adaptive Engineering Runtime)** turns a task, bug, review, research question, Jira issue, or proof of concept into a repository-aware workflow with bounded context, capability routing, verification, review, durable evidence, graph orchestration, regression replay, and evidence-backed learning.
 
-## Current repository state
+## What AER is today
 
-The repository now has a coherent execution path from task intake through verification and learning. The latest architecture combines the existing AER lifecycle with a provider-neutral state-graph runtime and dependency-aware agent teams without introducing a LangGraph runtime dependency.
+The repository now has one coherent execution path from task intake through verification, learning, memory consolidation, empirical tuning, and controlled improvement.
 
-The important ownership boundaries are:
+```text
+Task / Intent
+    |
+    v
+Context + Repository Intelligence
+    |
+    v
+Cognitive Plan / Capability Routing
+    |
+    v
+StateGraph / Agent Team
+    |
+    v
+Verify -> Review -> Evidence
+    |
+    v
+Record Experience
+    |
+    v
+Continuous Maintenance Lane
+    |
+    +--> consolidate memory
+    +--> replay / evaluate history
+    +--> tune strategy + confidence
+    +--> tune iteration target
+    |
+    v
+Advisory policy for future tasks
+```
 
-- **`portable.task_planner.TaskPlan`** owns dependency planning for agent work.
-- **`portable.agency_state_graph.StateGraph`** owns low-level graph execution semantics: state, reducers, routing, bounded retries, checkpoints, interrupts, traces, and bounded supersteps.
-- **`.ai-harness/runtime/graph_agent_team.py`** owns high-level role orchestration and task-scoped `SharedTaskMemory` while using `TaskPlan` as its canonical dependency contract.
-- **`portable.agent_capabilities` / `CapabilityFabric`** owns capability semantics, risk, fallback, sandbox/network requirements, and provider selection.
-- **`portable.agent_capabilities.PersistentMemory`** owns durable memory semantics; compatibility memory APIs adapt to it rather than creating a second store.
-- **`portable.agency_codebase_context.CodebaseIndex`** owns semantic repository retrieval, while `RepositoryIntelligence` provides broader bounded repository packing.
-- **`portable.repo_intelligence.RepositoryMap`** owns the deterministic repository snapshot and structural question surface: ranked search, callers/callees, impact, affected-test candidates, situational changes, and bounded task packs.
+The important architectural boundary is that **execution remains bounded and policy-gated** while learning is durable and continuous. The maintenance lane never mutates an active task's policy mid-run; learned changes are applied to future work after evidence and regression gates pass.
 
-See [`docs/CAPABILITY_MEMORY_OWNERSHIP.md`](docs/CAPABILITY_MEMORY_OWNERSHIP.md) for the explicit ownership contract and [`docs/RIPWIRE_INTEGRATION.md`](docs/RIPWIRE_INTEGRATION.md) for the repository-intelligence design lineage.
+## Canonical ownership boundaries
+
+| Area | Canonical owner |
+|---|---|
+| Dependency planning | `portable.task_planner.TaskPlan` |
+| Graph execution | `portable.agency_state_graph.StateGraph` |
+| Agent-team orchestration | `.ai-harness/runtime/graph_agent_team.py` |
+| Capability semantics and routing | `portable.agent_capabilities` / `CapabilityFabric` |
+| Durable memory | `portable.agent_capabilities.PersistentMemory` |
+| Repository retrieval | `portable.agency_codebase_context.CodebaseIndex` and `portable.repo_intelligence.RepositoryMap` |
+| Scheduling and run claims | `portable.automation_scheduler.AutomationScheduler` |
+| Adaptive learning | `portable.adaptive_learning.AdaptiveLearningStore` |
+| Empirical tuning | `portable.adaptive_tuning.AdaptiveTuner` |
+| OS service lifecycle | `portable.maintenance_service` |
+
+Compatibility surfaces adapt to these owners instead of maintaining independent state.
+
+See [`docs/CAPABILITY_MEMORY_OWNERSHIP.md`](docs/CAPABILITY_MEMORY_OWNERSHIP.md) for the capability/memory contract and [`docs/RIPWIRE_INTEGRATION.md`](docs/RIPWIRE_INTEGRATION.md) for repository-intelligence design lineage.
 
 ## Deterministic repository intelligence
 
-AER now has a dependency-free repository map designed for the first minutes of an engineering task. It builds one deterministic snapshot and reuses that model for multiple questions instead of making each feature invent its own index.
+AER builds one deterministic repository snapshot and reuses it for multiple structural questions.
 
 ```bash
 python -m portable.repo_intelligence . --for="Fix the authentication timeout regression" --token-budget=4000
@@ -31,52 +70,15 @@ python -m portable.repo_intelligence . --mode=situ --base=HEAD
 python -m portable.repo_intelligence . --mode=pack-task --for="Add retry handling to the payment client"
 ```
 
-The output is deliberately evidence-oriented:
+The map provides deterministic file ordering and SHA-256 identity, symbol/import/call relationships, bounded graph expansion, explicit token budgets, affected-test candidates, parser-error disclosure, skipped-file disclosure, and explicit unknowns when evidence is incomplete.
 
-- deterministic file ordering and SHA-256 snapshot identity;
-- lightweight symbol/import/call relationships without external services;
-- bounded graph expansion with confidence on ambiguous edges;
-- explicit token budgets and whole evidence windows rather than arbitrary truncation;
-- affected-test candidates without pretending they prove coverage;
-- skipped-file and parser-error disclosure;
-- explicit unknowns whenever context was omitted or the graph could not establish a relationship;
-- compact output suitable for coding-agent handoff, plus JSON for programmatic use.
+Repository intelligence accelerates context discovery; verification, policy, review, regression, permissions, and release gates remain authoritative.
 
-The map is an accelerator, not a verification oracle. Verification, policy, permissions, review, regression, and release gates remain authoritative.
+## Graph orchestration and agent teams
 
-## Executable engineering lifecycle
+AER includes a dependency-free `StateGraph` runtime inspired by durable agent-graph patterns without taking a LangGraph runtime dependency. It provides state snapshots, reducers, conditional routing, bounded retries, checkpoints, interrupts, deterministic traces, bounded supersteps, and explicit parallel-safety controls.
 
-For substantial work the control plane follows one evidence lineage:
-
-```text
-research -> plan -> implement -> verify -> review -> shadow -> canary -> promote
-                                                            |
-                                                            +-> rollback
-```
-
-`ContextEvidence` is immutable. Verification creates a `VerificationReceipt`; review creates a `ReviewReceipt` bound to the same artifact, evidence, and verification. Shadow and canary require the review receipt. Promotion requires matching verification/review receipts and the artifact already in canary. Release history records the relevant digests.
-
-The broader runtime also supports bounded Plan / Act / Observe / Evaluate loops, regression replay, learning candidates, and guarded promotion. Learned recommendations remain advisory until replay, confidence, and canary gates pass.
-
-## Graph orchestration
-
-AER includes a dependency-free `StateGraph` runtime inspired by useful durable-agent-graph patterns without importing LangGraph. It provides:
-
-- explicit mutable execution state with immutable node snapshots;
-- per-key reducers for deterministic parallel state merges;
-- conditional routing and normal graph edges;
-- bounded per-node retry policies;
-- checkpoint-after-superstep durability through a host-supplied checkpoint store;
-- before/after node interrupts for controlled pause and resume;
-- deterministic execution traces and run digests;
-- bounded execution with `max_steps` protection;
-- bounded parallel supersteps for nodes explicitly marked parallel-safe.
-
-The runtime is deliberately small and provider-neutral. It orchestrates callbacks supplied by the host; it does not execute shell commands, credentials, model calls, repository mutations, or tools by itself.
-
-### Agent-team integration
-
-`GraphAgentTeam` uses the state graph as its execution engine while preserving the existing public contract:
+`GraphAgentTeam` uses that graph runtime while retaining `TaskPlan` as the canonical dependency contract:
 
 ```text
 TaskPlan
@@ -95,199 +97,21 @@ SharedTaskMemory
 Verification / review / synthesis
 ```
 
-Dependency failures remain fail-closed. Blocked downstream roles are represented in graph state but are not reported as executed agent results. Read-only roles receive an explicit `patch_allowed: false` execution guard in the harness bridge.
+Dependency failures are fail-closed. Read-only roles receive an explicit `patch_allowed: false` guard. The graph path is the default; `AER_GRAPH_TEAM=0` remains available for diagnostics and compatibility.
 
-The graph integration is enabled by default. For diagnostics, the legacy phase execution path can be selected with:
+## Engineering lifecycle and evidence
 
-```bash
-AER_GRAPH_TEAM=0
-```
-
-This fallback exists for compatibility and diagnostics; the graph path is the default execution model.
-
-## State graph and agent-team verification
-
-The repository includes dedicated coverage for:
-
-- reducer-based parallel state merging;
-- conditional routing;
-- bounded retry behavior;
-- checkpoint and resume behavior without repeating completed agents;
-- before/after interrupts;
-- max-step protection;
-- canonical `TaskPlan` dependency planning;
-- shared-memory propagation between agents;
-- bounded parallel read-only execution;
-- serialized mutating execution;
-- dependency blocking and cycle rejection;
-- graph-phase construction and portable-bundle validation.
-
-The graph-specific CI workflow compiles the AER runtime, runs the graph and resilience suites plus `.ai-harness/tests`, and validates a fresh portable bundle. See [`.github/workflows/graph-runtime-check.yml`](.github/workflows/graph-runtime-check.yml).
-
-## AER CLI and portable distribution
-
-The **GitHub Actions `aer-portable` artifact is self-contained**. The downloaded artifact contains both the user-facing launcher **`aer_cli.py`** and the distribution bundle **`aer-portable.zip`** at the artifact root.
-
-Bootstrap from a downloaded artifact:
-
-```bash
-python aer_cli.py aer-portable.zip
-```
-
-On success, AER is installed under the user-level `~/.aer` location.
-
-Published artifact layout:
+For substantial work the control plane follows one evidence lineage:
 
 ```text
-aer-portable/
-├── aer_cli.py
-├── aer-portable.zip
-├── portable-tests.log
-└── run-metadata.txt
+research -> plan -> implement -> verify -> review -> shadow -> canary -> promote
+                                                            |
+                                                            +-> rollback
 ```
 
-The portable ZIP is also self-contained and includes its launcher:
+`ContextEvidence` is immutable. Verification creates a `VerificationReceipt`; review binds evidence to the same artifact and verification result. Shadow and canary require the appropriate prior receipts. Promotion requires matching evidence and can be rolled back.
 
-```bash
-python aer_cli.py install
-```
-
-Windows PowerShell:
-
-```powershell
-python .\aer_cli.py .\aer-portable.zip
-```
-
-macOS / Linux:
-
-```bash
-python3 ./aer_cli.py ./aer-portable.zip
-```
-
-If Claude Code is available on `PATH`, the installer can register the bundled local Claude marketplace and install the `adaptive-ai-coding-orchestrator` plugin at user scope.
-
-Explicit Claude integration:
-
-```bash
-python aer_cli.py install aer-portable.zip --skill claude
-```
-
-AER remains provider-neutral when Claude Code is not installed.
-
-## Verify the installation
-
-From the published artifact directory:
-
-```bash
-python aer_cli.py aer-portable.zip
-```
-
-Then check the installed runtime:
-
-```bash
-python ~/.aer/current/aer_cli.py check-update
-```
-
-For Claude Code, reload plugins and verify the installed plugin:
-
-```text
-/reload-plugins
-/plugin
-```
-
-The installed skill is:
-
-```text
-/adaptive-ai-coding-orchestrator:ai-coding-orchestrator
-```
-
-The plugin's prompt hook provides a small AER control-plane reminder, while the detailed skill drives repository-aware engineering work.
-
-## Upgrade, rollback, and provenance
-
-Use the installed CLI rather than manually copying runtime files into projects:
-
-```bash
-python ~/.aer/current/aer_cli.py check-update
-python ~/.aer/current/aer_cli.py update
-python ~/.aer/current/aer_cli.py rollback
-```
-
-An explicit source reference can be selected:
-
-```bash
-python ~/.aer/current/aer_cli.py check-update --ref main
-python ~/.aer/current/aer_cli.py update --ref main
-```
-
-The installation records a provenance chain:
-
-```text
-semantic version -> exact source Git commit -> bundle SHA-256
-```
-
-The same semantic version cannot silently be replaced by a different source commit.
-
-## Build a portable bundle from source
-
-```bash
-git clone https://github.com/sourabhJainR/Hello_world_With_Structure.git
-cd Hello_world_With_Structure
-python aer_cli.py build --output aer-portable.zip
-python aer_cli.py verify aer-portable.zip
-```
-
-CI verifies the portable distribution, including the Claude plugin manifest, marketplace metadata, AER skill, prompt hook, runtime payload, and bundle integrity.
-
-## What is inside the portable ZIP
-
-```text
-aer-portable.zip
-|
-+-- aer_cli.py
-+-- payload/
-    +-- portable/aer_runtime.py
-    +-- portable/agency_state_graph.py
-    +-- portable/repo_intelligence.py
-    +-- .claude-plugin/
-    |   +-- plugin.json
-    |   +-- marketplace.json
-    +-- skills/
-        +-- ai-coding-orchestrator/
-            +-- SKILL.md
-            +-- hooks/aer_prompt.py
-```
-
-The extracted GitHub Actions artifact places the outer `aer_cli.py` beside `aer-portable.zip` so the bootstrap command works without opening the nested ZIP first. Do not copy `payload` files into the target project.
-
-## Installed machine state
-
-AER stores active installation state under:
-
-```text
-~/.aer/versions/v<version>/
-~/.aer/current
-~/.aer/current/install.json
-~/.aer/active.json
-```
-
-Execution journals, telemetry, learned task logs, caches, worktrees, and Python caches remain outside the portable distribution.
-
-## Repository isolation and safety
-
-Installing, updating, or rolling back AER does not:
-
-- add AER files to the target repository;
-- modify project source, tests, manifests, or configuration merely to install AER;
-- modify `.git/config`, hooks, remotes, branches, or ignore files;
-- silently modify MCP configuration, credentials, permissions, production access, or merge authority;
-- allow learned behavior to weaken immutable safety or security controls.
-
-When AER performs a user-requested engineering task, project changes are the requested engineering changes, not AER distribution artifacts.
-
-## Engineering State Ledger
-
-For non-trivial work, AER maintains a traceable state flow:
+The state-ledger flow is:
 
 ```text
 INTENT
@@ -302,7 +126,197 @@ INTENT
   -> NEXT
 ```
 
-The lifecycle is backed by run manifests, phase checkpoints, verification evidence, review evidence, regression history, and learning-controller records.
+## Continuous learning and self-improvement
+
+Every completed task can become an experience record. The learning path is deliberately separated from the active worker path:
+
+```text
+experience
+   -> deferred learning
+   -> memory consolidation
+   -> rolling benchmark history
+   -> empirical comparison
+   -> confidence calibration
+   -> strategy / iteration tuning
+   -> advisory policy
+   -> future task
+```
+
+The current adaptive tuner maintains durable history and policy state. Promotion is bounded by observation counts, independent-task counts, confidence-adjustment limits, iteration floors/ceilings, and evidence requirements.
+
+The maintenance lane is intentionally outside active orchestration. It claims one scheduled run, processes deferred learning, evaluates the longer history, writes a maintenance receipt, and releases the durable scheduler claim.
+
+## Continuous maintenance service
+
+`portable.maintenance_service` is the OS lifecycle wrapper for the existing maintenance lane. The scheduler remains the source of truth; the service does not create a second learning store or scheduler.
+
+### Default schedule
+
+The default maintenance schedule is the **last calendar day of every month at 02:00 local time**. The time, timezone, project root, polling interval, budget, enablement, and service scope are configurable.
+
+Configuration defaults:
+
+| Setting | Default |
+|---|---|
+| Schedule | Last day of every month |
+| Time | `02:00` |
+| Timezone | `local` |
+| Poll interval | `60` seconds |
+| Maintenance budget | `20` jobs |
+| Service scope | `user` |
+| Enabled | `true` |
+
+The durable scheduler retains claim-before-run semantics and records run outcomes. Existing interval-based schedules remain compatible. The previously-created adaptive-learning five-minute schedule is migrated once to the monthly cadence instead of being deleted, preserving its run history.
+
+### Foreground mode
+
+Useful for development and validation:
+
+```bash
+python -m portable.maintenance_service --project-root /path/to/repo run
+```
+
+Run one maintenance attempt without entering a long-running loop:
+
+```bash
+python -m portable.maintenance_service --project-root /path/to/repo run-once
+```
+
+### Environment configuration
+
+```bash
+export AER_PROJECT_ROOT=/path/to/repo
+export AER_MAINTENANCE_TIME=02:00
+export AER_MAINTENANCE_TIMEZONE=Asia/Kolkata
+export AER_MAINTENANCE_POLL_SECONDS=60
+export AER_MAINTENANCE_BUDGET=20
+export AER_MAINTENANCE_ENABLED=1
+export AER_SERVICE_SCOPE=user
+```
+
+The scheduler itself stores the calendar policy in its durable task record, so service restarts do not reset the monthly schedule.
+
+### Linux: systemd
+
+Install the user service:
+
+```bash
+python -m portable.maintenance_service --project-root /path/to/repo --scope user install
+```
+
+Install as a system service when elevated service scope is required:
+
+```bash
+sudo python -m portable.maintenance_service --project-root /path/to/repo --scope system install
+```
+
+Manage it with:
+
+```bash
+python -m portable.maintenance_service --scope user status
+python -m portable.maintenance_service --scope user start
+python -m portable.maintenance_service --scope user stop
+python -m portable.maintenance_service --scope user uninstall
+```
+
+The generated unit runs the existing Python maintenance host, restarts on failure, and keeps the calendar decision in AER's durable scheduler.
+
+### macOS: launchd
+
+Install the per-user launch agent:
+
+```bash
+python3 -m portable.maintenance_service --project-root /path/to/repo --scope user install
+```
+
+For a system daemon, use the `system` scope with the privileges required by the target machine:
+
+```bash
+sudo python3 -m portable.maintenance_service --project-root /path/to/repo --scope system install
+```
+
+Manage it with:
+
+```bash
+python3 -m portable.maintenance_service --scope user status
+python3 -m portable.maintenance_service --scope user start
+python3 -m portable.maintenance_service --scope user stop
+python3 -m portable.maintenance_service --scope user uninstall
+```
+
+### Windows: Windows Service
+
+Windows Service mode uses `pywin32` because a Python process must integrate with the Windows Service Control Manager rather than behave like a plain console process.
+
+```powershell
+python -m pip install pywin32
+python -m portable.maintenance_service --project-root C:\path\to\repo --scope system install
+```
+
+Manage it with:
+
+```powershell
+python -m portable.maintenance_service --scope system status
+python -m portable.maintenance_service --scope system start
+python -m portable.maintenance_service --scope system stop
+python -m portable.maintenance_service --scope system uninstall
+```
+
+The service starts automatically and waits efficiently for the durable monthly schedule rather than running a second scheduler.
+
+### Service safety rules
+
+The service only owns lifecycle and execution of the already-gated maintenance lane. It does not change credentials, permissions, merge authority, security policy, or active task policy. A failed maintenance cycle remains retryable through the scheduler's claim/run ledger instead of being silently discarded.
+
+## AER CLI and portable distribution
+
+The GitHub Actions `aer-portable` artifact is self-contained and includes both the outer `aer_cli.py` launcher and `aer-portable.zip`.
+
+```bash
+python aer_cli.py aer-portable.zip
+```
+
+On success, AER is installed under user-scoped `~/.aer` storage.
+
+Build and verify a bundle locally:
+
+```bash
+git clone https://github.com/sourabhJainR/Hello_world_With_Structure.git
+cd Hello_world_With_Structure
+python aer_cli.py build --output aer-portable.zip
+python aer_cli.py verify aer-portable.zip
+```
+
+AER records a provenance chain:
+
+```text
+semantic version -> exact source Git commit -> bundle SHA-256
+```
+
+The installed machine state is kept under:
+
+```text
+~/.aer/versions/v<version>/
+~/.aer/current
+~/.aer/current/install.json
+~/.aer/active.json
+~/.aer/automation/automation.db
+~/.aer/memory/memory.db
+```
+
+Execution journals, telemetry, caches, worktrees, and Python caches remain outside the portable distribution.
+
+## Repository isolation and safety
+
+Installing, updating, or rolling back AER does not:
+
+- add AER distribution files to the target repository;
+- modify project source, tests, manifests, or configuration merely to install AER;
+- modify Git remotes, hooks, branches, or ignore rules;
+- silently modify MCP configuration, credentials, permissions, production access, or merge authority;
+- allow learned behavior to weaken immutable safety or security controls.
+
+When AER performs a user-requested engineering task, project changes are the requested engineering changes, not AER distribution artifacts.
 
 ## Capability roles
 
@@ -316,97 +330,67 @@ The lifecycle is backed by run manifests, phase checkpoints, verification eviden
 | Reviewer | Check correctness, compatibility, quality, and maintainability |
 | Security reviewer | Examine elevated-risk changes and boundaries |
 | RCA investigator | Diagnose without patching when investigation-only work is requested |
-| Synthesizer | Combine graph evidence, decisions, unresolved risks, and next action |
+| Synthesizer | Combine evidence, decisions, unresolved risks, and next action |
 
-Independent read-only work can be parallelized. Mutating agents are serialized behind their declared dependencies.
-
-## Repository intelligence
-
-AER uses a layered repository-context model:
-
-1. deterministic snapshot and structural repository map;
-2. symbol and relationship-aware retrieval;
-3. text retrieval for free-form questions and non-code material;
-4. bounded repository packing when broader context is needed.
-
-The repository map is intentionally dependency-free and records uncertainty instead of hiding it. For small edits, normal text and patch tools remain preferred. Structural retrieval is most useful for symbol discovery, callers/callees, impact, hierarchy, cross-file changes, affected-test candidates, and bounded task context.
-
-See [`docs/RIPWIRE_INTEGRATION.md`](docs/RIPWIRE_INTEGRATION.md) for the adopted design principles and explicit non-adoptions.
-
-## Learning and self-improvement
-
-AER's self-improvement loop is evidence-based:
-
-```text
-observe
-  -> record outcome
-  -> learn candidate strategy
-  -> replay regression corpus
-  -> shadow evaluation
-  -> canary evaluation
-  -> promote when gates pass
-  -> monitor
-  -> rollback when required
-```
-
-Learned recommendations remain advisory until the required evidence and regression gates pass. Safety and security policy remain authoritative.
-
-## Typical requests
-
-**Bug fixing**
-
-```text
-Fix the failing login test. Inspect repository instructions and the existing authentication flow first. Identify the root cause with evidence, make the smallest compatible change, run the relevant tests, and report what changed and what was verified.
-```
-
-**Feature development**
-
-```text
-Add retry handling to the outbound payment client. Preserve current API behavior, inspect existing retry and timeout patterns, implement the smallest safe change, add regression coverage, verify it, and report open risks.
-```
-
-**RCA**
-
-```text
-Investigate why the nightly import occasionally drops records. Do not modify code. Trace the data flow and return facts, inferences, unknowns, root-cause confidence, and evidence.
-```
-
-**Code review**
-
-```text
-Review this change for correctness, compatibility, security, regression risk, observability, and missing verification. Do not rewrite unrelated code.
-```
+Independent read-only work can be parallelized. Mutating agents are serialized behind declared dependencies.
 
 ## Repository map
 
 ```text
 Hello_world_With_Structure/
-├── .ai-harness/                 # adaptive harness, policies, runtime and phase lifecycle
-├── portable/                    # dependency-free distributable AER runtime
+├── .ai-harness/                 # adaptive harness, policies, runtime and lifecycle
+├── portable/                    # dependency-light distributable AER runtime
 ├── agency/                      # upstream agency assets and provenance
 ├── skills/                      # canonical local agent skills
 ├── .agents/                     # compatibility/agent skill surfaces
 ├── .claude/ + .claude-plugin/   # Claude skill and plugin packaging
 ├── docs/                        # architecture, lifecycle, research and deployment contracts
-├── examples/                    # runnable example applications and harness scenarios
+├── examples/                    # runnable examples and harness scenarios
 ├── scripts/                     # conformance, eval, packaging and validation tooling
 ├── state/                       # engineering state schema
 └── tests/                       # portable and integration regression coverage
 ```
 
-The repository intentionally contains compatibility and historical documentation surfaces. They are not independent runtime owners; new behavior must be added to the canonical implementation and older surfaces must adapt to it.
+The repository intentionally contains compatibility and historical documentation surfaces. They are not independent runtime owners.
 
 ## Reference documentation
 
-- [`docs/CAPABILITY_MEMORY_OWNERSHIP.md`](docs/CAPABILITY_MEMORY_OWNERSHIP.md) — canonical capability, memory, and retrieval ownership.
-- [`docs/RIPWIRE_INTEGRATION.md`](docs/RIPWIRE_INTEGRATION.md) — deterministic repository-intelligence design lineage and boundaries.
-- [`portable/LANGGRAPH_PATTERN_ALIGNMENT.md`](portable/LANGGRAPH_PATTERN_ALIGNMENT.md) — mapping of state-graph patterns to AER constructs.
+- [`docs/CAPABILITY_MEMORY_OWNERSHIP.md`](docs/CAPABILITY_MEMORY_OWNERSHIP.md) — capability, memory, and retrieval ownership.
+- [`docs/RIPWIRE_INTEGRATION.md`](docs/RIPWIRE_INTEGRATION.md) — deterministic repository-intelligence lineage and boundaries.
+- [`portable/LANGGRAPH_PATTERN_ALIGNMENT.md`](portable/LANGGRAPH_PATTERN_ALIGNMENT.md) — state-graph pattern mapping.
 - [`portable/README.md`](portable/README.md) — portable distribution and machine-scoped lifecycle.
 - [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — deployment and runtime integration.
 - [`docs/USAGE_AND_PLATFORM_INTEGRATION.md`](docs/USAGE_AND_PLATFORM_INTEGRATION.md) — platform usage and integration.
-- [`docs/ENGINEERING_WORK_REPORTS.md`](docs/ENGINEERING_WORK_REPORTS.md) — engineering work-report and evidence flow.
+- [`docs/ENGINEERING_WORK_REPORTS.md`](docs/ENGINEERING_WORK_REPORTS.md) — work-report and evidence flow.
 - [`docs/REGRESSION_CANARY.md`](docs/REGRESSION_CANARY.md) — regression, shadow, and canary controls.
-- [` .ai-harness/ENGINEERING_DESIGN_POLICY.md`](.ai-harness/ENGINEERING_DESIGN_POLICY.md) — engineering-design guardrails.
+- [`docs/superpowers/specs/2026-09-17-continuous-agi-learning-loop-design.md`](docs/superpowers/specs/2026-09-17-continuous-agi-learning-loop-design.md) — continuous learning design.
+- [`docs/superpowers/plans/2026-09-17-continuous-agi-learning-loop.md`](docs/superpowers/plans/2026-09-17-continuous-agi-learning-loop.md) — implementation plan and evidence checkpoints.
+
+## Typical requests
+
+### Bug fixing
+
+```text
+Fix the failing login test. Inspect repository instructions and the existing authentication flow first. Identify the root cause with evidence, make the smallest compatible change, add or update regression coverage, verify it, and report what changed and what was verified.
+```
+
+### Feature development
+
+```text
+Add retry handling to the outbound payment client. Preserve current API behavior, inspect existing retry and timeout patterns, implement the smallest safe change, add regression coverage, verify it, and report open risks.
+```
+
+### RCA
+
+```text
+Investigate why the nightly import occasionally drops records. Do not modify code. Trace the data flow and return facts, inferences, unknowns, root-cause confidence, and evidence.
+```
+
+### Code review
+
+```text
+Review this change for correctness, compatibility, security, regression risk, observability, and missing verification. Do not rewrite unrelated code.
+```
 
 ## Design principle
 
