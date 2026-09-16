@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import shutil
 import signal
 import subprocess
@@ -114,8 +115,13 @@ def _module_command(config: MaintenanceServiceConfig) -> list[str]:
         "--timezone", config.timezone,
         "--poll-seconds", str(config.poll_seconds),
         "--budget", str(config.maintenance_budget),
+        "--scope", config.scope,
         "run",
     ]
+
+
+def _windows_service_args(config: MaintenanceServiceConfig) -> str:
+    return " ".join(shlex.quote(item) for item in _module_command(config)[4:])
 
 
 def _service_home() -> Path:
@@ -307,7 +313,31 @@ if win32serviceutil is not None:  # pragma: no cover - Windows integration
 
         def __init__(self, args):
             super().__init__(args)
-            self.worker = MaintenanceService(MaintenanceServiceConfig.from_env())
+            values = MaintenanceServiceConfig.from_env()
+            if args:
+                try:
+                    parsed = argparse.ArgumentParser(add_help=False)
+                    parsed.add_argument("--project-root", type=Path)
+                    parsed.add_argument("--time", default=values.at_time)
+                    parsed.add_argument("--timezone", default=values.timezone)
+                    parsed.add_argument("--poll-seconds", type=int, default=values.poll_seconds)
+                    parsed.add_argument("--budget", type=int, default=values.maintenance_budget)
+                    parsed.add_argument("--scope", choices=("user", "system"), default=values.scope)
+                    supplied = parsed.parse_args(args)
+                    values = MaintenanceServiceConfig(
+                        project_root=(supplied.project_root or values.project_root).expanduser().resolve(),
+                        at_time=supplied.time,
+                        timezone=supplied.timezone,
+                        poll_seconds=supplied.poll_seconds,
+                        maintenance_budget=supplied.budget,
+                        enabled=values.enabled,
+                        service_name=self._svc_name_,
+                        display_name=self._svc_display_name_,
+                        scope=supplied.scope,
+                    )
+                except SystemExit:
+                    pass
+            self.worker = MaintenanceService(values)
 
         def SvcStop(self):
             self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
@@ -326,12 +356,14 @@ def _install_windows(config: MaintenanceServiceConfig) -> int:
         raise SystemExit("pywin32 is required for Windows Service mode: python -m pip install pywin32")
     _WindowsMaintenanceService._svc_name_ = config.service_name
     _WindowsMaintenanceService._svc_display_name_ = config.display_name
+    exe_args = " ".join(shlex.quote(item) for item in _module_command(config)[4:-1])
     win32serviceutil.InstallService(
         _WindowsMaintenanceService,
         config.service_name,
         config.display_name,
         startType=win32service.SERVICE_AUTO_START,
         description=_WindowsMaintenanceService._svc_description_,
+        exeArgs=exe_args,
     )
     _write_state(config, Path("Windows Service Control Manager"))
     _run(["sc.exe", "start", config.service_name])
