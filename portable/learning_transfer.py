@@ -7,10 +7,8 @@ independently reproduced patterns back into normal project memory.
 from __future__ import annotations
 
 import json
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Sequence
 
 from .persistent_memory import PersistentMemory
 
@@ -91,6 +89,8 @@ class LearningTransfer:
         if not 0 <= experience.confidence <= 1:
             raise ValueError("confidence must be between 0 and 1")
         evidence = tuple(sorted({_clean(item, "evidence_id") for item in experience.evidence_ids}))
+        if experience.verified and not evidence:
+            raise ValueError("verified learning requires evidence_ids")
         created_at = datetime.now(timezone.utc).isoformat()
         with self.memory._lock, self.memory._connect() as db:
             existing = db.execute("SELECT source_project,task_family,capability,outcome,detail,evidence_ids,confidence,verified FROM learning_experiences WHERE id=?", (experience.id,)).fetchone()
@@ -115,7 +115,8 @@ class LearningTransfer:
             rows = db.execute("""SELECT detail,source_project,evidence_ids,confidence
                 FROM learning_experiences
                 WHERE task_family=? AND capability=? AND outcome='worked' AND verified=1
-                ORDER BY confidence DESC, created_at DESC, id""", (task_family, capability)).fetchall()
+                  AND source_project<>?
+                ORDER BY confidence DESC, created_at DESC, id""", (task_family, capability, self.target_project)).fetchall()
         groups: dict[str, dict[str, object]] = {}
         for detail, source_project, evidence_json, confidence in rows:
             item = groups.setdefault(str(detail), {"projects": set(), "evidence": set(), "confidence": 0.0})
