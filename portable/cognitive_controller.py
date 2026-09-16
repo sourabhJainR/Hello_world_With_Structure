@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+from datetime import datetime, timezone
+import hashlib
+import json
+from typing import Mapping, Sequence
 
+from .cognitive_learning import BeliefContext, CognitiveLearningLoop
 from .cognitive_runtime import CognitiveRuntime
 from .information_planner import InformationAction
-from .world_model import WorldPrediction
+from .world_model import PredictionError, WorldPrediction
 
 
 @dataclass(frozen=True)
@@ -32,11 +36,17 @@ class CognitiveController:
              uncertainty: float = 0.5, information_actions: tuple[InformationAction, ...] = (),
              entity_id: str | None = None, predicate: str | None = None,
              action: str | None = None, current_value: object | None = None,
+             beliefs: Sequence[BeliefContext] = (), belief_limit: int = 8,
              context: Mapping[str, object] | None = None) -> CognitivePlan:
         if not isinstance(intent, str) or not intent.strip():
             raise ValueError("intent is required")
+        if belief_limit < 1:
+            raise ValueError("belief_limit must be positive")
         goals = self.cognitive.goals.ready(limit=20)
         goal = goals[0] if goals else None
+        learning = CognitiveLearningLoop(self.cognitive.memory, self.cognitive.project, self_model=self.cognitive.self_model)
+        candidate_beliefs = beliefs or learning.beliefs(limit=belief_limit)
+        selected_beliefs = learning.select_beliefs(candidate_beliefs, limit=belief_limit)
         info = self.cognitive.information.choose(
             uncertainty=uncertainty,
             actions=information_actions,
@@ -48,7 +58,12 @@ class CognitiveController:
                 entity_id, predicate, action, current_value=current_value,
             )
         self_confidence = self.cognitive.self_model.profile(capability).confidence if capability else 0.0
-        rationale = ["uses durable goal state", "uses explicit uncertainty", "execution authority remains with orchestrator"]
+        rationale = [
+            "uses durable goal state",
+            "uses persisted or supplied low-confidence beliefs",
+            "uses explicit uncertainty",
+            "execution authority remains with orchestrator",
+        ]
         if info:
             rationale.append("selected bounded information action by expected gain per cost and risk")
         if prediction:
@@ -59,7 +74,7 @@ class CognitiveController:
             goal_id=goal.goal_id if goal else None,
             goal_title=goal.title if goal else None,
             goal_priority=goal.priority if goal else None,
-            belief_ids=tuple(),
+            belief_ids=tuple(item.belief_id for item in selected_beliefs),
             information_action_id=info.action_id if info else None,
             information_score=info.score if info else None,
             prediction=prediction,
@@ -71,13 +86,14 @@ class CognitiveController:
                        uncertainty: float = 0.5, information_actions: tuple[InformationAction, ...] = (),
                        entity_id: str | None = None, predicate: str | None = None,
                        action: str | None = None, current_value: object | None = None,
+                       beliefs: Sequence[BeliefContext] = (), belief_limit: int = 8,
                        context: Mapping[str, object] | None = None) -> dict[str, object]:
         enriched = dict(context or {})
         plan = self.plan(
             intent, capability=capability, uncertainty=uncertainty,
             information_actions=information_actions, entity_id=entity_id,
             predicate=predicate, action=action, current_value=current_value,
-            context=context,
+            beliefs=beliefs, belief_limit=belief_limit, context=context,
         )
         enriched["aer_cognitive_plan"] = {
             "goal_id": plan.goal_id,
@@ -100,6 +116,29 @@ class CognitiveController:
             "rationale": list(plan.rationale),
         }
         return enriched
+
+    @staticmethod
+    def score_prediction(prediction: WorldPrediction | None, actual_value: object, project: str) -> PredictionError | None:
+        if prediction is None:
+            return None
+        if prediction.project != project:
+            raise ValueError("prediction belongs to a different cognitive project")
+        error_digest = hashlib.sha256(
+            json.dumps(
+                {"predicted": prediction.predicted_value, "actual": actual_value},
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        return PredictionError(
+            prediction_id=prediction.prediction_id,
+            predicted_value=prediction.predicted_value,
+            actual_value=actual_value,
+            absolute_match=prediction.predicted_value == actual_value,
+            error_digest=error_digest,
+            measured_at=datetime.now(timezone.utc).isoformat(),
+        )
 
 
 __all__ = ["CognitiveController", "CognitivePlan"]
