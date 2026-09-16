@@ -1,6 +1,8 @@
 """Portable AER runtime package."""
 
 from .adaptive_runtime import AdaptiveRuntime
+from .adaptive_learning import AdaptiveLearningStore, DeferredLearningJob, WorkStyleProfile
+from .empirical_improvement import EmpiricalImprovement, ImprovementObservation, ImprovementReport
 from .aer_runtime import main
 from .impact_analysis import ImpactRecord, ImpactReport, analyze
 from .lifecycle_hooks import HookBus, HookDecision, HookEvent, HookPhase, HookedExecution
@@ -55,7 +57,8 @@ from .autonomy_graduation import AutonomyEvidence, AutonomyGraduator, Graduation
 from .deep_evaluation import BenchmarkCase, DeepBenchmarkReport, DeepEvaluator
 
 __all__ = [
-    "main", "AdaptiveRuntime", "HookBus", "HookDecision", "HookEvent", "HookPhase", "HookedExecution",
+    "main", "AdaptiveRuntime", "AdaptiveLearningStore", "DeferredLearningJob", "WorkStyleProfile", "EmpiricalImprovement", "ImprovementObservation", "ImprovementReport",
+    "HookBus", "HookDecision", "HookEvent", "HookPhase", "HookedExecution",
     "CapabilityRequest", "ProviderCapability", "ProviderFabric", "RoutingDecision", "SessionCheckpoint", "SessionStore",
     "ImpactRecord", "ImpactReport", "analyze", "Task", "TaskPlan", "STATUSES", "PRIORITIES",
     "CAPABILITIES", "Capability", "CapabilityFabric", "ProviderAdapter", "ProviderAdapterRegistry",

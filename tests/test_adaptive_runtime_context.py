@@ -48,7 +48,7 @@ class AdaptiveRuntimeContextTests(unittest.TestCase):
             scheduler.close()
             memory.close()
 
-    def test_runtime_feeds_beliefs_into_plan_and_learning_updates_hypothesis(self):
+    def test_runtime_feeds_beliefs_into_plan_and_learning_is_offloaded(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             captured = {}
@@ -69,9 +69,12 @@ class AdaptiveRuntimeContextTests(unittest.TestCase):
             )
             self.assertEqual(result.status.value, "accepted")
             self.assertEqual(captured["aer_cognitive_plan"]["belief_ids"], ["h1"])
+            self.assertEqual(cognitive.hypotheses.assess("h1").confidence, 0.2)
+            self.assertIsNotNone(runtime.last_deferred_learning_job)
+            processed = runtime.process_learning(root)
+            self.assertEqual(len(processed), 1)
             self.assertEqual(cognitive.hypotheses.assess("h1").confidence, 1.0)
-            self.assertIsNotNone(runtime.last_learning_signal)
-            self.assertFalse(runtime.last_learning_signal.persistence_errors)
+            self.assertIsNone(runtime.last_learning_signal)
             scheduler.close()
             memory.close()
 
