@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from dataclasses import dataclass
 import json
 from hashlib import sha256
+from threading import Event
 from typing import Any, Callable, Mapping, MutableMapping, Protocol, Sequence
 
 State = MutableMapping[str, Any]
@@ -176,6 +177,10 @@ class StateGraph:
         self._validate_source(source); self._validate_target(target)
         self._edges[source] = self._edges.get(source, ()) + (target,); return self
 
+    def add_join(self, source: str, target: str) -> "StateGraph":
+        """Declare an explicit join edge while retaining normal StateGraph semantics."""
+        return self.add_edge(source, target)
+
     def add_conditional_edges(self, source: str, router: Router) -> "StateGraph":
         if source not in self._nodes: raise ValueError(f"unknown source node: {source}")
         self._routers[source] = router; return self
@@ -204,7 +209,7 @@ class StateGraph:
 class CompiledStateGraph:
     def __init__(self, graph: StateGraph) -> None: self._g = graph
 
-    def invoke(self, state: Mapping[str, Any], *, run_id: str = "run", checkpoint: CheckpointStore | None = None, resume: bool = False, max_steps: int = 100, parallel_nodes: Callable[[str], bool] | None = None, max_parallel_nodes: int = 1, node_timeout_seconds: float | None = None) -> GraphRun:
+    def invoke(self, state: Mapping[str, Any], *, run_id: str = "run", checkpoint: CheckpointStore | None = None, resume: bool = False, max_steps: int = 100, parallel_nodes: Callable[[str], bool] | None = None, max_parallel_nodes: int = 1, node_timeout_seconds: float | None = None, cancellation: Event | None = None) -> GraphRun:
         validate_state(state)
         if max_steps < 1: raise ValueError("max_steps must be positive")
         if max_parallel_nodes < 1: raise ValueError("max_parallel_nodes must be positive")
@@ -217,6 +222,9 @@ class CompiledStateGraph:
         step = existing.step if existing else 0
         skip_before_once = existing is not None
         while next_nodes:
+            if cancellation and cancellation.is_set():
+                self._checkpoint(checkpoint, run_id, step, current, next_nodes, trace)
+                return GraphRun(run_id, dict(current), tuple(events), tuple(trace), step, True)
             if step >= max_steps: raise RuntimeError(f"graph exceeded max_steps={max_steps}")
             step += 1; snapshot = dict(current)
             if not skip_before_once:
@@ -228,11 +236,19 @@ class CompiledStateGraph:
             parallel = [name for name in next_nodes if name != StateGraph.END and parallel_nodes and parallel_nodes(name)]
             sequential = [name for name in next_nodes if name != StateGraph.END and name not in parallel]
             results_by_name: dict[str, tuple[Mapping[str, Any], int]] = {}
+            if cancellation and cancellation.is_set():
+                self._checkpoint(checkpoint, run_id, step - 1, current, next_nodes, trace)
+                return GraphRun(run_id, dict(current), tuple(events), tuple(trace), step - 1, True)
             if parallel:
                 executor = ThreadPoolExecutor(max_workers=min(max_parallel_nodes, len(parallel)))
                 futures = {name: executor.submit(self._run_node, name, snapshot) for name in parallel}
                 try:
                     for name in parallel:
+                        if cancellation and cancellation.is_set():
+                            for future in futures.values(): future.cancel()
+                            executor.shutdown(wait=False, cancel_futures=True)
+                            self._checkpoint(checkpoint, run_id, step - 1, current, next_nodes, trace)
+                            return GraphRun(run_id, dict(current), tuple(events), tuple(trace), step - 1, True)
                         results_by_name[name] = futures[name].result(timeout=node_timeout_seconds)
                 except FutureTimeoutError as exc:
                     for future in futures.values(): future.cancel()
@@ -240,7 +256,11 @@ class CompiledStateGraph:
                     raise TimeoutError("parallel node exceeded timeout") from exc
                 else:
                     executor.shutdown(wait=True)
-            for name in sequential: results_by_name[name] = self._run_node_with_timeout(name, snapshot, node_timeout_seconds)
+            for name in sequential:
+                if cancellation and cancellation.is_set():
+                    self._checkpoint(checkpoint, run_id, step - 1, current, next_nodes, trace)
+                    return GraphRun(run_id, dict(current), tuple(events), tuple(trace), step - 1, True)
+                results_by_name[name] = self._run_node_with_timeout(name, snapshot, node_timeout_seconds)
             for name in next_nodes:
                 if name == StateGraph.END: continue
                 output, attempts = results_by_name[name]
