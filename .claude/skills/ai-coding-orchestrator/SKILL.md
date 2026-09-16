@@ -81,7 +81,7 @@ Verify the new requirement and affected existing behavior. Start with focused te
 
 ## LLM chat trigger
 
-The plugin exposes `adaptive_runtime.trigger` through MCP for durable interactive `AdaptiveRuntime` work. Inputs: `task`, `project_root`, optional `context`, `priority` (`high|normal|low`), `event_id`, and `max_attempts` (1..16). It returns `trigger_id`, `status`, and `accepted_at` after persistence, then uses the shared worker pool and normal verification/evidence/policy/learning path. Read later status from durable trigger state; do not create parallel memory, scheduling, orchestration, or privileged paths.
+The plugin exposes `adaptive_runtime.trigger` through MCP for durable `AdaptiveRuntime` work. Inputs: `task`, `project_root`, optional `context`, `priority` (`high|normal|low`), `event_id`, and `max_attempts` (1..16). It returns `trigger_id`, `status`, and `accepted_at` after persistence, dispatches through the shared worker pool, and follows normal verification/evidence/policy/learning. Read status from durable trigger state; never create parallel memory, scheduling, orchestration, or privileged paths.
 
 ## Skill composition
 
