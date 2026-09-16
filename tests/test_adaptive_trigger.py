@@ -61,6 +61,19 @@ class AdaptiveTriggerTests(unittest.TestCase):
             trigger.close()
             scheduler.close()
 
+    def test_background_dispatch_claims_requested_event_not_another_due_event(self):
+        with tempfile.TemporaryDirectory() as directory:
+            calls = []
+            scheduler, trigger_runtime, trigger = self._runtime(directory, calls)
+            first = trigger.trigger_adaptive_runtime("first", directory, {}, fire_and_forget=False)
+            second = trigger.trigger_adaptive_runtime("second", directory, {}, fire_and_forget=False)
+            outcome = trigger._dispatch_event(second.trigger_id)
+            self.assertEqual(outcome.trigger_id, second.trigger_id)
+            self.assertEqual(calls[0][0].task, "second")
+            self.assertEqual([event.event_id for event in trigger_runtime.due(limit=10)], [first.trigger_id])
+            trigger.close()
+            scheduler.close()
+
     def test_same_event_id_is_idempotent(self):
         with tempfile.TemporaryDirectory() as directory:
             calls = []
