@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable
@@ -22,8 +21,8 @@ def _features(values: Iterable[str]) -> frozenset[str]:
 
 
 def _similarity(left: frozenset[str], right: frozenset[str]) -> float:
-    if not left and not right:
-        return 1.0
+    if not left or not right:
+        return 0.0
     union = left | right
     return len(left & right) / len(union) if union else 0.0
 
@@ -84,6 +83,8 @@ class GeneralizationEngine:
             raise ValueError("abstraction must be an Abstraction")
         if not abstraction.evidence_ids:
             raise ValueError("abstraction requires source evidence")
+        if not abstraction.structure:
+            raise ValueError("abstraction requires structural features")
         with self.memory._lock, self.memory._connect() as db:
             existing = db.execute(
                 "SELECT name,principle,structure,evidence_ids,confidence,negative_conditions FROM generalization_abstractions WHERE project=? AND id=?",
@@ -111,6 +112,8 @@ class GeneralizationEngine:
                        min_similarity: float = 0.0, limit: int = 10) -> list[AnalogyCandidate]:
         structure_set = _features(structure)
         target_set = _features(target_conditions)
+        if not structure_set:
+            return []
         if not 0 <= min_similarity <= 1:
             raise ValueError("min_similarity must be between 0 and 1")
         if limit < 1:
