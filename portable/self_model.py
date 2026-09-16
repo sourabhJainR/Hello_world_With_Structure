@@ -1,8 +1,7 @@
 """Empirical self-model for AER capability calibration.
 
-The self-model describes observed performance, not subjective model claims. It
-uses recorded outcomes to estimate capability reliability and uncertainty. It
-never grants permissions or execution authority.
+Capability estimates can be segmented by context and difficulty. The model
+records outcomes only; it never grants permissions or execution authority.
 """
 from __future__ import annotations
 
@@ -19,6 +18,8 @@ class CapabilityProfile:
     failures: int
     confidence: float
     observations: int
+    context: str | None = None
+    difficulty: int | None = None
 
 
 class SelfModel:
@@ -32,21 +33,32 @@ class SelfModel:
         if max_outcomes < 1:
             raise ValueError("max_outcomes must be positive")
         self.memory = memory
-        self.project = project
+        self.project = project.strip()
         self.max_outcomes = max_outcomes
         with sqlite3.connect(memory.path, timeout=10) as db:
             db.execute("""CREATE TABLE IF NOT EXISTS self_model_outcomes(
                 project TEXT NOT NULL, outcome_id TEXT NOT NULL, capability TEXT NOT NULL,
-                success INTEGER NOT NULL, PRIMARY KEY(project, outcome_id))""")
-            db.execute("CREATE INDEX IF NOT EXISTS idx_self_model_capability ON self_model_outcomes(project, capability, success, outcome_id)")
+                success INTEGER NOT NULL, context TEXT, difficulty INTEGER,
+                PRIMARY KEY(project, outcome_id))""")
+            columns = {row[1] for row in db.execute("PRAGMA table_info(self_model_outcomes)").fetchall()}
+            if "context" not in columns:
+                db.execute("ALTER TABLE self_model_outcomes ADD COLUMN context TEXT")
+            if "difficulty" not in columns:
+                db.execute("ALTER TABLE self_model_outcomes ADD COLUMN difficulty INTEGER")
+            db.execute("CREATE INDEX IF NOT EXISTS idx_self_model_capability ON self_model_outcomes(project, capability, context, difficulty, success, outcome_id)")
 
-    def record(self, outcome_id: str, capability: str, *, success: bool) -> None:
+    def record(self, outcome_id: str, capability: str, *, success: bool, context: str | None = None,
+               difficulty: int | None = None) -> None:
         if not isinstance(outcome_id, str) or not outcome_id.strip() or not isinstance(capability, str) or not capability.strip():
             raise ValueError("outcome_id and capability are required")
+        if context is not None and not context.strip():
+            raise ValueError("context must be non-empty when supplied")
+        if difficulty is not None and not 0 <= difficulty <= 10:
+            raise ValueError("difficulty must be between 0 and 10")
         with sqlite3.connect(self.memory.path, timeout=10) as db:
             db.execute("BEGIN IMMEDIATE")
-            existing = db.execute("SELECT capability,success FROM self_model_outcomes WHERE project=? AND outcome_id=?", (self.project, outcome_id)).fetchone()
-            expected = (capability, int(success))
+            existing = db.execute("SELECT capability,success,context,difficulty FROM self_model_outcomes WHERE project=? AND outcome_id=?", (self.project, outcome_id)).fetchone()
+            expected = (capability, int(success), context, difficulty)
             if existing:
                 if existing != expected:
                     raise ValueError("outcome_id already exists with different content")
@@ -54,23 +66,39 @@ class SelfModel:
             count = db.execute("SELECT COUNT(*) FROM self_model_outcomes WHERE project=?", (self.project,)).fetchone()[0]
             if count >= self.max_outcomes:
                 raise ValueError("self-model outcome budget exceeded")
-            db.execute("INSERT INTO self_model_outcomes VALUES(?,?,?,?)", (self.project, outcome_id, capability, int(success)))
+            db.execute("INSERT INTO self_model_outcomes VALUES(?,?,?,?,?,?)", (self.project, outcome_id, capability.strip(), int(success), context.strip() if context else None, difficulty))
 
-    def profile(self, capability: str) -> CapabilityProfile:
+    def profile(self, capability: str, *, context: str | None = None, difficulty: int | None = None) -> CapabilityProfile:
         if not isinstance(capability, str) or not capability.strip():
             raise ValueError("capability is required")
+        if context is not None and not context.strip():
+            raise ValueError("context must be non-empty when supplied")
+        if difficulty is not None and not 0 <= difficulty <= 10:
+            raise ValueError("difficulty must be between 0 and 10")
+        clauses = ["project=?", "capability=?"]
+        params: list[object] = [self.project, capability.strip()]
+        if context is not None:
+            clauses.append("context=?")
+            params.append(context.strip())
+        if difficulty is not None:
+            clauses.append("difficulty=?")
+            params.append(difficulty)
         with sqlite3.connect(self.memory.path, timeout=10) as db:
-            row = db.execute("SELECT SUM(success),SUM(CASE WHEN success=0 THEN 1 ELSE 0 END),COUNT(*) FROM self_model_outcomes WHERE project=? AND capability=?", (self.project, capability)).fetchone()
+            row = db.execute(
+                "SELECT SUM(success),SUM(CASE WHEN success=0 THEN 1 ELSE 0 END),COUNT(*) FROM self_model_outcomes WHERE " + " AND ".join(clauses),
+                tuple(params),
+            ).fetchone()
         successes = int(row[0] or 0)
         failures = int(row[1] or 0)
         observations = int(row[2] or 0)
         confidence = successes / observations if observations else 0.0
-        return CapabilityProfile(capability, successes, failures, round(confidence, 6), observations)
+        return CapabilityProfile(capability.strip(), successes, failures, round(confidence, 6), observations, context.strip() if context else None, difficulty)
 
-    def should_escalate(self, capability: str, *, min_observations: int = 5, min_confidence: float = 0.8) -> bool:
+    def should_escalate(self, capability: str, *, min_observations: int = 5, min_confidence: float = 0.8,
+                        context: str | None = None, difficulty: int | None = None) -> bool:
         if min_observations < 1 or not 0 <= min_confidence <= 1:
             raise ValueError("escalation thresholds are invalid")
-        profile = self.profile(capability)
+        profile = self.profile(capability, context=context, difficulty=difficulty)
         return profile.observations < min_observations or profile.confidence < min_confidence
 
 
