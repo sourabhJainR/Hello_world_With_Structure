@@ -28,6 +28,14 @@ class ContinualLearningTests(unittest.TestCase):
             reopened = ContinualLearningGuard(PersistentMemory(path, require_approval=False), "demo")
             self.assertEqual(reopened.history("suite", "transfer"), guard.history("suite", "transfer"))
 
+    def test_unverified_candidate_is_not_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            guard = ContinualLearningGuard(PersistentMemory(Path(directory) / "memory.db", require_approval=False), "demo")
+            guard.record(BenchmarkObservation("suite", "reasoning", "v1", 0.90, 10, ("e1",), True))
+            result = guard.compare(BenchmarkObservation("suite", "reasoning", "v2", 0.95, 10, (), False))
+            self.assertFalse(result.accepted)
+            self.assertTrue(result.regressed)
+
     def test_missing_evidence_and_invalid_tolerance_fail_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             guard = ContinualLearningGuard(PersistentMemory(Path(directory) / "memory.db", require_approval=False), "demo")
