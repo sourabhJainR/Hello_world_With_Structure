@@ -20,6 +20,24 @@ def test_high_risk_external_change_requires_resilience_contract():
     )
 
 
+def test_high_risk_change_requires_curated_quality_evidence():
+    receipt = EngineeringDesignGuard.review(
+        intent="Optimize invoice lookup and add fallback behavior",
+        changed_paths=["repository/invoice_repository.py"],
+        risk="high",
+        design={"architecture": "reuse existing invoice repository boundary"},
+    )
+
+    messages = [f.message.lower() for f in receipt.findings if f.severity == FindingSeverity.BLOCKING]
+    assert any("reuse" in message for message in messages)
+    assert any("regression" in message for message in messages)
+    assert any("exception" in message for message in messages)
+    assert any("logging" in message for message in messages)
+    assert any("performance" in message for message in messages)
+    assert any("usage patterns" in message for message in messages)
+    assert any("minimal db/query" in message for message in messages)
+
+
 def test_complete_domain_data_and_refactoring_contract_is_ready():
     receipt = EngineeringDesignGuard.review(
         intent="Refactor the billing aggregate and preserve API behavior",
@@ -34,14 +52,39 @@ def test_complete_domain_data_and_refactoring_contract_is_ready():
             "architecture": "domain stays independent of persistence and transport",
             "construction": "validate boundary inputs and preserve diagnostic errors",
             "compatibility": "existing API remains backward compatible",
+            "usage_compatibility": "existing callers, API shape, lifecycle ordering and usage remain unchanged",
             "complexity": "reduce caller knowledge by hiding invoice state transitions",
             "resilience": "not_applicable: no external or asynchronous dependency changes",
+            "reuse": "reused existing invoice repository, validator and test fixtures; no new abstraction",
+            "regression": "focused billing tests plus existing API contract suite",
+            "exception_handling": "preserve existing exception types and translation boundaries; clean up resources",
+            "logging": "reuse structured repository logger and correlation fields; no sensitive data added",
+            "performance": "preserve query count and allocation profile; no new per-item work",
+            "db_access": "reuse existing repository query path and batch existing reads",
+            "query_pattern": "single existing query path; no N+1 or duplicate round trips",
         },
     )
 
     assert receipt.status == "ready"
     assert not receipt.blocking
     assert receipt.receipt_digest
+
+
+def test_medium_risk_missing_quality_evidence_is_review_required():
+    receipt = EngineeringDesignGuard.review(
+        intent="Change request handling behavior",
+        changed_paths=["portable/request_handler.py"],
+        risk="medium",
+        design={"architecture": "reuse existing handler boundary"},
+    )
+
+    assert receipt.status == "review_required"
+    assert any(
+        f.dimension == DesignDimension.CONSTRUCTION
+        and f.severity == FindingSeverity.WARNING
+        and "reuse" in f.message.lower()
+        for f in receipt.findings
+    )
 
 
 def test_not_applicable_requires_a_reason_for_relevant_dimension():
