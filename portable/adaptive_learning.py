@@ -163,7 +163,6 @@ class AdaptiveLearningStore:
         for job in jobs:
             payload = dict(job.payload)
             if payload.get("verified"):
-                self._apply_profile(payload)
                 try:
                     belief_items = tuple(BeliefEvidence(**item) for item in payload.get("belief_evidence", []))
                     prediction = None
@@ -186,6 +185,7 @@ class AdaptiveLearningStore:
                         continue
                 except Exception:
                     continue
+                self._apply_profile(payload)
                 if dream and self.dream_root is not None:
                     try:
                         DreamMemory(self.dream_root).dream(job.task_id)
