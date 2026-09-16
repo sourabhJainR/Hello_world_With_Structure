@@ -5,6 +5,7 @@ from pathlib import Path
 from portable.adaptive_runtime import AdaptiveRuntime
 from portable.automation_scheduler import AutomationScheduler
 from portable.context_graph import ContextGraph, ContextNode
+from portable.hypothesis_engine import BeliefEvidence, Hypothesis
 from portable.persistent_memory import PersistentMemory
 from portable.orchestration import Graph, Node, NodeKind
 from portable.session_state import SessionStore
@@ -44,6 +45,33 @@ class AdaptiveRuntimeContextTests(unittest.TestCase):
             self.assertIn("evaluate", runtime.last_cognitive_episode.phases)
             memory_hits = memory.search(project_key, "execution_completed", limit=5)
             self.assertTrue(memory_hits)
+            scheduler.close()
+            memory.close()
+
+    def test_runtime_feeds_beliefs_into_plan_and_learning_updates_hypothesis(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            captured = {}
+            graph = Graph([Node("agent", NodeKind.AGENT, lambda context: captured.update(context) or "ok", critical=True, risk="low")])
+            runtime, memory, scheduler = self._runtime(root, graph)
+            project_key = runtime.session_store.project_key(root)
+            cognitive = runtime.cognition(root)
+            cognitive.hypotheses.propose(Hypothesis("h1", "q", "parser may fail", "test", confidence=0.2))
+            result = runtime.run(
+                session_id="s-belief",
+                task_id="t-belief",
+                project_root=root,
+                intent="Fix parser",
+                cognitive_capability="parser",
+                cognitive_belief_evidence=(BeliefEvidence("be1", "h1", True, "fix succeeded", "runtime", 0.9),),
+                learning_evidence=("be1",),
+                learning_context="repo",
+            )
+            self.assertEqual(result.status.value, "accepted")
+            self.assertEqual(captured["aer_cognitive_plan"]["belief_ids"], ["h1"])
+            self.assertEqual(cognitive.hypotheses.assess("h1").confidence, 1.0)
+            self.assertIsNotNone(runtime.last_learning_signal)
+            self.assertFalse(runtime.last_learning_signal.persistence_errors)
             scheduler.close()
             memory.close()
 
