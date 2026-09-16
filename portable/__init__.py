@@ -52,6 +52,7 @@ from .self_model import CapabilityProfile, SelfModel
 from .agi_evaluation import CapabilityCase, CapabilityEvaluator, CaseResult, EvaluationReport, KINDS
 from .cognitive_runtime import CognitiveRuntime
 from .cognitive_loop import CognitiveEpisode, CognitiveEpisodeReceipt, CognitiveLoop
+from .cognitive_controller import CognitiveController, CognitivePlan
 from .learning_transfer import ConsolidationReceipt, LearningExperience, LearningTransfer, TransferCandidate
 from .generalization import Abstraction, AnalogyCandidate, GeneralizationEngine
 from .skill_graph import SkillGraph, SkillNode
@@ -82,7 +83,8 @@ __all__ = [
     "ReasoningLedger", "ReasoningRecord", "CausalLink", "CausalModel", "CounterfactualEngine", "CounterfactualQuery", "CounterfactualResult",
     "Goal", "GoalManager", "InformationAction", "InformationPlan", "InformationPlanner", "CapabilityProfile", "SelfModel",
     "CapabilityCase", "CapabilityEvaluator", "CaseResult", "EvaluationReport", "KINDS", "CognitiveRuntime",
-    "CognitiveEpisode", "CognitiveEpisodeReceipt", "CognitiveLoop", "LearningExperience", "TransferCandidate", "ConsolidationReceipt", "LearningTransfer",
+    "CognitiveEpisode", "CognitiveEpisodeReceipt", "CognitiveLoop", "CognitiveController", "CognitivePlan",
+    "LearningExperience", "TransferCandidate", "ConsolidationReceipt", "LearningTransfer",
     "Abstraction", "AnalogyCandidate", "GeneralizationEngine", "SkillGraph", "SkillNode", "CuriosityEngine", "LearningChoice", "LearningNeed",
     "BenchmarkObservation", "RegressionResult", "ContinualLearningGuard",
     "CapabilityAcquirer", "CapabilityNeed", "CapabilityProposal", "PracticeResult", "CapabilityGraduationReceipt", "ValidationEvidence", "ValidationReceipt",
