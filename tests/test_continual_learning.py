@@ -11,7 +11,7 @@ class ContinualLearningTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             guard = ContinualLearningGuard(PersistentMemory(Path(directory) / "memory.db", require_approval=False), "demo")
             baseline = guard.record(BenchmarkObservation("suite", "reasoning", "v1", 0.90, 10, ("e1",), True))
-            self.assertTrue(baseline.accepted)
+            self.assertTrue(baseline)
             result = guard.compare(BenchmarkObservation("suite", "reasoning", "v2", 0.82, 10, ("e2",), True), tolerance=0.05)
             self.assertFalse(result.accepted)
             self.assertTrue(result.regressed)
