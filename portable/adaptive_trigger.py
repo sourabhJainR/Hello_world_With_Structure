@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Mapping
+from weakref import WeakKeyDictionary
 
 from .adaptive_runtime import AdaptiveRuntime
 from .trigger_runtime import TriggerEvent, TriggerRuntime, TriggerStatus
@@ -22,6 +23,8 @@ _BACKGROUND_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="aer
 register(_BACKGROUND_EXECUTOR.shutdown, wait=False, cancel_futures=False)
 
 _PRIORITY = {"high": 0, "normal": 1, "low": 2}
+_ADAPTER_CACHE: WeakKeyDictionary[AdaptiveRuntime, "AdaptiveTrigger"] = WeakKeyDictionary()
+_ADAPTER_CACHE_LOCK = Lock()
 
 
 @dataclass(frozen=True)
@@ -68,22 +71,28 @@ class AdaptiveTrigger:
 
     @classmethod
     def for_runtime(cls, runtime: AdaptiveRuntime) -> "AdaptiveTrigger":
-        """Bind the trigger to one existing AdaptiveRuntime composition."""
+        """Bind and reuse one trigger adapter for an AdaptiveRuntime instance."""
         if not isinstance(runtime, AdaptiveRuntime):
             raise TypeError("runtime must be an AdaptiveRuntime")
+        with _ADAPTER_CACHE_LOCK:
+            cached = _ADAPTER_CACHE.get(runtime)
+            if cached is not None and not cached._closed:
+                return cached
 
-        def runner(request: AdaptiveTriggerRequest, trigger_id: str) -> Any:
-            provider = request.context.get("provider")
-            return runtime.run(
-                session_id=f"llm-chat:{trigger_id}",
-                task_id=f"llm-chat:{trigger_id}",
-                project_root=request.project_root,
-                intent=request.task,
-                provider=str(provider) if provider else None,
-                context=request.context,
-            )
+            def runner(request: AdaptiveTriggerRequest, trigger_id: str) -> Any:
+                provider = request.context.get("provider")
+                return runtime.run(
+                    session_id=f"llm-chat:{trigger_id}",
+                    task_id=f"llm-chat:{trigger_id}",
+                    project_root=request.project_root,
+                    intent=request.task,
+                    provider=str(provider) if provider else None,
+                    context=request.context,
+                )
 
-        return cls(runtime.trigger_runtime, runner)
+            trigger = cls(runtime.trigger_runtime, runner)
+            _ADAPTER_CACHE[runtime] = trigger
+            return trigger
 
     def trigger_adaptive_runtime(
         self,
@@ -202,8 +211,8 @@ def trigger_adaptive_runtime(
     event_id: str | None = None,
     max_attempts: int = 3,
 ) -> TriggerReceipt:
-    """Convenience function backed by the runtime-owned trigger adapter."""
-    return runtime.adaptive_trigger.trigger_adaptive_runtime(
+    """Convenience function backed by the runtime-keyed trigger adapter."""
+    return AdaptiveTrigger.for_runtime(runtime).trigger_adaptive_runtime(
         task,
         project_root,
         context,
