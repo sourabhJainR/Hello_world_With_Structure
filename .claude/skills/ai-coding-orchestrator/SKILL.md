@@ -87,7 +87,7 @@ Verify the new requirement and affected existing behavior. Start with focused te
 - `interactive-documentation`: produce portable visual architecture/workflow evidence.
 - `retro`: turn verified session outcomes into small durable improvements.
 
-Skills are orchestration surfaces that reuse canonical repository/context/evidence/provenance stores.
+skills are orchestration surfaces that reuse canonical repository/context/evidence/provenance stores.
 
 ## Minimal safe change
 
