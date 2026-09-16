@@ -33,8 +33,6 @@ class Task:
             raise ValueError(f"invalid task status: {self.status}")
         if self.priority not in PRIORITIES:
             raise ValueError(f"invalid task priority: {self.priority}")
-        if self.parallel_group and any(dep in self.dependencies for dep in self.dependencies):
-            raise ValueError("parallel task cannot depend on itself")
 
 class TaskPlan:
     def __init__(self, tasks: Iterable[Task] = ()) -> None:
