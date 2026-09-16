@@ -102,6 +102,7 @@ class WorldFact:
 
 @dataclass(frozen=True)
 class WorldPrediction:
+    project: str
     prediction_id: str
     entity_id: str
     predicate: str
@@ -247,10 +248,7 @@ class WorldModel:
         if len(history) < 2:
             return None
         history.reverse()
-        if current_value is None:
-            current = history[-1].value
-        else:
-            current = current_value
+        current = history[-1].value if current_value is None else current_value
         transitions: dict[str, list[Observation]] = {}
         current_digest = _value_digest(current)
         for previous, following in zip(history, history[1:]):
@@ -259,13 +257,14 @@ class WorldModel:
             if _value_digest(previous.value) != current_digest:
                 continue
             transitions.setdefault(_value_digest(following.value), []).append(following)
+        matching_total = sum(len(items) for items in transitions.values())
         candidates = [(items[0].value, items) for items in transitions.values() if len(items) >= min_samples]
         if not candidates:
             return None
         predicted_value, evidence = max(candidates, key=lambda pair: (len(pair[1]), _value_digest(pair[0])))
-        total = sum(len(items) for _, items in candidates)
-        confidence = len(evidence) / total if total else 0.0
+        confidence = len(evidence) / matching_total if matching_total else 0.0
         prediction = WorldPrediction(
+            project=self.project,
             prediction_id=uuid4().hex,
             entity_id=entity_id,
             predicate=predicate,
@@ -287,6 +286,8 @@ class WorldModel:
         return prediction
 
     def score_prediction(self, prediction: WorldPrediction, actual_value: Any) -> PredictionError:
+        if prediction.project != self.project:
+            raise ValueError("prediction belongs to a different world-model project")
         digest = _value_digest({"predicted": prediction.predicted_value, "actual": actual_value})
         return PredictionError(
             prediction_id=prediction.prediction_id,
