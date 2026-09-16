@@ -24,12 +24,31 @@ class AutomationScheduler(_AutomationScheduler):
             with sqlite3.connect(self.path) as db:
                 row = db.execute("SELECT schedule_id FROM runs WHERE id=?", (claim,)).fetchone()
                 if row:
-                    return super().finish(row[0], claim, status, resolved_detail or detail, now=now)
-                row = db.execute("SELECT id FROM schedules WHERE claim=?", (claim,)).fetchone()
-            if not row:
+                    schedule_id = row[0]
+                else:
+                    row = db.execute("SELECT id FROM schedules WHERE claim=?", (claim,)).fetchone()
+                    schedule_id = row[0] if row else None
+            if schedule_id is None:
                 raise KeyError("invalid scheduler claim")
-            return super().finish(row[0], claim, status, resolved_detail or detail, now=now)
+            schedule = self._schedule_by_id(schedule_id, claim)
+            if self.calendar_spec(schedule) is not None:
+                return self.finish_calendar(schedule.id, claim, status, resolved_detail or detail, now=now)
+            return super().finish(schedule.id, claim, status, resolved_detail or detail, now=now)
+        schedule = self._schedule_by_id(schedule_or_claim, claim_or_status)
+        if self.calendar_spec(schedule) is not None:
+            return self.finish_calendar(schedule.id, claim_or_status, status_or_detail, detail, now=now)
         return super().finish(schedule_or_claim, claim_or_status, status_or_detail, detail, now=now)
+
+    def _schedule_by_id(self, schedule_id: str, claim: str | None = None) -> Schedule:
+        with sqlite3.connect(self.path) as db:
+            query = (
+                "SELECT id,task,interval_seconds,max_attempts,next_run,enabled,attempts "
+                "FROM schedules WHERE id=?" + (" AND claim=?" if claim is not None else "")
+            )
+            row = db.execute(query, (schedule_id, claim) if claim is not None else (schedule_id,)).fetchone()
+        if row is None:
+            raise KeyError("invalid scheduler schedule")
+        return Schedule(row[0], row[1], int(row[2]), int(row[3]), row[4], bool(row[5]), int(row[6]))
 
     def find_task(self, task: str) -> Schedule | None:
         """Return an exact schedule, migrating the legacy learning task once."""
@@ -152,15 +171,7 @@ class AutomationScheduler(_AutomationScheduler):
     def finish_calendar(self, schedule_id: str, claim: str, status: str, detail: str = "", *, now: datetime | None = None) -> None:
         """Finish a run and advance a monthly schedule only after success."""
         finished_at = now or datetime.now(timezone.utc)
-        with sqlite3.connect(self.path) as db:
-            row = db.execute(
-                "SELECT id,task,interval_seconds,max_attempts,next_run,enabled,attempts "
-                "FROM schedules WHERE id=? AND claim=?",
-                (schedule_id, claim),
-            ).fetchone()
-        if row is None:
-            raise KeyError("invalid scheduler claim")
-        schedule = Schedule(row[0], row[1], int(row[2]), int(row[3]), row[4], bool(row[5]), int(row[6]))
+        schedule = self._schedule_by_id(schedule_id, claim)
         super().finish(schedule_id, claim, status, detail, now=finished_at)
         if status == "success" and self.calendar_spec(schedule) is not None:
             next_run = self.next_calendar_run(schedule, now=finished_at)
