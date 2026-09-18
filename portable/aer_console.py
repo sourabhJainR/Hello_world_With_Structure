@@ -160,8 +160,14 @@ def _session_summary(root: Path) -> dict[str, Any]:
             data, status = _read_json(path)
             item["status"] = status
             if data:
-                allowed = {key: data[key] for key in ("project_key", "stage", "attempt", "last_error") if key in data}
+                allowed = {
+                    key: data[key]
+                    for key in ("project_key", "stage", "attempt", "last_error", "project_root", "intent")
+                    if key in data
+                }
                 item.update(allowed)
+                if data.get("project_root") or data.get("intent"):
+                    item["resume_hint"] = "reopen the stored project and review the checkpoint before continuing"
             recent.append(item)
     except OSError:
         return {"status": "unknown", "count": 0, "recent": []}
