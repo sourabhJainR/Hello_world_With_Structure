@@ -517,6 +517,14 @@ def parser() -> argparse.ArgumentParser:
     check_parser.add_argument("--aer-home", type=Path, default=None)
     rollback_parser = sub.add_parser("rollback")
     rollback_parser.add_argument("--aer-home", type=Path, default=None)
+    status_parser = sub.add_parser("status")
+    status_parser.add_argument("--json", action="store_true")
+    status_parser.add_argument("--aer-home", type=Path, default=None)
+    console_parser = sub.add_parser("console")
+    console_parser.add_argument("--host", default="127.0.0.1")
+    console_parser.add_argument("--port", type=int, default=0)
+    console_parser.add_argument("--open", dest="open_browser", action="store_true")
+    console_parser.add_argument("--aer-home", type=Path, default=None)
     return root
 
 def main(argv: list[str] | None = None) -> int:
@@ -534,6 +542,14 @@ def main(argv: list[str] | None = None) -> int:
         update(args.aer_home, args.ref, args.skill)
     elif args.command == "rollback":
         rollback(args.aer_home)
+    elif args.command == "status":
+        from .aer_console import collect_snapshot, render_status
+        print(render_status(collect_snapshot(args.aer_home), args.json))
+    elif args.command == "console":
+        from .aer_console import serve_console
+        if args.host not in {"127.0.0.1", "localhost", "::1"}:
+            raise SystemExit("console host must be loopback")
+        serve_console(args.aer_home, args.host, args.port, args.open_browser, True)
     return 0
 
 if __name__ == "__main__":
