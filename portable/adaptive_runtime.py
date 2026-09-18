@@ -217,8 +217,16 @@ class AdaptiveRuntime:
         tuner = AdaptiveTuner(self.persistent_memory, project_key)
         policy_scope = cognitive_capability or "global"
         policy = tuner.current_policy(policy_scope)
-        checkpoint = SessionCheckpoint(session_id=session_id, task_id=task_id, project_key=project_key,
-                                       stage="execute", remaining_batches=["verify", "review", "learn"], active_provider=provider_name)
+        checkpoint = SessionCheckpoint(
+            session_id=session_id,
+            task_id=task_id,
+            project_key=project_key,
+            stage="execute",
+            remaining_batches=["verify", "review", "learn"],
+            active_provider=provider_name,
+            project_root=str(Path(project_root).expanduser().resolve()),
+            intent=intent,
+        )
         self.session_store.save(checkpoint)
         cognitive_runtime = self.cognition(project_root)
         cognitive_loop = CognitiveLoop(cognitive_runtime)

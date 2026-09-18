@@ -21,14 +21,16 @@ class SessionCheckpoint:
     active_provider: str | None = None
     attempt: int = 0
     last_error: str | None = None
+    project_root: str | None = None
+    intent: str | None = None
     updated_at: float = field(default_factory=time.time)
     state_digest: str = ""
 
     def seal(self) -> "SessionCheckpoint":
+        self.updated_at = time.time()
         payload = asdict(self)
         payload["state_digest"] = ""
         self.state_digest = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-        self.updated_at = time.time()
         return self
 
 
@@ -84,9 +86,22 @@ class SessionStore:
     def _valid(checkpoint: SessionCheckpoint) -> bool:
         digest = checkpoint.state_digest
         checkpoint.state_digest = ""
-        expected = hashlib.sha256(json.dumps(asdict(checkpoint), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        current_payload = asdict(checkpoint)
+        current_expected = hashlib.sha256(
+            json.dumps(current_payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        if bool(digest) and digest == current_expected:
+            checkpoint.state_digest = digest
+            return True
+
+        legacy_payload = dict(current_payload)
+        legacy_payload.pop("project_root", None)
+        legacy_payload.pop("intent", None)
+        legacy_expected = hashlib.sha256(
+            json.dumps(legacy_payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
         checkpoint.state_digest = digest
-        return bool(digest) and digest == expected
+        return bool(digest) and digest == legacy_expected
 
 
 __all__ = ["SessionCheckpoint", "SessionStore"]
