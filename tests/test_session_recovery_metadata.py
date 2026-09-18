@@ -35,16 +35,22 @@ class SessionRecoveryMetadataTests(unittest.TestCase):
 
     def test_legacy_checkpoint_without_resume_fields_still_loads(self):
         store = SessionStore(self.root / "sessions")
-        checkpoint = SessionCheckpoint(
-            session_id="legacy",
-            task_id="t1",
-            project_key="p1",
-            stage="execute",
-        )
-        checkpoint.seal()
-        payload = json.loads(json.dumps(checkpoint.__dict__))
-        payload.pop("project_root", None)
-        payload.pop("intent", None)
+        payload = {
+            "session_id": "legacy",
+            "task_id": "t1",
+            "project_key": "p1",
+            "stage": "execute",
+            "completed_batches": [],
+            "remaining_batches": [],
+            "active_provider": None,
+            "attempt": 0,
+            "last_error": None,
+            "updated_at": 12345.0,
+            "state_digest": "",
+        }
+        payload["state_digest"] = __import__("hashlib").sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
         path = store.path("legacy")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload), encoding="utf-8")
