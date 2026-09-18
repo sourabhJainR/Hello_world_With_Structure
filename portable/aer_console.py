@@ -211,22 +211,73 @@ def _runs_summary(root: Path) -> dict[str, Any]:
     return {"status": status, "count": len(traces), "recent": recent}
 
 
+def _adaptive_learning_details(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {"status": "unknown", "advisory_only": True, "experience_count": 0, "policies": [], "maintenance": []}
+    try:
+        uri = path.resolve().as_uri() + "?mode=ro"
+        with sqlite3.connect(uri, uri=True, timeout=1) as conn:
+            tables = {
+                str(row[0])
+                for row in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name IN "
+                    "('adaptive_policies','adaptive_experience_history','adaptive_maintenance_receipts')"
+                )
+            }
+            if not {"adaptive_policies", "adaptive_experience_history"}.issubset(tables):
+                return {"status": "unknown", "advisory_only": True, "experience_count": 0, "policies": [], "maintenance": []}
+            experience_count = int(conn.execute("SELECT COUNT(*) FROM adaptive_experience_history").fetchone()[0])
+            policies = [
+                {
+                    "project_key": row[0],
+                    "scope": row[1],
+                    "version": row[2],
+                    "strategy": row[3],
+                    "confidence_adjustment": float(row[4]),
+                    "iteration_target": float(row[5]),
+                    "created_at": row[6],
+                    "evidence_digest": row[7],
+                }
+                for row in conn.execute(
+                    "SELECT project,scope,version,strategy,confidence_adjustment,iteration_target,created_at,evidence_digest "
+                    "FROM adaptive_policies WHERE status='active' ORDER BY created_at DESC,project,scope LIMIT 10"
+                )
+            ]
+            maintenance = []
+            if "adaptive_maintenance_receipts" in tables:
+                maintenance = [
+                    {
+                        "project_key": row[0],
+                        "cycle_id": row[1],
+                        "finished_at": row[2],
+                        "jobs_processed": int(row[3]),
+                        "strategy_action": row[4],
+                        "policy_version": row[5],
+                        "errors": json.loads(row[6]) if row[6] else [],
+                    }
+                    for row in conn.execute(
+                        "SELECT project,cycle_id,finished_at,jobs_processed,strategy_action,policy_version,errors "
+                        "FROM adaptive_maintenance_receipts ORDER BY finished_at DESC,project LIMIT 10"
+                    )
+                ]
+            return {
+                "status": "active" if policies or experience_count else "initialized",
+                "advisory_only": True,
+                "experience_count": experience_count,
+                "policies": policies,
+                "maintenance": maintenance,
+            }
+    except (OSError, sqlite3.Error, json.JSONDecodeError, ValueError, TypeError):
+        return {"status": "unknown", "advisory_only": True, "experience_count": 0, "policies": [], "maintenance": []}
+
+
 def _learning_summary(root: Path) -> dict[str, Any]:
     memory = _sqlite_summary(root / "memory" / "memory.db")
     automation = _sqlite_summary(root / "automation" / "automation.db")
+    adaptive = _adaptive_learning_details(root / "memory" / "memory.db")
     if memory["status"] == "missing" and automation["status"] == "missing":
-        return {"status": "unknown", "memory": memory, "automation": automation}
-    maintenance_candidates = sorted(
-        (p for p in root.rglob("*maintenance*.json") if p.is_file()),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    receipt = None
-    if maintenance_candidates:
-        receipt, receipt_status = _read_json(maintenance_candidates[0])
-        if receipt_status != "ok":
-            receipt = None
-    return {"status": "ok", "memory": memory, "automation": automation, "latest_maintenance": receipt}
+        return {"status": "unknown", "memory": memory, "automation": automation, "adaptive": adaptive}
+    return {"status": adaptive.get("status", "unknown"), "memory": memory, "automation": automation, "adaptive": adaptive}
 
 
 def _capabilities_summary(root: Path) -> dict[str, Any]:
@@ -373,7 +424,15 @@ main{{max-width:1180px;margin:auto;padding:32px 20px 48px}} header{{display:flex
 <section class="panel"><h2>Capabilities</h2><ul>{skill_items or '<li><span>No skill installations detected.</span></li>'}</ul></section>
 </div>
 <div class="two">
-<section class="panel"><h2>Learning</h2><div class="kv"><div class="key">State</div><div>{html.escape(str(learning.get('status','unknown')))}</div><div class="key">Memory</div><div>{html.escape(str(learning.get('memory',{}).get('status','unknown')))}</div><div class="key">Automation</div><div>{html.escape(str(learning.get('automation',{}).get('status','unknown')))}</div></div></section>
+<section class="panel"><h2>Learning</h2><div class="kv">
+<div class="key">State</div><div>{html.escape(str(learning.get('status','unknown')))}</div>
+<div class="key">Experience</div><div>{html.escape(str(learning.get('adaptive',{}).get('experience_count',0)))}</div>
+<div class="key">Active policies</div><div>{html.escape(str(len(learning.get('adaptive',{}).get('policies',[]))))}</div>
+<div class="key">Latest strategy</div><div>{html.escape(str((learning.get('adaptive',{}).get('policies') or [{}])[0].get('strategy','n/a')))}</div>
+<div class="key">Policy</div><div>{html.escape(str((learning.get('adaptive',{}).get('policies') or [{}])[0].get('version','n/a')))} <span class="chip muted">advisory</span></div>
+<div class="key">Memory</div><div>{html.escape(str(learning.get('memory',{}).get('status','unknown')))}</div>
+<div class="key">Automation</div><div>{html.escape(str(learning.get('automation',{}).get('status','unknown')))}</div>
+</div></section>
 <section class="panel"><h2>Recovery</h2><div class="kv"><div class="key">State</div><div>{html.escape(str(recovery.get('status','unknown')))}</div><div class="key">Items</div><div>{html.escape(str(recovery.get('count',0)))}</div></div></section>
 </div>
 <section class="panel"><h2>Health checks</h2><ul>{''.join(f'<li><span>{html.escape(k.replace("_"," ").title())}</span><span class="chip {"good" if v else "warn"}">{"pass" if v else "missing"}</span></li>' for k,v in health.get("checks",{}).items())}</ul></section>
