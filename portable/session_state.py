@@ -21,6 +21,8 @@ class SessionCheckpoint:
     active_provider: str | None = None
     attempt: int = 0
     last_error: str | None = None
+    project_root: str | None = None
+    intent: str | None = None
     updated_at: float = field(default_factory=time.time)
     state_digest: str = ""
 
