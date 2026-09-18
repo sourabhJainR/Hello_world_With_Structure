@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from portable.aer_runtime import parser
+from portable.aer_runtime import main, parser
 
 
 class ControlCenterCliTests(unittest.TestCase):
@@ -46,8 +46,8 @@ class ControlCenterCliTests(unittest.TestCase):
             self.assertIn("recovery", payload)
 
     def test_console_rejects_non_loopback_host(self):
-        with self.assertRaises(SystemExit):
-            parser().parse_args(["console", "--host", "0.0.0.0"])
+        with self.assertRaisesRegex(SystemExit, "console host must be loopback"):
+            main(["console", "--host", "0.0.0.0"])
 
 
 if __name__ == "__main__":
