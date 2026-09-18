@@ -354,6 +354,7 @@ main{{max-width:1180px;margin:auto;padding:32px 20px 48px}} header{{display:flex
 </head>
 <body><main>
 <header><div><h1>AER Console</h1><p>One view over execution evidence, health, learning and recovery.</p></div><div class="meta">Read-only local view<br>{html.escape(payload['generated_at'])}</div></header>
+<section class="panel"><h2>Overview</h2><p>The current AER control-plane state at a glance.</p></section>
 <div class="grid">
 {_card('System', health.get('status','unknown'), 'Local AER state', health.get('status'))}
 {_card('Installation', installation.get('version','not installed'), installation.get('source_commit','') or 'No active pin', installation.get('status'))}
