@@ -7,7 +7,7 @@ by TriggerRuntime, while execution remains owned by AdaptiveRuntime.
 from __future__ import annotations
 
 from atexit import register
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -68,6 +68,7 @@ class AdaptiveTrigger:
         self.runner = runner
         self._lock = Lock()
         self._closed = False
+        self._futures: set[Future[Any]] = set()
 
     @classmethod
     def for_runtime(cls, runtime: AdaptiveRuntime) -> "AdaptiveTrigger":
@@ -128,7 +129,9 @@ class AdaptiveTrigger:
                 priority=_PRIORITY[request.priority],
             )
             if fire_and_forget:
-                _BACKGROUND_EXECUTOR.submit(self._dispatch_event, event.event_id)
+                future = _BACKGROUND_EXECUTOR.submit(self._dispatch_event, event.event_id)
+                self._futures.add(future)
+                future.add_done_callback(self._forget_future)
         return TriggerReceipt(event.event_id, event.status, event.created_at)
 
     def get_status(self, trigger_id: str) -> TriggerStatus | None:
@@ -196,9 +199,16 @@ class AdaptiveTrigger:
                 results.append(outcome)
         return results
 
-    def close(self) -> None:
+    def _forget_future(self, future: Future[Any]) -> None:
+        with self._lock:
+            self._futures.discard(future)
+
+    def close(self, *, wait_for_background: bool = True) -> None:
         with self._lock:
             self._closed = True
+            futures = tuple(self._futures)
+        if wait_for_background and futures:
+            wait(futures)
 
 
 def trigger_adaptive_runtime(
