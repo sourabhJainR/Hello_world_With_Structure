@@ -172,13 +172,14 @@ class GraphAgentTeam:
         return broker.run(OffloadJob(agent.name,decision.command,isolate=agent.local_isolation,timeout_seconds=agent.local_timeout_seconds))
     def _build_execution_graph(self,results,*,task,intent_digest,base_prompt,memory,invoke_agent):
         graph=StateGraph()
+        broker=LocalOffloadBroker(memory.project_root,budget=self.resource_budget)
         for agent in self.agents.values():
             def run(state,agent=agent):
                 deps=[state.get(f"result:{n}") for n in agent.depends_on]
                 if agent.name!="learning-steward" and any(not x or x.get("status")!="passed" for x in deps):
                     return {f"result:{agent.name}":{"status":"blocked","activated":False}}
-                decision=self._resource_decision(agent)
-                local=self._run_local(agent,decision,memory)
+                decision=self._resource_decision(agent,broker)
+                local=self._run_local(agent,decision,memory,broker)
                 local_payload=None
                 if local is not None:
                     local_payload={"job_id":local.job_id,"status":local.status,"exit_code":local.exit_code,"duration_seconds":local.duration_seconds,"output":local.output,"error":local.error}
