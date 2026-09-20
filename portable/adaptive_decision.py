@@ -151,7 +151,7 @@ class AdaptiveInferencePolicy:
         evaluator = self.provider
         if evaluator and evaluator.configured:
             try:
-                batch = DecisionFabric(evaluator.evaluate).evaluate(state, (question,))
+                batch = DecisionFabric(lambda current, item: evaluator.evaluate(current, (item,))[item.key]).evaluate(state, (question,))
                 decision = batch.decisions["depth"]
                 if isinstance(decision, ScoreDecision) and decision.confidence >= self.min_confidence:
                     return InferenceDecision(
