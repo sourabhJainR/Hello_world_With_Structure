@@ -290,7 +290,11 @@ def team_for_route(route):
                    AgentSpec("verifier","verifier",depends_on=("builder",),focus="Run or inspect deterministic verification and identify regressions.",
                               local_command=tuple(str(x) for x in route.get("verification_command",("python","-m","pytest","-q"))),
                               local_isolation=bool(route.get("verification_isolation",False)),
-                              local_timeout_seconds=float(route["verification_timeout"]) if route.get("verification_timeout") else None)]
+                              local_timeout_seconds=float(route["verification_timeout"]) if route.get("verification_timeout") else None,
+                              estimated_duration_seconds=float(route.get("verification_estimated_seconds",30.0)),
+                              estimated_memory_mb=int(route.get("verification_memory_mb",256)),
+                              evidence_value=float(route.get("verification_evidence_value",0.95)),
+                              isolation_required=bool(route.get("verification_isolation_required",False)))]
         review_dep=("builder","verifier")
     else:
         review_dep=tuple(a.name for a in agents)
