@@ -1,9 +1,9 @@
 """Cross-agent learning extraction kept outside task execution."""
 from __future__ import annotations
-import re,sys
+import json,re,sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 try:
     from runtime.task_memory import record
 except ModuleNotFoundError:
@@ -32,7 +32,7 @@ class LearningSteward:
         for learning in self.extract(output):
             rows.append(record(self.root,task=self.task,category="approach",outcome=learning.outcome,detail=learning.detail,approach=learning.approach or None,run_id=self.run_id,evidence_ids=evidence,source_agent="learning-steward",promotion="candidate"))
         return rows
-    @staticmethod
+    @staticmethod\n    def resource_history(root: Path, routing_key: str, limit: int = 50) -> list[dict[str, Any]]:\n        from runtime.task_memory import relevant\n        rows = relevant(Path(root), routing_key, limit=max(1, int(limit)) * 3)\n        return [row for row in rows if row.get("approach") == routing_key][: max(1, int(limit))]\n\n    def record_resource_outcome(self, *, routing_key: str, status: str, duration_seconds: float, memory_mb: int,\n                               evidence_yield: float, failure_probability: float,\n                               predicted_duration_seconds: float, predicted_memory_mb: int,\n                               predicted_evidence_yield: float, evidence_ids: Iterable[str] = ()) -> dict[str, object]:\n        outcome = "worked" if str(status) == "passed" else "failed"\n        detail = json.dumps({"routing_key": routing_key, "duration_seconds": round(float(duration_seconds), 3),\n            "memory_mb": int(memory_mb), "evidence_yield": round(max(0.0, min(1.0, float(evidence_yield))), 3),\n            "failure_probability": round(max(0.0, min(1.0, float(failure_probability))), 3),\n            "predicted_duration_seconds": round(float(predicted_duration_seconds), 3),\n            "predicted_memory_mb": int(predicted_memory_mb),\n            "predicted_evidence_yield": round(max(0.0, min(1.0, float(predicted_evidence_yield))), 3)}, sort_keys=True)\n        return record(self.root, task=self.task, category="verification", outcome=outcome, detail=detail,\n                      approach=routing_key, run_id=self.run_id, evidence_ids=list(evidence_ids),\n                      source_agent="learning-steward", promotion="candidate")\n    @staticmethod
     def prompt()->str:
         return """## Learning steward contract
 You are not an execution agent. Review completed agent outcomes and capture only reusable lessons that can prevent future agents from repeating a mistake or reproduce a verified success.
