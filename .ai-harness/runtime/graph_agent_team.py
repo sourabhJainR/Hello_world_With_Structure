@@ -158,7 +158,7 @@ class GraphAgentTeam:
         historical_payload=historical.as_dict() if historical else {}
         failure_probability=float(historical.failure_probability) if historical else 0.0
         evidence_quality=float(historical.evidence_yield) if historical else float(agent.evidence_value)
-        risk=1.0 if agent.isolation_required else (0.8 if agent.critical and agent.role=="verifier" else 0.35)
+        risk=1.0 if agent.isolation_required else (0.55 if agent.critical and agent.role=="verifier" else 0.35)
         inference=AdaptiveInferencePolicy().decide(uncertainty=1.0-evidence_quality,risk=risk,evidence_quality=evidence_quality,failure_probability=failure_probability)
         if not agent.local_command:
             return ResourceDecision("agent","no deterministic local work declared",pressure=pressure,historical=historical_payload,inference_depth=inference.depth)
