@@ -55,8 +55,8 @@ class LearningSteward:
             "duration_seconds": round(max(0.0, float(duration_seconds)), 3),
         }, sort_keys=True)
         return record(
-            self.root, task=self.task, category="decision-experience",
-            outcome=str(outcome), detail=detail, approach=key,
+            self.root, task=self.task, category="verification",
+            outcome=("worked" if str(outcome) in {"passed","worked","success"} else ("regressed" if str(outcome) == "regressed" else "failed")), detail=detail, approach=key,
             run_id=self.run_id, evidence_ids=list(evidence_ids),
             source_agent="learning-steward", promotion="candidate",
         )
