@@ -23,7 +23,8 @@ class GraphResourceExecutionTests(unittest.TestCase):
             [GRAPH_TEAM.AgentSpec("verifier", "verifier", local_command=("python", "-c", "print('ok')"))],
             resource_budget=ResourceBudget(max_workers=1, timeout_seconds=10),
         )
-        decision = team._resource_decision(team.agents["verifier"])
+        broker = GRAPH_TEAM.LocalOffloadBroker(Path.cwd(), budget=ResourceBudget(max_workers=1, timeout_seconds=10))
+        decision = team._resource_decision(team.agents["verifier"], broker)
         self.assertEqual(decision.lane, "local")
         self.assertEqual(decision.command[:2], ("python", "-c"))
 
@@ -32,7 +33,8 @@ class GraphResourceExecutionTests(unittest.TestCase):
             [GRAPH_TEAM.AgentSpec("builder", "builder", read_only=False, local_command=("python", "-c", "print('ok')"))],
             resource_budget=ResourceBudget(max_workers=1, timeout_seconds=10),
         )
-        decision = team._resource_decision(team.agents["builder"])
+        broker = GRAPH_TEAM.LocalOffloadBroker(Path.cwd(), budget=ResourceBudget(max_workers=1, timeout_seconds=10))
+        decision = team._resource_decision(team.agents["builder"], broker)
         self.assertEqual(decision.lane, "agent")
 
     def test_local_result_is_bounded_evidence(self):
@@ -43,13 +45,28 @@ class GraphResourceExecutionTests(unittest.TestCase):
                 [GRAPH_TEAM.AgentSpec("verifier", "verifier", local_command=("python", "-c", "print('ok')"))],
                 resource_budget=ResourceBudget(max_workers=1, timeout_seconds=10),
             )
-            decision = team._resource_decision(team.agents["verifier"])
-            result = team._run_local(team.agents["verifier"], decision, memory)
+            broker = GRAPH_TEAM.LocalOffloadBroker(root, budget=ResourceBudget(max_workers=1, timeout_seconds=10))
+            decision = team._resource_decision(team.agents["verifier"], broker)
+            result = team._run_local(team.agents["verifier"], decision, memory, broker)
             self.assertIsNotNone(result)
             assert result is not None
             self.assertEqual(result.status, "passed")
             self.assertIn("ok", result.output)
 
+    def test_high_pressure_can_fallback_to_agent_lane(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            broker = GRAPH_TEAM.LocalOffloadBroker(root, budget=ResourceBudget(max_workers=1, timeout_seconds=10))
+            broker._active_jobs = 1
+            agent = GRAPH_TEAM.AgentSpec(
+                "heavy", "heavy verifier", local_command=("python", "-c", "print('ok')"),
+                estimated_duration_seconds=10, estimated_memory_mb=256, evidence_value=0.0,
+            )
+            decision = GRAPH_TEAM.GraphAgentTeam(
+                [agent], resource_budget=ResourceBudget(max_workers=1, timeout_seconds=10)
+            )._resource_decision(agent, broker)
+            self.assertEqual(decision.lane, "agent")
+            self.assertGreater(decision.pressure["cpu_pressure"], 0.0)
 
 if __name__ == "__main__":
     unittest.main()
