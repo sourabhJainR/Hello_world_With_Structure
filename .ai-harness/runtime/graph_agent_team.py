@@ -42,6 +42,10 @@ class AgentSpec:
     local_command:tuple[str,...]=()
     local_isolation:bool=False
     local_timeout_seconds:float|None=None
+    estimated_duration_seconds:float=30.0
+    estimated_memory_mb:int=256
+    evidence_value:float=0.7
+    isolation_required:bool=False
 
 @dataclass
 class AgentResult:
@@ -63,6 +67,8 @@ class ResourceDecision:
     reason:str
     command:tuple[str,...]=()
     workers:int=1
+    cost_score:float=1.0
+    pressure:dict[str,float]=field(default_factory=dict)
 
 class SharedTaskMemory:
     """Run-scoped working memory with hard entry/size limits and cross-process writes."""
