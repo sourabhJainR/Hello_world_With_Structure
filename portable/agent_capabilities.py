@@ -19,7 +19,7 @@ CAPABILITIES = (
     "web_search", "x_search", "terminal", "browser", "file", "vision",
     "image_generation", "tts", "todo", "memory", "session_search",
     "cronjob", "execute_code", "delegate_task", "clarify", "mcp",
-    "skills", "background_processes", "provider_fallback",
+    "skills", "background_processes", "local_offload", "provider_fallback",
 )
 
 _RISK_ORDER = {"low": 0, "medium": 1, "high": 2}
@@ -76,6 +76,7 @@ class CapabilityFabric:
             "mcp": Capability("mcp", "external tool interoperability", "high"),
             "skills": Capability("skills", "progressive-disclosure procedures"),
             "background_processes": Capability("background_processes", "durable background work", "medium"),
+            "local_offload": Capability("local_offload", "bounded local worker execution", "medium", requires_sandbox=True),
             "provider_fallback": Capability("provider_fallback", "provider failover"),
         }
 
