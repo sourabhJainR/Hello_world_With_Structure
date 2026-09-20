@@ -58,6 +58,7 @@ from .autonomy_graduation import AutonomyEvidence, AutonomyGraduator, Graduation
 from .deep_evaluation import BenchmarkCase, DeepBenchmarkReport, DeepEvaluator
 from .adaptive_trigger import AdaptiveTrigger, AdaptiveTriggerRequest, TriggerOutcome, TriggerReceipt, trigger_adaptive_runtime
 from .trigger_runtime import TriggerClaim, TriggerEvent, TriggerRuntime, TriggerStatus
+from .local_workbench import LocalWorkbench, WorkPacket, WorkReceipt, WorkbenchReceipt, packet
 
 __all__ = [
     "main", "AdaptiveRuntime", "AdaptiveLearningStore", "DeferredLearningJob", "WorkStyleProfile", "AdaptivePolicy", "AdaptiveTuner", "ExperienceRecord", "MaintenanceReceipt", "TuningDecision", "EmpiricalImprovement", "ImprovementObservation", "ImprovementReport",
@@ -89,4 +90,5 @@ __all__ = [
     "AutonomyEvidence", "AutonomyGraduator", "GraduationPolicy", "GraduationReceipt", "LEVELS", "BenchmarkCase", "DeepBenchmarkReport", "DeepEvaluator",
     "AdaptiveTrigger", "AdaptiveTriggerRequest", "TriggerOutcome", "TriggerReceipt", "trigger_adaptive_runtime",
     "TriggerClaim", "TriggerEvent", "TriggerRuntime", "TriggerStatus",
+    "LocalWorkbench", "WorkPacket", "WorkReceipt", "WorkbenchReceipt", "packet",
 ]
