@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -108,20 +109,50 @@ class LocalOffloadBroker:
         if not self.project_root.is_dir():
             raise ValueError("project_root must be an existing directory")
         self.budget = (budget or ResourceBudget()).normalized()
+        self._state_lock = threading.Lock()
+        self._active_jobs = 0
+        self._queued_jobs = 0
+        self._completed_jobs = 0
         self.allowed_programs = set(allowed_programs) if allowed_programs is not None else {
             "python", "python3", "pytest", "ruff", "mypy", "pyright", "git"
         }
 
-    def capacity(self) -> dict[str, int | str]:
+    def capacity(self) -> dict[str, int | float | str]:
+        resources = discover_resources()
+        with self._state_lock:
+            active, queued, completed = self._active_jobs, self._queued_jobs, self._completed_jobs
         return {
-            **discover_resources(),
+            **resources,
             "configured_workers": self.budget.max_workers,
             "timeout_seconds": self.budget.timeout_seconds,
             "max_output_chars": self.budget.max_output_chars,
+            "memory_budget_mb": self.budget.memory_mb,
+            "active_jobs": active,
+            "queued_jobs": queued,
+            "completed_jobs": completed,
+            "queue_capacity": self.budget.max_workers * 8,
+        }
+
+    def pressure(self) -> dict[str, float | int]:
+        """Return a cheap, bounded snapshot for resource-aware routing."""
+        capacity = self.capacity()
+        cpu = max(1, int(capacity["cpu_count"]))
+        available_memory = int(capacity["available_memory_mb"])
+        memory_budget = int(capacity["memory_budget_mb"])
+        active = int(capacity["active_jobs"])
+        queued = int(capacity["queued_jobs"])
+        workers = max(1, int(capacity["configured_workers"]))
+        memory_pressure = 0.0 if not memory_budget or not available_memory else min(1.0, memory_budget / available_memory)
+        return {
+            "cpu_pressure": min(1.0, active / cpu),
+            "queue_pressure": min(1.0, (active + queued) / max(1, workers * 8)),
+            "memory_pressure": memory_pressure,
         }
 
     def run(self, job: OffloadJob) -> OffloadResult:
         started = time.monotonic()
+        with self._state_lock:
+            self._queued_jobs += 1
         workspace: Path | None = None
         try:
             command = self._validate_command(job.command, allow_write=job.allow_write)
@@ -134,6 +165,9 @@ class LocalOffloadBroker:
                 self._copy_workspace(self.project_root, workspace)
                 cwd = self._map_isolated_cwd(self.project_root, cwd, workspace)
 
+            with self._state_lock:
+                self._queued_jobs -= 1
+                self._active_jobs += 1
             process = subprocess.Popen(
                 list(command),
                 cwd=str(cwd),
@@ -171,6 +205,10 @@ class LocalOffloadBroker:
                 str(workspace) if workspace else None
             )
         finally:
+            with self._state_lock:
+                if self._active_jobs:
+                    self._active_jobs -= 1
+                self._completed_jobs += 1
             if workspace:
                 shutil.rmtree(workspace, ignore_errors=True)
 
