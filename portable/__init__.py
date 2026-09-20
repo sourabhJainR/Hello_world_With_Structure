@@ -23,6 +23,7 @@ from .engineering_design_guard import DesignDimension, DesignFinding, DesignRevi
 from .agency_state_graph import Checkpoint, CompiledStateGraph, GraphEvent, GraphInterrupt, GraphRun, InMemoryCheckpointStore, RetryPolicy, StateGraph
 from .decision_fabric import ChoiceDecision, DecisionBatch, DecisionFabric, DecisionPolicy, DecisionQuestion, NoulDecision, PolicyDecision, ScoreDecision
 from .adaptive_decision import AdaptiveInferencePolicy, HttpDecisionProvider, InferenceDecision
+from .experience_router import ExperienceRouter, ExperienceSummary
 from .recursive_agency import AgencyReceipt, CycleObservation, RecursiveAgency, WorkItem
 from .repository_intelligence import (
     PackedFile, RepositoryAnswer, RepositoryEvidence, RepositoryIntelligence, RepositoryMap, RepositoryPack, render_compact,
@@ -72,7 +73,7 @@ __all__ = [
     "BoundedLoop", "LoopAction", "LoopDefinition", "LoopPass", "LoopRunReceipt", "VerificationResult",
     "ProvenanceLedger", "ProvenanceRecord", "DesignDimension", "DesignFinding", "DesignReviewReceipt", "EngineeringDesignGuard", "FindingSeverity",
     "Checkpoint", "CompiledStateGraph", "GraphEvent", "GraphInterrupt", "GraphRun", "InMemoryCheckpointStore", "RetryPolicy", "StateGraph",
-    "ChoiceDecision", "DecisionBatch", "DecisionFabric", "DecisionPolicy", "DecisionQuestion", "NoulDecision", "PolicyDecision", "ScoreDecision", "AdaptiveInferencePolicy", "HttpDecisionProvider", "InferenceDecision",
+    "ChoiceDecision", "DecisionBatch", "DecisionFabric", "DecisionPolicy", "DecisionQuestion", "NoulDecision", "PolicyDecision", "ScoreDecision", "AdaptiveInferencePolicy", "HttpDecisionProvider", "InferenceDecision", "ExperienceRouter", "ExperienceSummary",
     "AgencyReceipt", "CycleObservation", "RecursiveAgency", "WorkItem",
     "PackedFile", "RepositoryPack", "RepositoryEvidence", "RepositoryAnswer", "RepositoryIntelligence", "RepositoryMap", "render_compact",
     "Specialist", "SpecialistRouter", "RouteRequest", "RouteDecision", "ResearchTask", "ResearchPlan", "ResearchPlanner",
