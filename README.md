@@ -52,6 +52,7 @@ The important architectural boundary is that **execution remains bounded and pol
 | Adaptive learning | `portable.adaptive_learning.AdaptiveLearningStore` |
 | Empirical tuning | `portable.adaptive_tuning.AdaptiveTuner` |
 | OS service lifecycle | `portable.maintenance_service` |
+| Local bounded execution | `portable.local_offload.LocalOffloadBroker` |
 
 Compatibility surfaces adapt to these owners instead of maintaining independent state.
 
@@ -98,6 +99,16 @@ Verification / review / synthesis
 ```
 
 Dependency failures are fail-closed. Read-only roles receive an explicit `patch_allowed: false` guard. The graph path is the default; `AER_GRAPH_TEAM=0` remains available for diagnostics and compatibility.
+
+### Local resource offload
+
+The graph/team layer can use an additive `LocalOffloadBroker` for independent local work that should not occupy the coordinator context. It detects CPU capacity, bounds concurrency, applies time/output budgets, scrubs secret-like environment variables, and can run jobs in temporary workspace copies. The broker is an execution resource, not a second orchestrator or policy owner.
+
+```bash
+python -m portable.local_offload --project-root . --workers 3 -- pytest -q
+```
+
+See [`docs/LOCAL_OFFLOAD.md`](docs/LOCAL_OFFLOAD.md) for the API and safety model.
 
 ## Engineering lifecycle and evidence
 
