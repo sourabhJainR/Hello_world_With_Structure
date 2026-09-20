@@ -69,9 +69,17 @@ class HistoricalResourceRouter:
         successes: list[Mapping[str, Any]] = []
         failures = 0
         for row in rows:
+            try:
+                metrics = json.loads(str(row.get("detail", "{}")))
+                if not isinstance(metrics, dict):
+                    metrics = {}
+            except (TypeError, ValueError, json.JSONDecodeError):
+                metrics = {}
+            normalized = dict(row)
+            normalized.update(metrics)
             outcome = str(row.get("outcome", "")).lower()
             if outcome == "worked":
-                successes.append(row)
+                successes.append(normalized)
             elif outcome in {"failed", "regressed"}:
                 failures += 1
 
