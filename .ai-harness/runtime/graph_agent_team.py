@@ -148,17 +148,27 @@ class GraphAgentTeam:
     def digest(self):
         payload=[{"name":a.name,"role":a.role,"depends_on":list(a.depends_on),"read_only":a.read_only,"critical":a.critical,"focus":a.focus,"local_command":list(a.local_command)} for level in self.levels() for a in level]
         return hashlib.sha256(json.dumps(payload,sort_keys=True).encode()).hexdigest()
-    def _resource_decision(self,agent:AgentSpec)->ResourceDecision:
+    def _resource_decision(self,agent:AgentSpec,broker:LocalOffloadBroker)->ResourceDecision:
+        pressure=broker.pressure()
         if not agent.local_command:
-            return ResourceDecision("agent","no deterministic local work declared")
+            return ResourceDecision("agent","no deterministic local work declared",pressure=pressure)
         if not agent.read_only:
-            return ResourceDecision("agent","mutating agent remains on the existing agent lane")
+            return ResourceDecision("agent","mutating agent remains on the existing agent lane",pressure=pressure)
         if agent.name=="learning-steward":
-            return ResourceDecision("agent","durable learning remains outside active local execution")
-        return ResourceDecision("local","bounded deterministic work can be offloaded",agent.local_command,self.resource_budget.max_workers)
-    def _run_local(self,agent:AgentSpec,decision:ResourceDecision,memory:SharedTaskMemory)->OffloadResult|None:
+            return ResourceDecision("agent","durable learning remains outside active local execution",pressure=pressure)
+        if agent.isolation_required and not agent.local_isolation:
+            return ResourceDecision("agent","required isolation is not enabled for the local lane",pressure=pressure)
+        available=int(broker.capacity().get("available_memory_mb",0))
+        if agent.estimated_memory_mb>0 and available and agent.estimated_memory_mb>available:
+            return ResourceDecision("agent","local memory demand exceeds available memory",pressure=pressure)
+        duration_pressure=min(1.0,max(0.0,agent.estimated_duration_seconds/max(1.0,self.resource_budget.timeout_seconds)))
+        resource_cost=max(0.0,min(1.5,0.25+0.25*pressure["cpu_pressure"]+0.20*pressure["queue_pressure"]+0.15*pressure["memory_pressure"]+0.10*duration_pressure+0.05*(1.0 if agent.local_isolation else 0.0)-0.15*max(0.0,min(1.0,agent.evidence_value))))
+        cloud_cost=0.70+0.20*pressure["queue_pressure"]
+        if resource_cost<=cloud_cost:
+            return ResourceDecision("local",f"local cost {resource_cost:.2f} <= agent/cloud cost {cloud_cost:.2f}; evidence={agent.evidence_value:.2f}",agent.local_command,self.resource_budget.max_workers,resource_cost,pressure)
+        return ResourceDecision("agent",f"agent/cloud cost {cloud_cost:.2f} < local cost {resource_cost:.2f}; pressure-aware fallback",workers=1,cost_score=cloud_cost,pressure=pressure)
+    def _run_local(self,agent:AgentSpec,decision:ResourceDecision,memory:SharedTaskMemory,broker:LocalOffloadBroker)->OffloadResult|None:
         if decision.lane!="local": return None
-        broker=LocalOffloadBroker(memory.project_root,budget=self.resource_budget)
         return broker.run(OffloadJob(agent.name,decision.command,isolate=agent.local_isolation,timeout_seconds=agent.local_timeout_seconds))
     def _build_execution_graph(self,results,*,task,intent_digest,base_prompt,memory,invoke_agent):
         graph=StateGraph()
