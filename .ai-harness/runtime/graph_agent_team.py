@@ -163,7 +163,7 @@ class GraphAgentTeam:
             return ResourceDecision("agent","local memory demand exceeds available memory",pressure=pressure)
         duration_pressure=min(1.0,max(0.0,agent.estimated_duration_seconds/max(1.0,self.resource_budget.timeout_seconds)))
         resource_cost=max(0.0,min(1.5,0.25+0.25*pressure["cpu_pressure"]+0.20*pressure["queue_pressure"]+0.15*pressure["memory_pressure"]+0.10*duration_pressure+0.05*(1.0 if agent.local_isolation else 0.0)-0.15*max(0.0,min(1.0,agent.evidence_value))))
-        cloud_cost=0.70+0.20*pressure["queue_pressure"]
+        cloud_cost=0.60+0.15*pressure["queue_pressure"]
         if resource_cost<=cloud_cost:
             return ResourceDecision("local",f"local cost {resource_cost:.2f} <= agent/cloud cost {cloud_cost:.2f}; evidence={agent.evidence_value:.2f}",agent.local_command,self.resource_budget.max_workers,resource_cost,pressure)
         return ResourceDecision("agent",f"agent/cloud cost {cloud_cost:.2f} < local cost {resource_cost:.2f}; pressure-aware fallback",workers=1,cost_score=cloud_cost,pressure=pressure)
