@@ -60,7 +60,7 @@ class GraphResourceExecutionTests(unittest.TestCase):
             broker._active_jobs = 1
             agent = GRAPH_TEAM.AgentSpec(
                 "heavy", "heavy verifier", local_command=("python", "-c", "print('ok')"),
-                estimated_duration_seconds=10, estimated_memory_mb=256, evidence_value=0.0,
+                estimated_duration_seconds=100, estimated_memory_mb=256, evidence_value=0.0,
             )
             decision = GRAPH_TEAM.GraphAgentTeam(
                 [agent], resource_budget=ResourceBudget(max_workers=1, timeout_seconds=10)
