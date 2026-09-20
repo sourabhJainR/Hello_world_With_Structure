@@ -1,0 +1,71 @@
+import json
+import unittest
+
+from portable.adaptive_decision import AdaptiveInferencePolicy, HttpDecisionProvider
+
+
+class AdaptiveDecisionTests(unittest.TestCase):
+    def test_policy_escalates_with_uncertainty_and_failure_history(self) -> None:
+        policy = AdaptiveInferencePolicy()
+        minimal = policy.decide(uncertainty=0.05, risk=0.1, evidence_quality=0.95)
+        deep = policy.decide(uncertainty=0.8, risk=0.7, evidence_quality=0.2)
+        human = policy.decide(uncertainty=0.7, risk=0.95, evidence_quality=0.8)
+        self.assertEqual(minimal.depth, "minimal")
+        self.assertEqual(deep.depth, "deep")
+        self.assertEqual(human.depth, "human")
+
+    def test_http_provider_is_optional_and_typed(self) -> None:
+        calls = []
+
+        class Response:
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                return None
+            def read(self):
+                return json.dumps({
+                    "decisions": {
+                        "depth": {
+                            "level": "standard",
+                            "probabilities": {
+                                "minimal": 0.05,
+                                "standard": 0.9,
+                                "deep": 0.04,
+                                "human": 0.01,
+                            },
+                            "confidence": 0.92,
+                        }
+                    }
+                }).encode()
+
+        def opener(req, timeout):
+            calls.append((req.full_url, timeout, req.get_header("Authorization")))
+            return Response()
+
+        provider = HttpDecisionProvider("https://decision.example/v1", api_key="secret", opener=opener)
+        decision = AdaptiveInferencePolicy(provider=provider).decide(
+            uncertainty=0.2, risk=0.2, evidence_quality=0.8
+        )
+        self.assertEqual(decision.depth, "standard")
+        self.assertEqual(decision.provider, "external")
+        self.assertEqual(calls[0][2], "Bearer secret")
+
+    def test_provider_falls_back_on_bad_response(self) -> None:
+        class Response:
+            def __enter__(self):
+                return self
+            def __exit__(self, *_):
+                return None
+            def read(self):
+                return b"not-json"
+
+        provider = HttpDecisionProvider("https://decision.example/v1", opener=lambda *_args, **_kwargs: Response())
+        decision = AdaptiveInferencePolicy(provider=provider).decide(
+            uncertainty=0.1, risk=0.1, evidence_quality=0.9
+        )
+        self.assertEqual(decision.provider, "deterministic")
+        self.assertEqual(decision.depth, "minimal")
+
+
+if __name__ == "__main__":
+    unittest.main()

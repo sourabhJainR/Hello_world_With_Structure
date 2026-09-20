@@ -123,6 +123,25 @@ class GraphAgentTeamTests(unittest.TestCase):
         names = set(team.agents)
         self.assertTrue({"planner", "explorer", "builder", "verifier", "correctness-reviewer", "security-reviewer", "architecture-reviewer", "synthesizer"}.issubset(names))
 
+    def test_resource_routing_exposes_adaptive_inference_depth(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            broker = __import__("portable.local_offload", fromlist=["LocalOffloadBroker"]).LocalOffloadBroker(
+                Path(tmp),
+            )
+            team = GraphAgentTeam([
+                AgentSpec(
+                    "verifier",
+                    "verifier",
+                    local_command=("python", "-m", "pytest", "-q"),
+                    estimated_duration_seconds=5.0,
+                    estimated_memory_mb=128,
+                    evidence_value=0.95,
+                ),
+            ])
+            decision = team._resource_decision(team.agents["verifier"], broker)
+            self.assertIn(decision.inference_depth, {"minimal", "standard", "deep", "human"})
+            self.assertEqual(decision.inference_depth, "standard")
+
     def test_cycle_is_rejected(self):
         with self.assertRaises(ValueError):
             GraphAgentTeam([
