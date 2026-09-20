@@ -12,6 +12,7 @@ from portable.context_engine import ContextEngine,ContextPolicy,handoff_from_out
 from portable.dream_memory import DreamMemory
 from portable.learning_steward import LearningSteward
 from portable.local_offload import LocalOffloadBroker,OffloadJob,OffloadResult,ResourceBudget
+from portable.historical_resource_router import HistoricalResourceRouter
 from portable.task_planner import Task,TaskPlan
 from runtime.task_memory import guidance
 
@@ -69,6 +70,7 @@ class ResourceDecision:
     workers:int=1
     cost_score:float=1.0
     pressure:dict[str,float]=field(default_factory=dict)
+    historical:dict[str,Any]=field(default_factory=dict)
 
 class SharedTaskMemory:
     """Run-scoped working memory with hard entry/size limits and cross-process writes."""
@@ -150,23 +152,35 @@ class GraphAgentTeam:
         return hashlib.sha256(json.dumps(payload,sort_keys=True).encode()).hexdigest()
     def _resource_decision(self,agent:AgentSpec,broker:LocalOffloadBroker)->ResourceDecision:
         pressure=broker.pressure()
+        historical=HistoricalResourceRouter(broker.project_root).estimate(agent)
+        historical_payload=historical.as_dict() if historical else {}
         if not agent.local_command:
-            return ResourceDecision("agent","no deterministic local work declared",pressure=pressure)
+            return ResourceDecision("agent","no deterministic local work declared",pressure=pressure,historical=historical_payload)
         if not agent.read_only:
-            return ResourceDecision("agent","mutating agent remains on the existing agent lane",pressure=pressure)
+            return ResourceDecision("agent","mutating agent remains on the existing agent lane",pressure=pressure,historical=historical_payload)
         if agent.name=="learning-steward":
-            return ResourceDecision("agent","durable learning remains outside active local execution",pressure=pressure)
+            return ResourceDecision("agent","durable learning remains outside active local execution",pressure=pressure,historical=historical_payload)
         if agent.isolation_required and not agent.local_isolation:
-            return ResourceDecision("agent","required isolation is not enabled for the local lane",pressure=pressure)
+            return ResourceDecision("agent","required isolation is not enabled for the local lane",pressure=pressure,historical=historical_payload)
+        predicted_memory=historical.memory_mb if historical else agent.estimated_memory_mb
         available=int(broker.capacity().get("available_memory_mb",0))
-        if agent.estimated_memory_mb>0 and available and agent.estimated_memory_mb>available:
-            return ResourceDecision("agent","local memory demand exceeds available memory",pressure=pressure)
-        duration_pressure=min(1.0,max(0.0,agent.estimated_duration_seconds/max(1.0,self.resource_budget.timeout_seconds)))
-        resource_cost=max(0.0,min(1.5,0.25+0.25*pressure["cpu_pressure"]+0.20*pressure["queue_pressure"]+0.15*pressure["memory_pressure"]+0.10*duration_pressure+0.05*(1.0 if agent.local_isolation else 0.0)-0.15*max(0.0,min(1.0,agent.evidence_value))))
+        if predicted_memory>0 and available and predicted_memory>available:
+            return ResourceDecision("agent","predicted local memory demand exceeds available memory",pressure=pressure,historical=historical_payload)
+        predicted_duration=historical.duration_seconds if historical else agent.estimated_duration_seconds
+        predicted_evidence=historical.evidence_yield if historical else agent.evidence_value
+        failure_probability=historical.failure_probability if historical else 0.0
+        duration_pressure=min(1.0,max(0.0,predicted_duration/max(1.0,self.resource_budget.timeout_seconds)))
+        resource_cost=max(0.0,min(1.5,
+            0.25+0.25*pressure["cpu_pressure"]+0.20*pressure["queue_pressure"]+
+            0.15*pressure["memory_pressure"]+0.10*duration_pressure+
+            0.05*(1.0 if agent.local_isolation else 0.0)+0.40*failure_probability-
+            0.15*max(0.0,min(1.0,predicted_evidence))))
         cloud_cost=0.60+0.15*pressure["queue_pressure"]
         if resource_cost<=cloud_cost:
-            return ResourceDecision("local",f"local cost {resource_cost:.2f} <= agent/cloud cost {cloud_cost:.2f}; evidence={agent.evidence_value:.2f}",agent.local_command,self.resource_budget.max_workers,resource_cost,pressure)
-        return ResourceDecision("agent",f"agent/cloud cost {cloud_cost:.2f} < local cost {resource_cost:.2f}; pressure-aware fallback",workers=1,cost_score=cloud_cost,pressure=pressure)
+            reason=f"local cost {resource_cost:.2f} <= agent/cloud cost {cloud_cost:.2f}; evidence={predicted_evidence:.2f}; failure={failure_probability:.2f}"
+            return ResourceDecision("local",reason,agent.local_command,self.resource_budget.max_workers,resource_cost,pressure,historical_payload)
+        return ResourceDecision("agent",f"agent/cloud cost {cloud_cost:.2f} < local cost {resource_cost:.2f}; pressure/history-aware fallback",
+                                workers=1,cost_score=cloud_cost,pressure=pressure,historical=historical_payload)
     def _run_local(self,agent:AgentSpec,decision:ResourceDecision,memory:SharedTaskMemory,broker:LocalOffloadBroker)->OffloadResult|None:
         if decision.lane!="local": return None
         return broker.run(OffloadJob(agent.name,decision.command,isolate=agent.local_isolation,timeout_seconds=agent.local_timeout_seconds))
@@ -182,7 +196,21 @@ class GraphAgentTeam:
                 local=self._run_local(agent,decision,memory,broker)
                 local_payload=None
                 if local is not None:
-                    local_payload={"job_id":local.job_id,"status":local.status,"exit_code":local.exit_code,"duration_seconds":local.duration_seconds,"output":local.output,"error":local.error,"cost_score":decision.cost_score,"pressure":decision.pressure,"evidence_value":agent.evidence_value}
+                    local_payload={"job_id":local.job_id,"status":local.status,"exit_code":local.exit_code,"duration_seconds":local.duration_seconds,"output":local.output,"error":local.error,"cost_score":decision.cost_score,"pressure":decision.pressure,"evidence_value":agent.evidence_value,"historical":decision.historical}
+                    historical = decision.historical
+                    evidence_yield = agent.evidence_value if local.status == "passed" and str(local.output).strip() else 0.0
+                    LearningSteward(memory.project_root,run_id=intent_digest,task=task).record_resource_outcome(
+                        routing_key=HistoricalResourceRouter.routing_key(agent),
+                        status=local.status,
+                        duration_seconds=local.duration_seconds,
+                        memory_mb=agent.estimated_memory_mb,
+                        evidence_yield=evidence_yield,
+                        failure_probability=float(historical.get("failure_probability", 0.0)),
+                        predicted_duration_seconds=float(historical.get("duration_seconds", agent.estimated_duration_seconds)),
+                        predicted_memory_mb=int(historical.get("memory_mb", agent.estimated_memory_mb)),
+                        predicted_evidence_yield=float(historical.get("evidence_yield", agent.evidence_value)),
+                        evidence_ids=[f"local:{agent.name}:{local.status}"],
+                    )
                 relevant=set(agent.depends_on); relevant.add("planner")
                 shared_context=memory.compact_text(relevant_agents=relevant)
                 historical=guidance(memory.project_root,task,limit=2400)
