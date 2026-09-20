@@ -69,7 +69,7 @@ class GraphResourceExecutionTests(unittest.TestCase):
                     predicted_duration_seconds=10, predicted_memory_mb=128,
                     predicted_evidence_yield=0.9, evidence_ids=[f"seed-success-{i}"],
                 )
-            for i in range(2):
+            for i in range(8):
                 steward.record_resource_outcome(
                     routing_key=key, status="failed", duration_seconds=95,
                     memory_mb=1024, evidence_yield=0.0, failure_probability=0.2,
@@ -89,7 +89,7 @@ class GraphResourceExecutionTests(unittest.TestCase):
                 [agent], resource_budget=ResourceBudget(max_workers=1, timeout_seconds=100)
             )._resource_decision(agent, broker)
             self.assertEqual(decision.lane, "agent")
-            self.assertEqual(decision.historical["samples"], 7)
+            self.assertEqual(decision.historical["samples"], 13)
 
     def test_high_pressure_can_fallback_to_agent_lane(self):
         with tempfile.TemporaryDirectory() as tmp:
