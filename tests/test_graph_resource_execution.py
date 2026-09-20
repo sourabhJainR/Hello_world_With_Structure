@@ -53,6 +53,44 @@ class GraphResourceExecutionTests(unittest.TestCase):
             self.assertEqual(result.status, "passed")
             self.assertIn("ok", result.output)
 
+    def test_historical_successes_adapt_routing_estimates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            agent = GRAPH_TEAM.AgentSpec(
+                "verifier", "verifier", local_command=("python", "-c", "print('ok')"),
+                estimated_duration_seconds=10, estimated_memory_mb=128, evidence_value=0.9,
+            )
+            steward = GRAPH_TEAM.LearningSteward(root, run_id="seed", task="historical routing")
+            key = GRAPH_TEAM.HistoricalResourceRouter.routing_key(agent)
+            for i in range(5):
+                steward.record_resource_outcome(
+                    routing_key=key, status="passed", duration_seconds=90 + i,
+                    memory_mb=1024, evidence_yield=0.1, failure_probability=0.0,
+                    predicted_duration_seconds=10, predicted_memory_mb=128,
+                    predicted_evidence_yield=0.9, evidence_ids=[f"seed-success-{i}"],
+                )
+            for i in range(2):
+                steward.record_resource_outcome(
+                    routing_key=key, status="failed", duration_seconds=95,
+                    memory_mb=1024, evidence_yield=0.0, failure_probability=0.2,
+                    predicted_duration_seconds=10, predicted_memory_mb=128,
+                    predicted_evidence_yield=0.9, evidence_ids=[f"seed-failure-{i}"],
+                )
+            estimate = GRAPH_TEAM.HistoricalResourceRouter(root).estimate(agent)
+            self.assertIsNotNone(estimate)
+            assert estimate is not None
+            self.assertGreater(estimate.duration_seconds, 50)
+            self.assertGreater(estimate.memory_mb, 500)
+            self.assertGreater(estimate.failure_probability, 0.0)
+            broker = GRAPH_TEAM.LocalOffloadBroker(
+                root, budget=ResourceBudget(max_workers=1, timeout_seconds=100)
+            )
+            decision = GRAPH_TEAM.GraphAgentTeam(
+                [agent], resource_budget=ResourceBudget(max_workers=1, timeout_seconds=100)
+            )._resource_decision(agent, broker)
+            self.assertEqual(decision.lane, "agent")
+            self.assertEqual(decision.historical["samples"], 7)
+
     def test_high_pressure_can_fallback_to_agent_lane(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
