@@ -33,6 +33,35 @@ class LearningSteward:
             rows.append(record(self.root,task=self.task,category="approach",outcome=learning.outcome,detail=learning.detail,approach=learning.approach or None,run_id=self.run_id,evidence_ids=evidence,source_agent="learning-steward",promotion="candidate"))
         return rows
     @staticmethod
+    def experience_history(root: Path, key: str, limit: int = 60) -> list[dict[str, Any]]:
+        from runtime.task_memory import relevant
+        rows = relevant(Path(root), key, limit=max(1, int(limit)) * 3)
+        return [
+            row for row in rows
+            if str(row.get("approach", "")).startswith(key)
+            or str(row.get("category", "")) == "decision-experience"
+        ][: max(1, int(limit))]
+
+    def record_experience(
+        self, *, key: str, outcome: str, evidence_quality: float,
+        cost_score: float, duration_seconds: float, decision: str,
+        evidence_ids: Iterable[str] = (),
+    ) -> dict[str, object]:
+        detail = json.dumps({
+            "key": key,
+            "decision": decision,
+            "evidence_quality": round(max(0.0, min(1.0, float(evidence_quality))), 3),
+            "cost_score": round(max(0.0, min(1.0, float(cost_score))), 3),
+            "duration_seconds": round(max(0.0, float(duration_seconds)), 3),
+        }, sort_keys=True)
+        return record(
+            self.root, task=self.task, category="decision-experience",
+            outcome=str(outcome), detail=detail, approach=key,
+            run_id=self.run_id, evidence_ids=list(evidence_ids),
+            source_agent="learning-steward", promotion="candidate",
+        )
+
+    @staticmethod
     def resource_history(root: Path, routing_key: str, limit: int = 50) -> list[dict[str, Any]]:
         from runtime.task_memory import relevant
         rows = relevant(Path(root), routing_key, limit=max(1, int(limit)) * 3)
