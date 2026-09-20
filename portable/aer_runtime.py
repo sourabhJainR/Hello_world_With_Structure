@@ -525,6 +525,13 @@ def parser() -> argparse.ArgumentParser:
     console_parser.add_argument("--port", type=int, default=0)
     console_parser.add_argument("--open", dest="open_browser", action="store_true")
     console_parser.add_argument("--aer-home", type=Path, default=None)
+    workbench_parser = sub.add_parser("workbench")
+    workbench_parser.add_argument("--project-root", type=Path, default=Path("."))
+    workbench_parser.add_argument("--workers", type=int, default=None)
+    workbench_parser.add_argument("--mission", default="local-cli")
+    workbench_parser.add_argument("--timeout", type=float, default=300.0)
+    workbench_parser.add_argument("--effect", choices=("read_only", "mutating"), default="read_only")
+    workbench_parser.add_argument("argv", nargs=argparse.REMAINDER)
     return root
 
 def main(argv: list[str] | None = None) -> int:
@@ -550,6 +557,18 @@ def main(argv: list[str] | None = None) -> int:
         if args.host not in {"127.0.0.1", "localhost", "::1"}:
             raise SystemExit("console host must be loopback")
         serve_console(args.aer_home, args.host, args.port, args.open_browser, True)
+    elif args.command == "workbench":
+        from .local_workbench import LocalWorkbench, packet
+        argv = list(args.argv)
+        if argv and argv[0] == "--":
+            argv = argv[1:]
+        if not argv:
+            raise SystemExit("workbench requires a command after --")
+        kwargs = {"max_workers": args.workers} if args.workers is not None else {}
+        work = packet("local command", argv, mission_id=args.mission, effect=args.effect, timeout_seconds=args.timeout)
+        receipt = LocalWorkbench(args.project_root, **kwargs).run([work])
+        print(json.dumps(receipt.as_dict(), indent=2, sort_keys=True))
+        return 0 if receipt.status == "completed" else 1
     return 0
 
 if __name__ == "__main__":
