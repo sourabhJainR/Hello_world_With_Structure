@@ -173,7 +173,7 @@ class GraphAgentTeam:
         resource_cost=max(0.0,min(1.5,
             0.25+0.25*pressure["cpu_pressure"]+0.20*pressure["queue_pressure"]+
             0.15*pressure["memory_pressure"]+0.10*duration_pressure+
-            0.05*(1.0 if agent.local_isolation else 0.0)+0.15*failure_probability-
+            0.05*(1.0 if agent.local_isolation else 0.0)+0.40*failure_probability-
             0.15*max(0.0,min(1.0,predicted_evidence))))
         cloud_cost=0.60+0.15*pressure["queue_pressure"]
         if resource_cost<=cloud_cost:
