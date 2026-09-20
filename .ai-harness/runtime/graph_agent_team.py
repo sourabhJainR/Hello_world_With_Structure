@@ -182,7 +182,7 @@ class GraphAgentTeam:
                 local=self._run_local(agent,decision,memory,broker)
                 local_payload=None
                 if local is not None:
-                    local_payload={"job_id":local.job_id,"status":local.status,"exit_code":local.exit_code,"duration_seconds":local.duration_seconds,"output":local.output,"error":local.error}
+                    local_payload={"job_id":local.job_id,"status":local.status,"exit_code":local.exit_code,"duration_seconds":local.duration_seconds,"output":local.output,"error":local.error,"cost_score":decision.cost_score,"pressure":decision.pressure,"evidence_value":agent.evidence_value}
                 relevant=set(agent.depends_on); relevant.add("planner")
                 shared_context=memory.compact_text(relevant_agents=relevant)
                 historical=guidance(memory.project_root,task,limit=2400)
