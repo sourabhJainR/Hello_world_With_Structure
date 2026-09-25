@@ -175,6 +175,17 @@ class WorldModel:
                     created_at TEXT NOT NULL,
                     PRIMARY KEY(project, prediction_id))"""
             )
+            db.execute(
+                """CREATE TABLE IF NOT EXISTS world_prediction_errors(
+                    project TEXT NOT NULL,
+                    prediction_id TEXT NOT NULL,
+                    predicted_value TEXT NOT NULL,
+                    actual_value TEXT NOT NULL,
+                    absolute_match INTEGER NOT NULL,
+                    error_digest TEXT NOT NULL,
+                    measured_at TEXT NOT NULL,
+                    PRIMARY KEY(project, prediction_id))"""
+            )
 
     def observe(self, observation: Observation) -> Observation:
         value_json = _value_json(observation.value)
