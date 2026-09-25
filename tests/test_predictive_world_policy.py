@@ -76,6 +76,21 @@ class PredictiveWorldPolicyTests(unittest.TestCase):
         self.assertFalse(error.absolute_match)
         self.assertEqual(error.prediction_id, signal.prediction.prediction_id)
 
+    def test_bad_calibration_abstains(self):
+        world = self._world()
+        self._observe(world, "1", "agent", "warm")
+        self._observe(world, "2", "local", "switch")
+        self._observe(world, "3", "agent", "switch")
+        self._observe(world, "4", "local", "switch")
+        self._observe(world, "5", "agent", "switch")
+        policy = PredictiveWorldPolicy(world, min_samples=2, min_calibration_samples=1, min_calibration_accuracy=0.5)
+        signal = policy.forecast("agent-1", "lane", "switch", current_value="agent")
+        self.assertFalse(signal.abstained)
+        world.score_prediction(signal.prediction, "agent")
+        calibrated = policy.forecast("agent-1", "lane", "switch", current_value="agent")
+        self.assertTrue(calibrated.abstained)
+        self.assertIn("calibration", calibrated.reason)
+
 
 if __name__ == "__main__":
     unittest.main()
