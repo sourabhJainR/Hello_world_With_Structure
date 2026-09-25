@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from .counterfactual_engine import BranchCandidate, CounterfactualDecision, CounterfactualEngine
+from .counterfactual_engine import BranchCandidate, CounterfactualEngine
 from .decision_fabric import ChoiceDecision, DecisionFabric, DecisionQuestion, ScoreDecision
 from .learning_steward import LearningSteward
 
@@ -183,7 +183,7 @@ class ExperienceRouter:
             BranchCandidate("escalate", 0.90 if risk >= 0.75 else 0.75, 0.90, 0.75, 0.15, 0.70, 0.70),
             BranchCandidate("stop", max(0.05, 1.0 - failure_probability), 0.50, 0.10, min(1.0, risk), max(0.35, 1.0 - failure_probability), 0.10),
         ]
-        engine = CounterfactualEngine(min_confidence=0.55, min_margin=0.04)
+        engine = CounterfactualEngine(min_confidence=0.70, min_margin=0.04)
         decision = engine.evaluate({"key": key, "risk": risk, "failure_probability": failure_probability}, branches)
         choice = engine.as_choice(decision)
         if choice is not None:
@@ -204,7 +204,7 @@ class ExperienceRouter:
                 evidence_value=float(branch.get("evidence_value", 0.5)),
                 cost=float(branch.get("cost", 0.5)),
                 risk=float(branch.get("risk", 0.5)),
-                confidence=float(branch.get("confidence", 0.5)),
+                confidence=float(branch.get("confidence", 0.7)),
                 expected_duration=float(branch.get("expected_duration", branch.get("duration", 0.5))),
                 resource_pressure=float(branch.get("resource_pressure", 0.0)),
                 rationale=str(branch.get("rationale", "")),
@@ -213,7 +213,7 @@ class ExperienceRouter:
         ]
         if not candidates:
             raise ValueError("branches require names")
-        engine = CounterfactualEngine(min_confidence=0.55, min_margin=0.03)
+        engine = CounterfactualEngine(min_confidence=0.45, min_margin=0.03)
         decision = engine.evaluate(state or {}, candidates)
         choice = engine.as_choice(decision)
         if choice is None:
