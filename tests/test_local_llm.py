@@ -14,6 +14,15 @@ class LocalLLMTests(unittest.TestCase):
         self.assertEqual(cfg.num_predict,768)
         self.assertEqual(cfg.reasoning_effort,"medium")
         self.assertTrue(cfg.prompt_matrix)
+        self.assertTrue(cfg.coding_mode)
+        self.assertEqual(cfg.model, "qwen2.5-coder:3b")
+        self.assertEqual(cfg.seed, 17)
+
+    def test_coding_contract_is_selective(self):
+        from portable.local_llm import _matrix_prompt
+        cfg=LocalLLMConfig()
+        self.assertIn("CODING CONTRACT", _matrix_prompt("Fix this Python bug", cfg))
+        self.assertNotIn("CODING CONTRACT", _matrix_prompt("Summarize this document", cfg))
 
     def test_generate_uses_ollama_payload(self):
         class Response:
@@ -21,12 +30,14 @@ class LocalLLMTests(unittest.TestCase):
             def __exit__(self,*args): return False
             def read(self): return b'{"response":"ok"}'
         with patch("urllib.request.urlopen", return_value=Response()) as opened:
-            self.assertEqual(generate("hello"),"ok")
+            self.assertEqual(generate("Fix this Python bug"),"ok")
             body=opened.call_args.args[0].data.decode()
             self.assertIn('"stream": false',body)
             self.assertIn('"num_ctx": 4096',body)
             self.assertIn('"top_p": 0.9',body)
+            self.assertIn('"seed": 17',body)
             self.assertIn("LOCAL REASONING CONTRACT", body)
+            self.assertIn("CODING CONTRACT", body)
 
 if __name__=="__main__":
     unittest.main()
