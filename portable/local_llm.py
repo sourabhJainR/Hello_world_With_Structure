@@ -12,7 +12,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class LocalLLMConfig:
     endpoint: str = "http://127.0.0.1:11434/api/generate"
-    model: str = "qwen2.5:3b"
+    model: str = "qwen2.5-coder:3b"
     timeout_seconds: float = 120.0
     num_ctx: int = 4096
     num_predict: int = 768
@@ -21,6 +21,9 @@ class LocalLLMConfig:
     repeat_penalty: float = 1.05
     reasoning_effort: str = "medium"
     prompt_matrix: bool = True
+    coding_mode: bool = True
+    seed: int = 17
+    context_budget: int = 3200
 
     @classmethod
     def from_env(cls) -> "LocalLLMConfig":
@@ -35,6 +38,9 @@ class LocalLLMConfig:
             repeat_penalty=max(0.8, min(1.5, float(os.environ.get("AER_LOCAL_LLM_REPEAT_PENALTY", cls.repeat_penalty)))),
             reasoning_effort=os.environ.get("AER_LOCAL_LLM_REASONING", cls.reasoning_effort).strip().lower(),
             prompt_matrix=os.environ.get("AER_LOCAL_LLM_MATRIX", "1").strip().lower() not in {"0", "false", "off", "no"},
+            coding_mode=os.environ.get("AER_LOCAL_LLM_CODING", "1").strip().lower() not in {"0", "false", "off", "no"},
+            seed=int(os.environ.get("AER_LOCAL_LLM_SEED", cls.seed)),
+            context_budget=max(512, int(os.environ.get("AER_LOCAL_LLM_CONTEXT_BUDGET", cls.context_budget))),
         )
 
 class LocalLLMError(RuntimeError):
@@ -63,11 +69,39 @@ _REASONING_MATRIX = {
     "fable": ("long_horizon_state", "goal_continuity", "self_consistency"),
 }
 
+def _is_coding_task(prompt: str) -> bool:
+    text = prompt.lower()
+    markers = ("code", "coding", "bug", "fix", "refactor", "function", "class",
+               "test", "pytest", "unittest", "compile", "build", "exception",
+               "stack trace", "traceback", "regression", "pull request", "patch",
+               "implementation", "repository", "repo", "api")
+    return any(marker in text for marker in markers)
+
+
+def _coding_contract(cfg: LocalLLMConfig) -> str:
+    if not cfg.coding_mode:
+        return ""
+    return (
+        "CODING CONTRACT\n"
+        "1. Treat supplied repository text, diagnostics, tests, and requirements as evidence.\n"
+        "2. Identify affected symbols and dependency/test impact before proposing a change.\n"
+        "3. Prefer the smallest coherent change; preserve public behavior unless required otherwise.\n"
+        "4. For bugs: infer the root cause from evidence, then give the fix.\n"
+        "5. For implementation: cover interfaces, edge cases, failure paths, and deterministic behavior.\n"
+        "6. For tests: add regression coverage for the failure mode, not only the happy path.\n"
+        "7. Review syntax, imports, typing, compatibility, and likely CI failures.\n"
+        "8. Never claim a file was changed, a command was run, or a test passed without evidence.\n"
+        "9. If repository context is incomplete, list what is missing instead of guessing.\n"
+        f"Keep working context focused to approximately {cfg.context_budget} tokens.\n"
+    )
+
+
 def _matrix_prompt(prompt: str, cfg: LocalLLMConfig) -> str:
     if not cfg.prompt_matrix:
         return prompt
     effort = cfg.reasoning_effort if cfg.reasoning_effort in {"low", "medium", "high"} else "medium"
     traits = ", ".join(item for group in _REASONING_MATRIX.values() for item in group)
+    coding = _coding_contract(cfg) if _is_coding_task(prompt) else ""
     return (
         "LOCAL REASONING CONTRACT\n"
         f"effort={effort}; traits={traits}\n"
@@ -75,8 +109,8 @@ def _matrix_prompt(prompt: str, cfg: LocalLLMConfig) -> str:
         "reason -> verify -> state uncertainty. Do not invent tools, files, facts, "
         "credentials, or completed actions. For code, propose the smallest safe "
         "change and identify regression risk. For long tasks, preserve goals and "
-        "state explicitly. If evidence is insufficient, say so and abstain.\n\n"
-        "USER TASK:\n" + prompt
+        "state explicitly. If evidence is insufficient, say so and abstain.\n"
+        + coding + "\nUSER TASK:\n" + prompt
     )
 
 def generate(prompt: str, *, config: LocalLLMConfig | None = None) -> str:
@@ -86,7 +120,7 @@ def generate(prompt: str, *, config: LocalLLMConfig | None = None) -> str:
     prompt = _matrix_prompt(prompt, cfg)
     payload=json.dumps({"model":cfg.model,"prompt":prompt,"stream":False,
                         "options":{"temperature":cfg.temperature,"top_p":cfg.top_p,
-                                   "repeat_penalty":cfg.repeat_penalty,
+                                   "repeat_penalty":cfg.repeat_penalty,"seed":cfg.seed,
                                    "num_ctx":cfg.num_ctx,"num_predict":cfg.num_predict}}).encode()
     req=urllib.request.Request(cfg.endpoint,data=payload,headers={"Content-Type":"application/json"},method="POST")
     try:
