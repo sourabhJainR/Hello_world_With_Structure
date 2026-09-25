@@ -30,7 +30,7 @@ class LocalLLMTests(unittest.TestCase):
             def __exit__(self,*args): return False
             def read(self): return b'{"response":"ok"}'
         with patch("urllib.request.urlopen", return_value=Response()) as opened:
-            self.assertEqual(generate("hello"),"ok")
+            self.assertEqual(generate("Fix this Python bug"),"ok")
             body=opened.call_args.args[0].data.decode()
             self.assertIn('"stream": false',body)
             self.assertIn('"num_ctx": 4096',body)
