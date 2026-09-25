@@ -13,6 +13,7 @@ from portable.dream_memory import DreamMemory
 from portable.learning_steward import LearningSteward
 from portable.local_offload import LocalOffloadBroker,OffloadJob,OffloadResult,ResourceBudget
 from portable.historical_resource_router import HistoricalResourceRouter
+from portable.counterfactual_engine import BranchCandidate, CounterfactualEngine
 from portable.adaptive_decision import AdaptiveInferencePolicy
 from portable.experience_router import ExperienceRouter
 from portable.task_planner import Task,TaskPlan
@@ -189,10 +190,27 @@ class GraphAgentTeam:
             0.05*(1.0 if agent.local_isolation else 0.0)+0.40*failure_probability-
             0.15*max(0.0,min(1.0,predicted_evidence))))
         cloud_cost=0.60+0.15*pressure["queue_pressure"]
-        if resource_cost<=cloud_cost:
-            reason=f"local cost {resource_cost:.2f} <= agent/cloud cost {cloud_cost:.2f}; evidence={predicted_evidence:.2f}; failure={failure_probability:.2f}"
+        cf_engine=CounterfactualEngine(min_confidence=0.55,min_margin=0.04)
+        cf_branches=[
+            BranchCandidate("local",max(0.05,1.0-failure_probability),predicted_evidence,resource_cost,
+                            0.70 if agent.isolation_required else 0.25,float(historical.confidence) if historical else 0.40,
+                            min(1.0,predicted_duration/max(1.0,self.resource_budget.timeout_seconds)),
+                            min(1.0,pressure["cpu_pressure"]+pressure["memory_pressure"]+pressure["queue_pressure"])/3.0,
+                            "historical local execution evidence"),
+            BranchCandidate("agent",0.90 if failure_probability<0.50 else 0.75,max(0.60,agent.evidence_value),
+                            cloud_cost,0.20,0.60,0.50,pressure["queue_pressure"],"bounded agent/cloud fallback"),
+        ]
+        cf=cf_engine.evaluate({"agent":agent.name,"role":agent.role,"pressure":pressure,"historical":historical_payload},cf_branches)
+        if not cf.abstained and cf.selected=="local":
+            reason=f"counterfactual selected local; cost={resource_cost:.2f}; evidence={predicted_evidence:.2f}; failure={failure_probability:.2f}"
             return ResourceDecision("local",reason,agent.local_command,self.resource_budget.max_workers,resource_cost,pressure,historical_payload,inference.depth)
-        return ResourceDecision("agent",f"agent/cloud cost {cloud_cost:.2f} < local cost {resource_cost:.2f}; pressure/history-aware fallback",
+        if not cf.abstained and cf.selected=="agent":
+            reason=f"counterfactual selected agent/cloud; local cost={resource_cost:.2f}; cloud cost={cloud_cost:.2f}"
+            return ResourceDecision("agent",reason,workers=1,cost_score=cloud_cost,pressure=pressure,historical=historical_payload,inference_depth=inference.depth)
+        if resource_cost<=cloud_cost:
+            reason=f"counterfactual abstained; deterministic local cost {resource_cost:.2f} <= agent/cloud cost {cloud_cost:.2f}"
+            return ResourceDecision("local",reason,agent.local_command,self.resource_budget.max_workers,resource_cost,pressure,historical_payload,inference.depth)
+        return ResourceDecision("agent",f"counterfactual abstained; agent/cloud cost {cloud_cost:.2f} < local cost {resource_cost:.2f}",
                                 workers=1,cost_score=cloud_cost,pressure=pressure,historical=historical_payload,inference_depth=inference.depth)
     def _run_local(self,agent:AgentSpec,decision:ResourceDecision,memory:SharedTaskMemory,broker:LocalOffloadBroker)->OffloadResult|None:
         if decision.lane!="local": return None
