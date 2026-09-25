@@ -249,7 +249,7 @@ class GraphAgentTeam:
             "observation_id": observation_id,
             "lane_observation_id": lane_observation_id,
             "state": state,
-            "prediction": prediction.as_context(prediction),
+            "prediction": PredictiveWorldPolicy(world).as_context(prediction),
         }
     def _run_local(self,agent:AgentSpec,decision:ResourceDecision,memory:SharedTaskMemory,broker:LocalOffloadBroker)->OffloadResult|None:
         if decision.lane!="local": return None
