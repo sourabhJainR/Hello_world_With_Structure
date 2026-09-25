@@ -289,7 +289,7 @@ class WorldModel:
         if prediction.project != self.project:
             raise ValueError("prediction belongs to a different world-model project")
         digest = _value_digest({"predicted": prediction.predicted_value, "actual": actual_value})
-        return PredictionError(
+        error = PredictionError(
             prediction_id=prediction.prediction_id,
             predicted_value=prediction.predicted_value,
             actual_value=actual_value,
@@ -297,6 +297,36 @@ class WorldModel:
             error_digest=digest,
             measured_at=_utc(),
         )
+        with self._connect() as db:
+            db.execute(
+                "INSERT OR REPLACE INTO world_prediction_errors VALUES(?,?,?,?,?,?,?)",
+                (self.project, error.prediction_id, _value_json(error.predicted_value),
+                 _value_json(error.actual_value), int(error.absolute_match),
+                 error.error_digest, error.measured_at),
+            )
+        return error
+
+    def prediction_calibration(self, *, predicate: str | None = None,
+                               action: str | None = None, limit: int = 100) -> Mapping[str, float | int]:
+        """Return verified prediction accuracy without changing model behavior."""
+        if limit < 1:
+            return {"samples": 0, "accuracy": 0.0}
+        with self._connect() as db:
+            clauses = ["e.project=?"]
+            params: list[Any] = [self.project]
+            if predicate is not None:
+                clauses.append("p.predicate=?")
+                params.append(predicate)
+            if action is not None:
+                clauses.append("p.action=?")
+                params.append(action)
+            query = f"""SELECT COUNT(*), COALESCE(AVG(e.absolute_match),0.0)
+                        FROM world_prediction_errors e
+                        JOIN world_predictions p
+                          ON p.project=e.project AND p.prediction_id=e.prediction_id
+                        WHERE {' AND '.join(clauses)}"""
+            row = db.execute(query, tuple(params)).fetchone()
+        return {"samples": int(row[0]), "accuracy": float(row[1])}
 
     def digest(self) -> str:
         with self._connect() as db:
