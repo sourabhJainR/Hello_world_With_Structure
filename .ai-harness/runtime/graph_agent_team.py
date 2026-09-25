@@ -13,6 +13,7 @@ from portable.dream_memory import DreamMemory
 from portable.learning_steward import LearningSteward
 from portable.persistent_memory import PersistentMemory
 from portable.world_model import Observation, WorldModel
+from portable.predictive_world_policy import PredictiveWorldPolicy
 from portable.local_offload import LocalOffloadBroker,OffloadJob,OffloadResult,ResourceBudget
 from portable.historical_resource_router import HistoricalResourceRouter
 from portable.counterfactual_engine import BranchCandidate, CounterfactualEngine
@@ -231,9 +232,25 @@ class GraphAgentTeam:
         observation_id = hashlib.sha256((run_nonce + ":" + intent_digest + ":" + agent.name + ":" + json.dumps(state, sort_keys=True)).encode()).hexdigest()[:32]
         observation = Observation(observation_id=observation_id, entity_id=intent_digest, predicate="execution_state",
             value=state, source="graph-agent-team", confidence=max(0.1, min(1.0, float(evidence_quality))),
-            evidence=(f"decision:{agent.name}",), properties={"task": task[:256]})
+            evidence=(f"decision:{agent.name}",), properties={"task": task[:256], "action": capability})
         world.observe(observation)
-        return {"world_model_digest": world.digest(), "observation_id": observation_id, "state": state}
+        lane_observation_id = hashlib.sha256((observation_id + ":lane").encode()).hexdigest()[:32]
+        world.observe(Observation(
+            observation_id=lane_observation_id, entity_id=intent_digest, predicate="resource_lane",
+            value=decision.lane, source="graph-agent-team",
+            confidence=max(0.1, min(1.0, float(evidence_quality))),
+            evidence=(observation_id,), properties={"task": task[:256], "action": capability},
+        ))
+        prediction = PredictiveWorldPolicy(world).forecast(
+            intent_digest, "resource_lane", capability, current_value=decision.lane
+        )
+        return {
+            "world_model_digest": world.digest(),
+            "observation_id": observation_id,
+            "lane_observation_id": lane_observation_id,
+            "state": state,
+            "prediction": PredictiveWorldPolicy(world).as_context(prediction),
+        }
     def _run_local(self,agent:AgentSpec,decision:ResourceDecision,memory:SharedTaskMemory,broker:LocalOffloadBroker)->OffloadResult|None:
         if decision.lane!="local": return None
         return broker.run(OffloadJob(agent.name,decision.command,isolate=agent.local_isolation,timeout_seconds=agent.local_timeout_seconds))
