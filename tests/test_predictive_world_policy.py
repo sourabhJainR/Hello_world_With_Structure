@@ -52,7 +52,9 @@ class PredictiveWorldPolicyTests(unittest.TestCase):
         world = self._world()
         self._observe(world, "1", "agent", "warm")
         self._observe(world, "2", "local", "switch")
-        self._observe(world, "3", "agent", "switch")
+        self._observe(world, "3", "agent", "hold")
+        self._observe(world, "4", "cloud", "switch")
+        self._observe(world, "5", "agent", "hold")
         signal = PredictiveWorldPolicy(world, min_samples=1, min_confidence=0.8).forecast(
             "agent-1", "lane", "switch", current_value="agent"
         )
