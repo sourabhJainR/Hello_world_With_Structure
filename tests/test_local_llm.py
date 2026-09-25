@@ -1,6 +1,6 @@
 import os,unittest
 from unittest.mock import patch
-from portable.local_llm import LocalLLMConfig, fallback_allowed, generate
+from portable.local_llm import LocalLLMConfig, fallback_allowed, generate, coding_review_prompt
 
 class LocalLLMTests(unittest.TestCase):
     def test_fallback_is_read_only(self):
@@ -23,6 +23,13 @@ class LocalLLMTests(unittest.TestCase):
         cfg=LocalLLMConfig()
         self.assertIn("CODING CONTRACT", _matrix_prompt("Fix this Python bug", cfg))
         self.assertNotIn("CODING CONTRACT", _matrix_prompt("Summarize this document", cfg))
+
+    def test_coding_review_prompt_requires_evidence(self):
+        prompt = coding_review_prompt("Review retry handling", "portable/retry.py: existing retry helper")
+        self.assertIn("FINDINGS", prompt)
+        self.assertIn("VERIFICATION", prompt)
+        self.assertIn("every finding must cite supplied evidence", prompt)
+        self.assertIn("portable/retry.py", prompt)
 
     def test_generate_uses_ollama_payload(self):
         class Response:
