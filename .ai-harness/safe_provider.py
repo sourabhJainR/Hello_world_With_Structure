@@ -15,12 +15,15 @@ from provider import analysis_only_command, is_analysis_only
 from runtime.prompting_policy import compose
 from runtime.auto_compaction import compact
 from runtime.feedback_loop import FeedbackLoop
+from portable.local_llm import LocalLLMError, enabled as local_llm_enabled, fallback_allowed as local_llm_fallback_allowed, generate as local_llm_generate
 
 _TRANSIENT_MARKERS = (
     "response stopped arriving", "response stopped", "api error", "connection reset",
     "connection closed", "connection error", "timed out", "timeout",
     "temporarily unavailable", "service unavailable", "internal server error",
     "overloaded", "rate limit", "stream disconnected", "stream interrupted",
+    "context length", "maximum context", "too many tokens", "token limit", "max tokens",
+    "model overloaded", "provider unavailable", "unable to connect",
 )
 
 
@@ -29,6 +32,28 @@ def _transient_failure(output: str, return_code: int) -> bool:
         return False
     text = output.lower()
     return any(marker in text for marker in _TRANSIENT_MARKERS)
+
+
+def _local_fallback(prompt: str, output: str, return_code: int) -> int | None:
+    """Use the minimal local model only for bounded read-only/advisory turns."""
+    if not local_llm_enabled() or not local_llm_fallback_allowed(prompt):
+        return None
+    if not _transient_failure(output, return_code):
+        return None
+    try:
+        recovered = local_llm_generate(
+            prompt
+            + "\n\n# AER LOCAL FALLBACK\n"
+            + "The primary provider was unavailable or exhausted its budget. "
+              "Answer only with evidence-backed, read-only findings. Do not edit files, "
+              "run tools, commit, merge, or invent repository facts."
+        )
+    except LocalLLMError as exc:
+        print(f"AER local LLM fallback unavailable: {exc}", file=sys.stderr)
+        return None
+    print("AER_LOCAL_LLM_FALLBACK=1", file=sys.stderr)
+    print(recovered)
+    return 0
 
 
 def _continuation_prompt(original: str, previous: str, attempt: int) -> str:
@@ -107,6 +132,10 @@ def _run_resilient(command: list[str], prompt: str, run_dir: Path, feedback: Fee
                 feedback.observe(task_id=task_id, outcome="success", verified=False, strategy=strategy, evidence=[compaction_meta["digest"]])
                 return 0
             if not _transient_failure(output, code) or attempt >= max_retries:
+                fallback_code = _local_fallback(prompt, output, code)
+                if fallback_code is not None:
+                    feedback.observe(task_id=task_id, outcome="local_fallback", verified=False, strategy="local-llm", evidence=[compaction_meta["digest"]])
+                    return fallback_code
                 feedback.observe(task_id=task_id, outcome="failure", verified=False, strategy=strategy, evidence=[compaction_meta["digest"]])
                 return code
             feedback.observe(task_id=task_id, outcome="transient_failure", verified=False, strategy=strategy, evidence=[compaction_meta["digest"]])
