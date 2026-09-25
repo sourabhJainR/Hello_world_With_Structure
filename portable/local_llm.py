@@ -113,6 +113,37 @@ def _matrix_prompt(prompt: str, cfg: LocalLLMConfig) -> str:
         + coding + "\nUSER TASK:\n" + prompt
     )
 
+
+def coding_review_prompt(task: str, repository_context: str) -> str:
+    """Build a read-only, evidence-first coding review request."""
+    if not isinstance(task, str) or not task.strip():
+        raise ValueError("task is required")
+    if not isinstance(repository_context, str):
+        raise TypeError("repository_context must be a string")
+    return (
+        _matrix_prompt(
+            """Perform an independent coding review. Do not propose changes merely because they are stylistically different.
+Return only these sections:
+FINDINGS
+- severity: ...
+  location: ...
+  evidence: ...
+  impact: ...
+  remedy: ...
+  confidence: 0.00-1.00
+UNKNOWNS
+- ...
+VERIFICATION
+- tests/checks that would prove or disprove each finding
+Rules: every finding must cite supplied evidence; label uncertain claims as unknown;
+never claim a test or tool was run; distinguish correctness from style; prioritize
+defects, regressions, security and compatibility.""",
+            LocalLLMConfig(),
+        )
+        + "\\nTASK:\\n" + task
+        + "\\nREPOSITORY EVIDENCE:\\n" + repository_context
+    )
+
 def generate(prompt: str, *, config: LocalLLMConfig | None = None) -> str:
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError("prompt is required")
@@ -141,4 +172,4 @@ def fallback_allowed(prompt: str) -> bool:
               "analysis-only" in text or "do not modify source" in text)
     return readonly
 
-__all__=["LocalLLMConfig","LocalLLMError","enabled","available","generate","fallback_allowed"]
+__all__=["LocalLLMConfig","LocalLLMError","enabled","available","generate","fallback_allowed","coding_review_prompt"]
