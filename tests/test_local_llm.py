@@ -12,6 +12,8 @@ class LocalLLMTests(unittest.TestCase):
         cfg=LocalLLMConfig()
         self.assertEqual(cfg.num_ctx,4096)
         self.assertEqual(cfg.num_predict,768)
+        self.assertEqual(cfg.reasoning_effort,"medium")
+        self.assertTrue(cfg.prompt_matrix)
 
     def test_generate_uses_ollama_payload(self):
         class Response:
@@ -23,6 +25,8 @@ class LocalLLMTests(unittest.TestCase):
             body=opened.call_args.args[0].data.decode()
             self.assertIn('"stream": false',body)
             self.assertIn('"num_ctx": 4096',body)
+            self.assertIn('"top_p": 0.9',body)
+            self.assertIn("LOCAL REASONING CONTRACT", body)
 
 if __name__=="__main__":
     unittest.main()
