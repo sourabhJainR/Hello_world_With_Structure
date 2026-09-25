@@ -227,7 +227,7 @@ class GraphAgentTeam:
             "evidence_quality": round(float(evidence_quality), 3),
             "local_fallback_enabled": os.environ.get("AER_LOCAL_LLM_ENABLED", "0") in {"1", "true", "yes", "on"},
         }
-        observation_id = hashlib.sha256((intent_digest + ":" + agent.name + ":" + json.dumps(state, sort_keys=True)).encode()).hexdigest()[:32]
+        observation_id = hashlib.sha256((str(memory.path) + ":" + intent_digest + ":" + agent.name + ":" + json.dumps(state, sort_keys=True)).encode()).hexdigest()[:32]
         observation = Observation(observation_id=observation_id, entity_id=intent_digest, predicate="execution_state",
             value=state, source="graph-agent-team", confidence=max(0.1, min(1.0, float(evidence_quality))),
             evidence=(f"decision:{agent.name}",), properties={"task": task[:256]})
