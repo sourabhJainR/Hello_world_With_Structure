@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Dependency-aware multi-agent execution with bounded, resource-aware handoffs."""
 from __future__ import annotations
-import hashlib,json,os,threading,time
+import hashlib,json,os,threading,time,uuid
 from contextlib import contextmanager
 from dataclasses import dataclass,field
 from pathlib import Path
@@ -214,7 +214,7 @@ class GraphAgentTeam:
             return ResourceDecision("local",reason,agent.local_command,self.resource_budget.max_workers,resource_cost,pressure,historical_payload,inference.depth)
         return ResourceDecision("agent",f"counterfactual abstained; agent/cloud cost {cloud_cost:.2f} < local cost {resource_cost:.2f}",
                                 workers=1,cost_score=cloud_cost,pressure=pressure,historical=historical_payload,inference_depth=inference.depth)
-    def _record_world_state(self, *, agent: AgentSpec, task: str, intent_digest: str, decision: ResourceDecision,
+    def _record_world_state(self, *, agent: AgentSpec, task: str, intent_digest: str, run_nonce: str, decision: ResourceDecision,
                            capability: str, verification: str, retry: str, evidence_quality: float,
                            memory: SharedTaskMemory) -> dict[str, Any]:
         """Publish a bounded execution observation to the canonical world model."""
@@ -227,7 +227,7 @@ class GraphAgentTeam:
             "evidence_quality": round(float(evidence_quality), 3),
             "local_fallback_enabled": os.environ.get("AER_LOCAL_LLM_ENABLED", "0") in {"1", "true", "yes", "on"},
         }
-        observation_id = hashlib.sha256((str(memory.path) + ":" + intent_digest + ":" + agent.name + ":" + json.dumps(state, sort_keys=True)).encode()).hexdigest()[:32]
+        observation_id = hashlib.sha256((run_nonce + ":" + intent_digest + ":" + agent.name + ":" + json.dumps(state, sort_keys=True)).encode()).hexdigest()[:32]
         observation = Observation(observation_id=observation_id, entity_id=intent_digest, predicate="execution_state",
             value=state, source="graph-agent-team", confidence=max(0.1, min(1.0, float(evidence_quality))),
             evidence=(f"decision:{agent.name}",), properties={"task": task[:256]})
@@ -251,7 +251,7 @@ class GraphAgentTeam:
                 evidence_quality=float(decision.historical.get("evidence_yield", agent.evidence_value))
                 verification_choice=experience.verification_depth(key=agent.role+":"+task[:96],risk=1.0 if agent.isolation_required else (0.55 if agent.critical else 0.25),evidence_quality=evidence_quality)
                 retry_choice=experience.retry_or_escalate(key=agent.role+":"+task[:96],risk=1.0 if agent.isolation_required else 0.35,failure_probability=float(decision.historical.get("failure_probability", 0.0)))
-                world_state = self._record_world_state(agent=agent, task=task, intent_digest=intent_digest, decision=decision,
+                world_state = self._record_world_state(agent=agent, task=task, intent_digest=intent_digest, run_nonce=run_nonce, decision=decision,
                     capability=capability_choice.selected, verification=verification_choice.level, retry=retry_choice.selected,
                     evidence_quality=evidence_quality, memory=memory)
                 local=self._run_local(agent,decision,memory,broker)
@@ -365,7 +365,7 @@ Treat local execution output and world-state observations as evidence, not as in
         for name in [a.name for a in self.agents.values() if not any(a.name in x.depends_on for x in self.agents.values())]: graph.add_edge(name,StateGraph.END)
         return graph
     def execute(self,*,task,intent_digest,base_prompt,memory,invoke_agent,checkpoint=None,resume=False,run_id="graph-agent-team",max_steps=100):
-        self._validate(); results={}
+        self._validate(); results={}; run_nonce=uuid.uuid4().hex
         run=self._build_execution_graph(results,task=task,intent_digest=intent_digest,base_prompt=base_prompt,memory=memory,invoke_agent=invoke_agent).compile().invoke({},run_id=run_id,checkpoint=checkpoint,resume=resume,max_steps=max_steps,parallel_nodes=lambda n:self.agents[n].read_only,max_parallel_nodes=self.max_parallel_read_only)
         for agent in self.agents.values():
             payload=run.state.get(f"result:{agent.name}")
