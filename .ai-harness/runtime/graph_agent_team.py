@@ -218,7 +218,8 @@ class GraphAgentTeam:
                            capability: str, verification: str, retry: str, evidence_quality: float,
                            memory: SharedTaskMemory) -> dict[str, Any]:
         """Publish a bounded execution observation to the canonical world model."""
-        project_root = memory.path.parents[3] if len(memory.path.parents) > 3 else memory.project_root\n        db = project_root / ".aer" / "memory.db"
+        project_root = memory.path.parents[3] if len(memory.path.parents) > 3 else memory.project_root
+        db = project_root / ".aer" / "memory.db"
         world = WorldModel(PersistentMemory(db, require_approval=False), "hws")
         state = {
             "agent": agent.name, "role": agent.role, "resource_lane": decision.lane,
