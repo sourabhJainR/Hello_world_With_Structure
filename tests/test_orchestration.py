@@ -11,6 +11,7 @@ from portable.orchestration import (
     PromotionStatus,
     RunStatus,
     SelfModificationEngine,
+    execution_strategy,
 )
 
 
@@ -62,12 +63,44 @@ class OrchestrationTests(unittest.TestCase):
         result = run.results["agent"]
         self.assertEqual(result.status, NodeStatus.FAILED)
         self.assertEqual(result.attempts, 2)
-        self.assertIn(
-            {"event": "adaptive_policy_applied", "version": "v42", "strategy": "evidence-first", "iteration_target": 2.0},
-            run.trajectory,
-        )
+        applied = [item for item in run.trajectory if item.get("event") == "adaptive_policy_applied"][0]
+        self.assertEqual(applied["version"], "v42")
+        self.assertEqual(applied["strategy"], "evidence-first")
+        self.assertEqual(applied["iteration_target"], 2.0)
+        self.assertTrue(applied["strategy_known"])
         node_events = [item for item in run.trajectory if item.get("node") == "agent"]
         self.assertEqual(node_events[0]["attempt_limit"], 2)
+
+    def test_execution_strategy_profiles_are_typed_and_unknown_names_are_safe(self):
+        deep = execution_strategy("deep-verify")
+        self.assertTrue(deep.known)
+        self.assertEqual(deep.verification_depth, "independent")
+        self.assertEqual(deep.resource_lane, "agent")
+        self.assertGreater(deep.attempt_multiplier, 1.0)
+        unknown = execution_strategy("untrusted-new-strategy")
+        self.assertFalse(unknown.known)
+        self.assertEqual(unknown.name, "default")
+        self.assertEqual(unknown.verification_depth, "standard")
+
+    def test_strategy_profile_changes_bounded_agent_attempt_budget(self):
+        graph = Graph([
+            Node(
+                "agent", NodeKind.AGENT, lambda _: "bad", max_attempts=3,
+                evaluator=lambda output: output == "good", repair=lambda output, _: output,
+            )
+        ])
+        run = Orchestrator(graph).run(
+            "strategy-task", "apply learned strategy", context={
+                "aer_adaptive_policy": {
+                    "version": "v-strategy", "strategy": "deep-verify", "iteration_target": 2.0,
+                }
+            }
+        )
+        self.assertEqual(run.results["agent"].attempts, 3)
+        applied = [item for item in run.trajectory if item.get("event") == "adaptive_policy_applied"][0]
+        self.assertEqual(applied["verification_depth"], "independent")
+        self.assertEqual(applied["resource_lane"], "agent")
+        self.assertEqual(applied["minimum_evidence"], 2)
 
     def test_adaptive_policy_never_expands_static_safety_budget(self):
         attempts = []
