@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from portable.adaptive_runtime import AdaptiveRuntime
@@ -7,6 +8,7 @@ from portable.automation_scheduler import AutomationScheduler
 from portable.context_graph import ContextGraph, ContextNode
 from portable.hypothesis_engine import BeliefEvidence, Hypothesis
 from portable.persistent_memory import PersistentMemory
+from portable.adaptive_tuning import AdaptivePolicy
 from portable.orchestration import Graph, Node, NodeKind
 from portable.session_state import SessionStore
 
@@ -75,6 +77,26 @@ class AdaptiveRuntimeContextTests(unittest.TestCase):
             self.assertEqual(len(processed), 1)
             self.assertEqual(cognitive.hypotheses.assess("h1").confidence, 1.0)
             self.assertIsNone(runtime.last_learning_signal)
+            scheduler.close()
+            memory.close()
+
+    def test_runtime_records_active_policy_strategy_when_no_explicit_strategy_is_given(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            graph = Graph([Node("agent", NodeKind.AGENT, lambda context: "ok", critical=True, risk="low")])
+            runtime, memory, scheduler = self._runtime(root, graph)
+            policy = AdaptivePolicy(
+                project=runtime.session_store.project_key(root), scope="global", version="v-deep",
+                parent_version="v1", strategy="deep-verify", confidence_adjustment=0.0,
+                iteration_target=2.0, created_at="2026-09-26T00:00:00+00:00", status="active", evidence_digest="evidence",
+            )
+            with patch("portable.adaptive_runtime.AdaptiveTuner.current_policy", return_value=policy):
+                result = runtime.run(session_id="s-strategy", task_id="t-strategy", project_root=root, intent="use learned strategy")
+            self.assertEqual(result.status.value, "accepted")
+            history = runtime.current_adaptive_policy(root)
+            self.assertEqual(history.strategy, "deep-verify")
+            records = __import__("portable.adaptive_tuning", fromlist=["AdaptiveTuner"]).AdaptiveTuner(memory, policy.project).history()
+            self.assertEqual(records[-1].strategy, "deep-verify")
             scheduler.close()
             memory.close()
 
