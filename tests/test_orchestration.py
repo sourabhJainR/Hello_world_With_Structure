@@ -45,6 +45,7 @@ class OrchestrationTests(unittest.TestCase):
                 lambda _: attempts.append(len(attempts) + 1) or "bad",
                 max_attempts=5,
                 evaluator=lambda output: output == "good",
+                repair=lambda output, _: output,
             )
         ])
         run = Orchestrator(graph).run(
@@ -77,6 +78,7 @@ class OrchestrationTests(unittest.TestCase):
                 lambda _: attempts.append(1) or "bad",
                 max_attempts=2,
                 evaluator=lambda output: output == "good",
+                repair=lambda output, _: output,
             )
         ])
         run = Orchestrator(graph).run(
@@ -100,6 +102,7 @@ class OrchestrationTests(unittest.TestCase):
                 lambda _: "bad",
                 max_attempts=3,
                 evaluator=lambda output: output == "good",
+                repair=lambda output, _: output,
             )
         ])
         run = Orchestrator(graph).run(
