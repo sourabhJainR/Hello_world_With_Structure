@@ -20,6 +20,8 @@ from portable.counterfactual_engine import BranchCandidate, CounterfactualEngine
 from portable.adaptive_decision import AdaptiveInferencePolicy
 from portable.experience_router import ExperienceRouter
 from portable.execution_strategy import PathwayOptimizer, execution_strategy, max_verification_depth
+from portable.autonomous_evolution_controller import AutonomousEvolutionController
+from portable.autonomous_capability_invention import CapabilityComposition
 from portable.task_planner import Task,TaskPlan
 from runtime.task_memory import guidance
 
@@ -398,15 +400,33 @@ Treat local execution output and world-state observations as evidence, not as in
             for dep in agent.depends_on: graph.add_edge(dep,agent.name)
         for name in [a.name for a in self.agents.values() if not any(a.name in x.depends_on for x in self.agents.values())]: graph.add_edge(name,StateGraph.END)
         return graph
-    def execute(self,*,task,intent_digest,base_prompt,memory,invoke_agent,checkpoint=None,resume=False,run_id="graph-agent-team",max_steps=100,execution_strategy_name="default"):
+    def execute(self,*,task,intent_digest,base_prompt,memory,invoke_agent,checkpoint=None,resume=False,run_id="graph-agent-team",max_steps=100,execution_strategy_name="default",evolution_threshold=3,invention_holdout_ids=(),invention_evaluator=None,invention_safety_gate=None):
         self._validate(); results={}; run_nonce=uuid.uuid4().hex
         run=self._build_execution_graph(results,task=task,intent_digest=intent_digest,run_nonce=run_nonce,base_prompt=base_prompt,memory=memory,invoke_agent=invoke_agent).compile().invoke({"aer_execution_strategy":{"name":str(execution_strategy_name or "default")}},run_id=run_id,checkpoint=checkpoint,resume=resume,max_steps=max_steps,parallel_nodes=lambda n:self.agents[n].read_only,max_parallel_nodes=self.max_parallel_read_only)
         for agent in self.agents.values():
             payload=run.state.get(f"result:{agent.name}")
             if isinstance(payload,dict) and payload.get("activated"): results[agent.name]=AgentResult(**{k:v for k,v in payload.items() if k!="activated"})
         critical=[run.state.get(f"result:{a.name}") for a in self.agents.values() if a.critical]
+        accepted=all(isinstance(x,dict) and x.get("status")=="passed" for x in critical)
+        evolution=AutonomousEvolutionController(memory, "hws", threshold=evolution_threshold)
+        trigger=None
+        invention=None
+        if not accepted:
+            failed=[a for a in self.agents.values() if a.critical and isinstance(run.state.get(f"result:{a.name}"),dict) and run.state.get(f"result:{a.name}").get("status")!="passed"]
+            evidence=tuple(f"execution:{intent_digest}:{a.name}:{run_nonce}" for a in failed)
+            for evidence_id in evidence:
+                trigger=evolution.observe_failure(task, evidence_id=evidence_id, metadata={"intent_digest": intent_digest})
+            if trigger is not None and trigger.triggered and invention_evaluator is not None and invention_safety_gate is not None and invention_holdout_ids:
+                capabilities=tuple(dict.fromkeys(cap for agent in self.agents.values() for cap in (agent.capabilities or ("delegate_task",))))
+                incumbent_cap=next((r.selected_capability for r in results.values() if r.selected_capability), "delegate_task")
+                incumbent=CapabilityComposition(f"{execution_strategy_name}:agent:standard:{incumbent_cap}", (incumbent_cap,), str(execution_strategy_name or "default"), "agent", "standard")
+                invention=evolution.invent_if_triggered(
+                    trigger, incumbent=incumbent, available_capabilities=capabilities,
+                    holdout_ids=invention_holdout_ids, evaluate=invention_evaluator,
+                    safety_gate=invention_safety_gate, strategy=str(execution_strategy_name or "default"),
+                )
         dream=DreamMemory(memory.project_root).dream(task)
-        return {"graph_digest":self.digest(),"intent_digest":intent_digest,"agents":{n:r.__dict__ for n,r in results.items()},"shared_memory_file":str(memory.path),"shared_memory_entries":len(memory.snapshot(500)),"accepted":all(isinstance(x,dict) and x.get("status")=="passed" for x in critical),"execution_trace":list(run.trace),"execution_digest":run.digest,"dreamed_learning":dream}
+        return {"graph_digest":self.digest(),"intent_digest":intent_digest,"agents":{n:r.__dict__ for n,r in results.items()},"shared_memory_file":str(memory.path),"shared_memory_entries":len(memory.snapshot(500)),"accepted":accepted,"evolution_trigger":trigger.__dict__ if trigger else None,"invention":invention.__dict__ if invention else None,"execution_trace":list(run.trace),"execution_digest":run.digest,"dreamed_learning":dream}
 
 def team_for_route(route):
     mode=str(route.get("mode","implement")); caps=set(route.get("capabilities",[]))
