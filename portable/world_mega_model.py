@@ -24,6 +24,7 @@ from .capability_lifecycle import CapabilityLifecycle, CapabilityLifecycleReceip
 from .execution_strategy import ExecutionPathway, PathwayOptimizer, ExecutionStrategy, execution_strategy
 from .generalization import Abstraction, AnalogyCandidate, GeneralizationEngine
 from .generalization_curriculum import GeneralizationCurriculum, GeneralizationExperiment, ExperimentResult, GeneralizationReport
+from .autonomous_curriculum import AutonomousCurriculumDiscovery, CurriculumCandidate, CurriculumDecision
 from .learning_transfer import LearningExperience, LearningTransfer, TransferCandidate
 from .persistent_memory import PersistentMemory
 from .transfer_validation import TransferValidation, TransferValidationReceipt, TransferValidator
@@ -111,6 +112,7 @@ class WorldMegaModel:
         )
         self.generalization = GeneralizationEngine(memory, self.project)
         self.curriculum = GeneralizationCurriculum()
+        self.autonomous_curriculum = AutonomousCurriculumDiscovery(memory, self.project)
         self.transfer = LearningTransfer(memory, self.project)
         self.transfer_validator = TransferValidator(self.transfer)
         self.continual = ContinualLearningGuard(memory, self.project)
@@ -290,6 +292,35 @@ class WorldMegaModel:
     ) -> TransferValidationReceipt:
         return self.transfer_validator.validate(candidate, runner, min_evidence=min_evidence)
 
+    def discover_generalization_curriculum(
+        self,
+        capability: str,
+        task_families: Sequence[str],
+        *,
+        uncertainty: Mapping[str, float] | None = None,
+        conditions: Sequence[str] = ("novel-input", "constraint-shift", "composition"),
+        budget: int = 4,
+    ) -> CurriculumDecision:
+        """Select the most informative bounded probes before generating experiments."""
+        return self.autonomous_curriculum.discover(
+            capability, task_families, uncertainty=uncertainty,
+            conditions=conditions, budget=budget,
+        )
+
+    def record_generalization_outcome(
+        self,
+        capability: str,
+        task_family: str,
+        condition: str,
+        *,
+        score: float,
+        verified: bool = True,
+    ) -> None:
+        """Feed verified experiment outcomes back into curriculum selection."""
+        self.autonomous_curriculum.record_outcome(
+            capability, task_family, condition, score=score, verified=verified
+        )
+
     def generate_generalization_curriculum(
         self,
         capability: str,
@@ -370,6 +401,6 @@ __all__ = [
     "MegaPlan",
     "MegaPromotion",
     "CapabilityLifecycleReceipt",
-    "WorldMegaModel",
+    "WorldMegaModel", "CurriculumCandidate", "CurriculumDecision",
     "AutonomousCapabilityInvention", "CapabilityComposition", "HoldoutResult", "InventionReceipt", "SafetyResult",
 ]
