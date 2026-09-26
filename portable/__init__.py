@@ -34,6 +34,7 @@ from .agent_patterns import (
     Specialist, SpecialistRouter,
 )
 from .world_model import Observation, PredictionError, WorldFact, WorldModel, WorldPrediction
+from .general_intelligence_cycle import CognitiveCycleResult, GeneralIntelligenceCycle
 from .hypothesis_engine import BeliefEvidence, Hypothesis, HypothesisEngine
 from .reasoning_ledger import ReasoningLedger, ReasoningRecord
 from .causal_model import CausalLink, CausalModel
@@ -99,7 +100,7 @@ __all__ = [
     "AdaptiveTrigger", "AdaptiveTriggerRequest", "TriggerOutcome", "TriggerReceipt", "trigger_adaptive_runtime",
     "TriggerClaim", "TriggerEvent", "TriggerRuntime", "TriggerStatus",
     "LocalWorkbench", "WorkPacket", "WorkReceipt", "WorkbenchReceipt", "packet",
-    "EvolutionReceipt", "MegaPlan", "MegaPromotion", "AutonomousGeneralizationCycle", "AutonomousCapabilityEvolutionCycle", "WorldMegaModel",
+    "CognitiveCycleResult", "GeneralIntelligenceCycle", "EvolutionReceipt", "MegaPlan", "MegaPromotion", "AutonomousGeneralizationCycle", "AutonomousCapabilityEvolutionCycle", "WorldMegaModel",
     "AutonomousCapabilityInvention", "CapabilityComposition", "HoldoutResult", "InventionCandidate", "InventionReceipt", "SafetyResult",
     "AutonomousEvolutionController", "EvolutionTrigger", "CapabilityLifecycle", "CapabilityLifecycleReceipt", "GeneralizationCurriculum", "GeneralizationExperiment", "ExperimentResult", "GeneralizationReport", "AutonomousCurriculumDiscovery", "CurriculumCandidate", "CurriculumDecision",
 ]
