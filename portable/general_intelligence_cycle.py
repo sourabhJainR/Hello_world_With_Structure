@@ -85,7 +85,7 @@ class GeneralIntelligenceCycle:
             "cycle_id": cycle_id.strip(),
             "intent": intent.strip(),
             "action": action_name,
-            "capability": capability or plan.cognitive.capability,
+            "capability": capability or "unknown",
             "strategy": plan.strategy,
             "pathway": plan.pathway,
         }
