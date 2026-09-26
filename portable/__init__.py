@@ -61,7 +61,7 @@ from .deep_evaluation import BenchmarkCase, DeepBenchmarkReport, DeepEvaluator
 from .adaptive_trigger import AdaptiveTrigger, AdaptiveTriggerRequest, TriggerOutcome, TriggerReceipt, trigger_adaptive_runtime
 from .trigger_runtime import TriggerClaim, TriggerEvent, TriggerRuntime, TriggerStatus
 from .local_workbench import LocalWorkbench, WorkPacket, WorkReceipt, WorkbenchReceipt, packet
-from .world_mega_model import EvolutionReceipt, MegaPlan, MegaPromotion, AutonomousGeneralizationCycle, WorldMegaModel
+from .world_mega_model import EvolutionReceipt, MegaPlan, MegaPromotion, AutonomousGeneralizationCycle, AutonomousCapabilityEvolutionCycle, WorldMegaModel
 from .autonomous_capability_invention import AutonomousCapabilityInvention, CapabilityComposition, HoldoutResult, InventionCandidate, InventionReceipt, SafetyResult
 from .autonomous_evolution_controller import AutonomousEvolutionController, EvolutionTrigger
 from .capability_lifecycle import CapabilityLifecycle, CapabilityLifecycleReceipt
@@ -99,7 +99,7 @@ __all__ = [
     "AdaptiveTrigger", "AdaptiveTriggerRequest", "TriggerOutcome", "TriggerReceipt", "trigger_adaptive_runtime",
     "TriggerClaim", "TriggerEvent", "TriggerRuntime", "TriggerStatus",
     "LocalWorkbench", "WorkPacket", "WorkReceipt", "WorkbenchReceipt", "packet",
-    "EvolutionReceipt", "MegaPlan", "MegaPromotion", "AutonomousGeneralizationCycle", "WorldMegaModel",
+    "EvolutionReceipt", "MegaPlan", "MegaPromotion", "AutonomousGeneralizationCycle", "AutonomousCapabilityEvolutionCycle", "WorldMegaModel",
     "AutonomousCapabilityInvention", "CapabilityComposition", "HoldoutResult", "InventionCandidate", "InventionReceipt", "SafetyResult",
     "AutonomousEvolutionController", "EvolutionTrigger", "CapabilityLifecycle", "CapabilityLifecycleReceipt", "GeneralizationCurriculum", "GeneralizationExperiment", "ExperimentResult", "GeneralizationReport", "AutonomousCurriculumDiscovery", "CurriculumCandidate", "CurriculumDecision",
 ]
