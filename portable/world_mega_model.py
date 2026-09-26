@@ -68,6 +68,15 @@ class EvolutionReceipt:
 
 
 @dataclass(frozen=True)
+class AutonomousGeneralizationCycle:
+    """Result of one bounded discover -> evaluate -> learn cycle."""
+
+    decision: CurriculumDecision
+    experiments: tuple[GeneralizationExperiment, ...]
+    report: GeneralizationReport
+
+
+@dataclass(frozen=True)
 class MegaPromotion:
     """Promotion gate result for a candidate capability or pathway."""
 
@@ -321,6 +330,50 @@ class WorldMegaModel:
             capability, task_family, condition, score=score, verified=verified
         )
 
+    def run_autonomous_generalization_cycle(
+        self,
+        capability: str,
+        task_families: Sequence[str],
+        evaluator: Callable[[GeneralizationExperiment], ExperimentResult],
+        *,
+        baseline_score: float,
+        uncertainty: Mapping[str, float] | None = None,
+        conditions: Sequence[str] = ("novel-input", "constraint-shift", "composition"),
+        budget: int = 4,
+        minimum_family_score: float = 0.70,
+        minimum_generalization_score: float = 0.75,
+    ) -> AutonomousGeneralizationCycle:
+        """Discover informative probes, evaluate them, and feed outcomes back."""
+        decision = self.discover_generalization_curriculum(
+            capability, task_families, uncertainty=uncertainty,
+            conditions=conditions, budget=budget,
+        )
+        all_experiments = self.curriculum.generate(
+            capability, task_families, conditions=conditions,
+        )
+        selected_pairs = {(x.task_family, x.condition) for x in decision.selected}
+        experiments = tuple(
+            x for x in all_experiments
+            if (x.task_family, x.condition) in selected_pairs
+        )
+        report = self.evaluate_generalization(
+            capability,
+            experiments,
+            evaluator,
+            baseline_score=baseline_score,
+            minimum_family_score=minimum_family_score,
+            minimum_generalization_score=minimum_generalization_score,
+        )
+        for experiment, result in zip(experiments, report.results):
+            self.record_generalization_outcome(
+                capability,
+                experiment.task_family,
+                experiment.condition,
+                score=result.score,
+                verified=result.verified,
+            )
+        return AutonomousGeneralizationCycle(decision, experiments, report)
+
     def generate_generalization_curriculum(
         self,
         capability: str,
@@ -399,7 +452,7 @@ class WorldMegaModel:
 __all__ = [
     "EvolutionReceipt",
     "MegaPlan",
-    "MegaPromotion",
+    "MegaPromotion", "AutonomousGeneralizationCycle",
     "CapabilityLifecycleReceipt",
     "WorldMegaModel", "CurriculumCandidate", "CurriculumDecision",
     "AutonomousCapabilityInvention", "CapabilityComposition", "HoldoutResult", "InventionReceipt", "SafetyResult",
