@@ -20,7 +20,7 @@ from .empirical_improvement import EmpiricalImprovement, ImprovementReport
 from .hypothesis_engine import BeliefEvidence
 from .information_planner import InformationAction
 from .lifecycle_hooks import HookBus, HookPhase, HookedExecution
-from .orchestration import Graph, OrchestrationRun, Orchestrator
+from .orchestration import Graph, OrchestrationRun, Orchestrator, execution_strategy
 from .output_quality import OutputQualityGate, QualityResult
 from .persistent_memory import PersistentMemory
 from .provider_fabric import CapabilityRequest, ProviderFabric, RoutingDecision
@@ -239,11 +239,20 @@ class AdaptiveRuntime:
             cognitive_loop.observe(episode, {"event": "before_agent", "status": "running", "policy_version": policy.version})
             effective_context = dict(context or {})
             effective_context["aer_workstyle_guidance"] = learning_store.guidance()
+            selected_strategy = execution_strategy(policy.strategy)
             effective_context["aer_adaptive_policy"] = {
                 "version": policy.version,
                 "strategy": policy.strategy,
                 "confidence_adjustment": policy.confidence_adjustment,
                 "iteration_target": policy.iteration_target,
+            }
+            effective_context["aer_execution_strategy"] = {
+                "name": selected_strategy.name,
+                "known": selected_strategy.known,
+                "verification_depth": selected_strategy.verification_depth,
+                "resource_lane": selected_strategy.resource_lane,
+                "capability_bias": list(selected_strategy.capability_bias),
+                "minimum_evidence": selected_strategy.minimum_evidence,
             }
             if enrich_context:
                 resolution = self.resolve_context(project_root, intent, node_id=context_node_id,
@@ -321,7 +330,7 @@ class AdaptiveRuntime:
                 tuner.record_experience(
                     task_id=task_id,
                     capability=cognitive_capability or "general",
-                    strategy=learning_strategy,
+                    strategy=(learning_strategy or policy.strategy),
                     quality=quality,
                     iterations=iterations,
                     confidence=learning_confidence,
@@ -349,7 +358,7 @@ class AdaptiveRuntime:
                 tuner.record_experience(
                     task_id=task_id,
                     capability=cognitive_capability or "general",
-                    strategy=learning_strategy,
+                    strategy=(learning_strategy or policy.strategy),
                     quality=0.0,
                     iterations=1,
                     confidence=learning_confidence,
