@@ -23,6 +23,7 @@ from .continual_learning import BenchmarkObservation, ContinualLearningGuard, Re
 from .capability_lifecycle import CapabilityLifecycle, CapabilityLifecycleReceipt
 from .execution_strategy import ExecutionPathway, PathwayOptimizer, ExecutionStrategy, execution_strategy
 from .generalization import Abstraction, AnalogyCandidate, GeneralizationEngine
+from .generalization_curriculum import GeneralizationCurriculum, GeneralizationExperiment, ExperimentResult, GeneralizationReport
 from .learning_transfer import LearningExperience, LearningTransfer, TransferCandidate
 from .persistent_memory import PersistentMemory
 from .transfer_validation import TransferValidation, TransferValidationReceipt, TransferValidator
@@ -109,6 +110,7 @@ class WorldMegaModel:
             min_independent_evidence=min_evidence,
         )
         self.generalization = GeneralizationEngine(memory, self.project)
+        self.curriculum = GeneralizationCurriculum()
         self.transfer = LearningTransfer(memory, self.project)
         self.transfer_validator = TransferValidator(self.transfer)
         self.continual = ContinualLearningGuard(memory, self.project)
@@ -287,6 +289,34 @@ class WorldMegaModel:
         min_evidence: int = 1,
     ) -> TransferValidationReceipt:
         return self.transfer_validator.validate(candidate, runner, min_evidence=min_evidence)
+
+    def generate_generalization_curriculum(
+        self,
+        capability: str,
+        task_families: Sequence[str],
+        *,
+        conditions: Sequence[str] = ("novel-input", "constraint-shift", "composition"),
+    ) -> tuple[GeneralizationExperiment, ...]:
+        return self.curriculum.generate(capability, task_families, conditions=conditions)
+
+    def evaluate_generalization(
+        self,
+        capability: str,
+        experiments: Iterable[GeneralizationExperiment],
+        evaluator: Callable[[GeneralizationExperiment], ExperimentResult],
+        *,
+        baseline_score: float,
+        minimum_family_score: float = 0.70,
+        minimum_generalization_score: float = 0.75,
+    ) -> GeneralizationReport:
+        return self.curriculum.evaluate(
+            capability,
+            experiments,
+            evaluator,
+            baseline_score=baseline_score,
+            minimum_family_score=minimum_family_score,
+            minimum_generalization_score=minimum_generalization_score,
+        )
 
     def record_abstraction(self, abstraction: Abstraction) -> None:
         self.generalization.record(abstraction)

@@ -65,6 +65,7 @@ from .world_mega_model import EvolutionReceipt, MegaPlan, MegaPromotion, WorldMe
 from .autonomous_capability_invention import AutonomousCapabilityInvention, CapabilityComposition, HoldoutResult, InventionCandidate, InventionReceipt, SafetyResult
 from .autonomous_evolution_controller import AutonomousEvolutionController, EvolutionTrigger
 from .capability_lifecycle import CapabilityLifecycle, CapabilityLifecycleReceipt
+from .generalization_curriculum import GeneralizationCurriculum, GeneralizationExperiment, ExperimentResult, GeneralizationReport
 
 __all__ = [
     "main", "AdaptiveRuntime", "AdaptiveLearningStore", "DeferredLearningJob", "WorkStyleProfile", "AdaptivePolicy", "AdaptiveTuner", "ExperienceRecord", "MaintenanceReceipt", "TuningDecision", "EmpiricalImprovement", "ImprovementObservation", "ImprovementReport",
@@ -99,5 +100,5 @@ __all__ = [
     "LocalWorkbench", "WorkPacket", "WorkReceipt", "WorkbenchReceipt", "packet",
     "EvolutionReceipt", "MegaPlan", "MegaPromotion", "WorldMegaModel",
     "AutonomousCapabilityInvention", "CapabilityComposition", "HoldoutResult", "InventionCandidate", "InventionReceipt", "SafetyResult",
-    "AutonomousEvolutionController", "EvolutionTrigger", "CapabilityLifecycle", "CapabilityLifecycleReceipt",
+    "AutonomousEvolutionController", "EvolutionTrigger", "CapabilityLifecycle", "CapabilityLifecycleReceipt", "GeneralizationCurriculum", "GeneralizationExperiment", "ExperimentResult", "GeneralizationReport",
 ]
