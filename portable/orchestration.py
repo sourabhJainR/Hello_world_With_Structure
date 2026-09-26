@@ -58,7 +58,40 @@ class PromotionStatus(str, Enum):
 
 
 @dataclass(frozen=True)
-class ExecutionStrategy:\n    """Bounded runtime contract derived from learned strategy names.\n\n    Learned strategy names are data, not execution authority. Unknown names\n    deterministically fall back to the safe default profile, and every control\n    remains bounded by node/global safety limits.\n    """\n\n    name: str\n    known: bool\n    attempt_multiplier: float\n    verification_depth: str\n    resource_lane: str\n    capability_bias: tuple[str, ...]\n    minimum_evidence: int\n\n\n_EXECUTION_STRATEGIES: dict[str, ExecutionStrategy] = {\n    "default": ExecutionStrategy("default", True, 1.0, "standard", "auto", (), 1),\n    "evidence-first": ExecutionStrategy("evidence-first", True, 1.0, "deep", "auto", ("verifier", "structured_output"), 2),\n    "deep-verify": ExecutionStrategy("deep-verify", True, 1.25, "independent", "agent", ("verifier", "structured_output"), 2),\n    "fast-path": ExecutionStrategy("fast-path", True, 0.75, "standard", "auto", ("agent",), 1),\n}\n\n\ndef execution_strategy(name: str | None) -> ExecutionStrategy:\n    key = str(name or "default").strip().lower()\n    selected = _EXECUTION_STRATEGIES.get(key)\n    if selected is not None:\n        return selected\n    return ExecutionStrategy("default", False, 1.0, "standard", "auto", (), 1)\n\n\n@dataclass(frozen=True)
+class ExecutionStrategy:
+    """Bounded runtime contract derived from learned strategy names.
+
+    Learned strategy names are data, not execution authority. Unknown names
+    deterministically fall back to the safe default profile, and every control
+    remains bounded by node/global safety limits.
+    """
+
+    name: str
+    known: bool
+    attempt_multiplier: float
+    verification_depth: str
+    resource_lane: str
+    capability_bias: tuple[str, ...]
+    minimum_evidence: int
+
+
+_EXECUTION_STRATEGIES: dict[str, ExecutionStrategy] = {
+    "default": ExecutionStrategy("default", True, 1.0, "standard", "auto", (), 1),
+    "evidence-first": ExecutionStrategy("evidence-first", True, 1.0, "deep", "auto", ("verifier", "structured_output"), 2),
+    "deep-verify": ExecutionStrategy("deep-verify", True, 1.25, "independent", "agent", ("verifier", "structured_output"), 2),
+    "fast-path": ExecutionStrategy("fast-path", True, 0.75, "standard", "auto", ("agent",), 1),
+}
+
+
+def execution_strategy(name: str | None) -> ExecutionStrategy:
+    key = str(name or "default").strip().lower()
+    selected = _EXECUTION_STRATEGIES.get(key)
+    if selected is not None:
+        return selected
+    return ExecutionStrategy("default", False, 1.0, "standard", "auto", (), 1)
+
+
+@dataclass(frozen=True)
 class Evidence:
     kind: str
     summary: str
