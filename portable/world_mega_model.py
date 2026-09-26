@@ -20,6 +20,7 @@ from .cognitive_controller import CognitiveController, CognitivePlan
 from .cognitive_runtime import CognitiveRuntime
 from .autonomous_capability_invention import AutonomousCapabilityInvention, CapabilityComposition, HoldoutResult, InventionReceipt, SafetyResult
 from .continual_learning import BenchmarkObservation, ContinualLearningGuard, RegressionResult
+from .capability_lifecycle import CapabilityLifecycle, CapabilityLifecycleReceipt
 from .execution_strategy import ExecutionPathway, PathwayOptimizer, ExecutionStrategy, execution_strategy
 from .generalization import Abstraction, AnalogyCandidate, GeneralizationEngine
 from .learning_transfer import LearningExperience, LearningTransfer, TransferCandidate
@@ -111,6 +112,7 @@ class WorldMegaModel:
         self.transfer = LearningTransfer(memory, self.project)
         self.transfer_validator = TransferValidator(self.transfer)
         self.continual = ContinualLearningGuard(memory, self.project)
+        self.lifecycle = CapabilityLifecycle(memory, self.project)
         self.experience_router = experience_router
         self.pathways = PathwayOptimizer(experience_router) if experience_router is not None else None
 
@@ -252,6 +254,31 @@ class WorldMegaModel:
             strategy=strategy,
         )
 
+    def begin_capability_canary(self, capability_id: str, *, baseline_score: float) -> CapabilityLifecycleReceipt:
+        """Start a reversible canary window after a candidate passes promotion gates."""
+        return self.lifecycle.begin(capability_id, baseline_score=baseline_score)
+
+    def record_capability_canary(
+        self,
+        capability_id: str,
+        *,
+        score: float,
+        evidence_id: str,
+        safe: bool = True,
+        metadata: Mapping[str, object] | None = None,
+    ) -> CapabilityLifecycleReceipt:
+        """Record one independent canary result and promote or roll back automatically."""
+        return self.lifecycle.record_canary(
+            capability_id,
+            score=score,
+            evidence_id=evidence_id,
+            safe=safe,
+            metadata=metadata,
+        )
+
+    def capability_lifecycle(self, capability_id: str) -> CapabilityLifecycleReceipt:
+        return self.lifecycle.status(capability_id)
+
     def validate_transfer(
         self,
         candidate: TransferCandidate,
@@ -312,6 +339,7 @@ __all__ = [
     "EvolutionReceipt",
     "MegaPlan",
     "MegaPromotion",
+    "CapabilityLifecycleReceipt",
     "WorldMegaModel",
     "AutonomousCapabilityInvention", "CapabilityComposition", "HoldoutResult", "InventionReceipt", "SafetyResult",
 ]
