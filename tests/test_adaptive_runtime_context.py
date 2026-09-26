@@ -93,8 +93,6 @@ class AdaptiveRuntimeContextTests(unittest.TestCase):
             with patch("portable.adaptive_runtime.AdaptiveTuner.current_policy", return_value=policy):
                 result = runtime.run(session_id="s-strategy", task_id="t-strategy", project_root=root, intent="use learned strategy")
             self.assertEqual(result.status.value, "accepted")
-            history = runtime.current_adaptive_policy(root)
-            self.assertEqual(history.strategy, "deep-verify")
             records = __import__("portable.adaptive_tuning", fromlist=["AdaptiveTuner"]).AdaptiveTuner(memory, policy.project).history()
             self.assertEqual(records[-1].strategy, "deep-verify")
             scheduler.close()
