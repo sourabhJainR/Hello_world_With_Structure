@@ -77,6 +77,26 @@ class AutonomousGeneralizationCycle:
 
 
 @dataclass(frozen=True)
+class AutonomousCapabilityEvolutionCycle:
+    """End-to-end bounded capability evolution result.
+
+    The cycle coordinates curriculum discovery, invention, cross-domain
+    validation, reversible canarying, and history-driven pathway selection.
+    It produces decisions and evidence only; the orchestrator remains the
+    sole execution authority.
+    """
+
+    problem: str
+    curriculum: CurriculumDecision
+    invention: InventionReceipt
+    generalization: GeneralizationReport | None
+    lifecycle: CapabilityLifecycleReceipt | None
+    pathway: ExecutionPathway | None
+    status: str
+    reasons: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class MegaPromotion:
     """Promotion gate result for a candidate capability or pathway."""
 
@@ -402,6 +422,121 @@ class WorldMegaModel:
             minimum_generalization_score=minimum_generalization_score,
         )
 
+    def run_autonomous_capability_evolution_cycle(
+        self,
+        problem: str,
+        *,
+        incumbent: CapabilityComposition,
+        available_capabilities: Sequence[str],
+        task_families: Sequence[str],
+        invention_holdout_ids: Sequence[str],
+        invention_evaluator: Callable[[CapabilityComposition, str], HoldoutResult],
+        safety_gate: Callable[[CapabilityComposition], SafetyResult],
+        generalization_evaluator: Callable[[GeneralizationExperiment], ExperimentResult],
+        canary_evaluator: Callable[[CapabilityComposition, int], tuple[float, str, bool]],
+        capabilities_for_pathway: Sequence[str] | None = None,
+        baseline_score: float | None = None,
+        uncertainty: Mapping[str, float] | None = None,
+        curriculum_budget: int = 4,
+        minimum_family_score: float = 0.70,
+        minimum_generalization_score: float = 0.75,
+        canary_count: int = 3,
+        strategy: str | None = None,
+    ) -> AutonomousCapabilityEvolutionCycle:
+        """Run the full capability-learning loop without granting execution authority.
+
+        Every stage is fail-closed: invention needs unseen verified holdouts and
+        safety approval; cross-domain validation must pass; canary promotion is
+        reversible; pathway choice is only made after promotion and is still
+        consumed by the authoritative orchestrator.
+        """
+        if not isinstance(problem, str) or not problem.strip():
+            raise ValueError("problem is required")
+        if canary_count < 1:
+            raise ValueError("canary_count must be positive")
+        curriculum = self.discover_generalization_curriculum(
+            problem.strip(), task_families, uncertainty=uncertainty, budget=curriculum_budget,
+        )
+        invention = self.invent_capability(
+            problem.strip(),
+            incumbent=incumbent,
+            available_capabilities=available_capabilities,
+            holdout_ids=invention_holdout_ids,
+            evaluate=invention_evaluator,
+            safety_gate=safety_gate,
+            trigger_evidence=(curriculum.evidence_id,),
+            strategy=strategy or incumbent.strategy,
+        )
+        if invention.status != "graduated" or invention.selected is None:
+            return AutonomousCapabilityEvolutionCycle(
+                problem.strip(), curriculum, invention, None, None, None, "rejected",
+                ("capability invention did not survive its gates",),
+            )
+
+        selected = invention.selected.composition
+        candidate_capability = selected.id
+        base = float(baseline_score if baseline_score is not None else invention.selected.incumbent_score)
+        experiments = self.curriculum.generate(
+            candidate_capability, task_families,
+        )
+        selected_pairs = {(x.task_family, x.condition) for x in curriculum.selected}
+        experiments = tuple(x for x in experiments if (x.task_family, x.condition) in selected_pairs)
+        report = self.evaluate_generalization(
+            candidate_capability,
+            experiments,
+            generalization_evaluator,
+            baseline_score=base,
+            minimum_family_score=minimum_family_score,
+            minimum_generalization_score=minimum_generalization_score,
+        )
+        for experiment, result in zip(experiments, report.results):
+            self.record_generalization_outcome(
+                candidate_capability, experiment.task_family, experiment.condition,
+                score=result.score, verified=result.verified,
+            )
+        if not report.generalized:
+            return AutonomousCapabilityEvolutionCycle(
+                problem.strip(), curriculum, invention, report, None, None, "rejected",
+                ("cross-domain generalization gate failed",),
+            )
+
+        self.begin_capability_canary(candidate_capability, baseline_score=base)
+        lifecycle = None
+        for index in range(canary_count):
+            score, evidence_id, safe = canary_evaluator(selected, index)
+            lifecycle = self.record_capability_canary(
+                candidate_capability, score=score, evidence_id=evidence_id, safe=safe,
+                metadata={"problem": problem.strip(), "generalization_score": report.generalization_score},
+            )
+            if lifecycle.state == "rolled_back":
+                return AutonomousCapabilityEvolutionCycle(
+                    problem.strip(), curriculum, invention, report, lifecycle, None, "rolled_back",
+                    lifecycle.reasons,
+                )
+        if lifecycle is None or lifecycle.state != "promoted":
+            return AutonomousCapabilityEvolutionCycle(
+                problem.strip(), curriculum, invention, report, lifecycle, None, "canary",
+                ("canary window has not completed",),
+            )
+
+        pathway = None
+        pathway_capabilities = tuple(capabilities_for_pathway or ())
+        if selected.id not in pathway_capabilities:
+            pathway_capabilities = (selected.id,) + pathway_capabilities
+        if self.pathways is not None and pathway_capabilities:
+            pathway = self.discover_pathway(
+                capabilities=pathway_capabilities,
+                key_prefix=f"{self.project}:{problem.strip()}",
+                strategy=selected.strategy,
+                risk=max(0.0, 1.0 - report.generalization_score),
+                evidence_quality=report.generalization_score,
+                resource_lanes=(selected.resource_lane, "agent", "local"),
+            )
+        return AutonomousCapabilityEvolutionCycle(
+            problem.strip(), curriculum, invention, report, lifecycle, pathway, "promoted",
+            ("curriculum, invention, generalization, canary, and pathway gates passed",),
+        )
+
     def record_abstraction(self, abstraction: Abstraction) -> None:
         self.generalization.record(abstraction)
 
@@ -452,7 +587,7 @@ class WorldMegaModel:
 __all__ = [
     "EvolutionReceipt",
     "MegaPlan",
-    "MegaPromotion", "AutonomousGeneralizationCycle",
+    "MegaPromotion", "AutonomousGeneralizationCycle", "AutonomousCapabilityEvolutionCycle",
     "CapabilityLifecycleReceipt",
     "WorldMegaModel", "CurriculumCandidate", "CurriculumDecision",
     "AutonomousCapabilityInvention", "CapabilityComposition", "HoldoutResult", "InventionReceipt", "SafetyResult",
