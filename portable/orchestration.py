@@ -356,6 +356,15 @@ class Orchestrator:
         run = OrchestrationRun(task_id=task_id, intent_digest=self.intent_digest(intent), environment_fingerprint=self.environment_fingerprint(context))
         state: dict[str, Any] = dict(context or {})
         state["intent_digest"] = run.intent_digest
+        adaptive_policy = self._read_adaptive_policy(state)
+        if adaptive_policy is not None:
+            state["aer_applied_adaptive_policy"] = adaptive_policy
+            run.trajectory.append({
+                "event": "adaptive_policy_applied",
+                "version": adaptive_policy["version"],
+                "strategy": adaptive_policy["strategy"],
+                "iteration_target": adaptive_policy["iteration_target"],
+            })
         total_attempts = 0
 
         for node in self.graph.order():
@@ -370,8 +379,14 @@ class Orchestrator:
                     return run
                 continue
 
-            run.trajectory.append({"node": node.name, "status": NodeStatus.RUNNING.value, "risk": node.risk})
-            result = self._execute_node(node, state, run, total_attempts)
+            attempt_limit = self._adaptive_attempt_limit(node, state)
+            run.trajectory.append({
+                "node": node.name,
+                "status": NodeStatus.RUNNING.value,
+                "risk": node.risk,
+                "attempt_limit": attempt_limit,
+            })
+            result = self._execute_node(node, state, run, total_attempts, max_attempts_override=attempt_limit)
             run.results[node.name] = result
             total_attempts += result.attempts
             run.trajectory.append({"node": node.name, "status": result.status.value, "attempts": result.attempts, "repairs": result.repair_count})
@@ -393,13 +408,23 @@ class Orchestrator:
             run.learned_candidates.extend(self._propose_learning(run))
         return run
 
-    def _execute_node(self, node: Node, state: Mapping[str, Any], run: OrchestrationRun, total_attempts: int) -> NodeResult:
+    def _execute_node(
+        self,
+        node: Node,
+        state: Mapping[str, Any],
+        run: OrchestrationRun,
+        total_attempts: int,
+        *,
+        max_attempts_override: int | None = None,
+    ) -> NodeResult:
         attempts = 0
         repairs = 0
         evidence: list[Evidence] = []
         last_output: Any = None
         last_error: str | None = None
         max_attempts = max(1, node.max_attempts)
+        if max_attempts_override is not None:
+            max_attempts = min(max_attempts, max(1, int(max_attempts_override)))
 
         while attempts < max_attempts and total_attempts + attempts < self.max_total_attempts:
             attempts += 1
@@ -429,6 +454,37 @@ class Orchestrator:
                 break
 
         return NodeResult(node.name, NodeStatus.FAILED, attempts, last_output, evidence, last_error, repairs)
+
+    @staticmethod
+    def _read_adaptive_policy(state: Mapping[str, Any]) -> dict[str, Any] | None:
+        raw = state.get("aer_adaptive_policy")
+        if not isinstance(raw, Mapping):
+            return None
+        version = str(raw.get("version", "")).strip()
+        strategy = str(raw.get("strategy", "")).strip()
+        try:
+            target = float(raw.get("iteration_target", 0.0))
+        except (TypeError, ValueError):
+            return None
+        if not version or not strategy or not 1.0 <= target <= 32.0:
+            return None
+        return {
+            "version": version,
+            "strategy": strategy,
+            "iteration_target": target,
+        }
+
+    @classmethod
+    def _adaptive_attempt_limit(cls, node: Node, state: Mapping[str, Any]) -> int | None:
+        if node.kind != NodeKind.AGENT:
+            return None
+        policy = cls._read_adaptive_policy(state)
+        if policy is None:
+            return None
+        # The learned target is a ceiling, never an expansion of a node's
+        # statically declared safety budget. Ceil keeps fractional targets
+        # useful while the node's own max_attempts remains authoritative.
+        return min(node.max_attempts, max(1, int(policy["iteration_target"] + 0.999999)))
 
     @staticmethod
     def learning_signal(run: OrchestrationRun) -> LearningSignal:

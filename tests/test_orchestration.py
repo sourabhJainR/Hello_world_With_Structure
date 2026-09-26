@@ -36,6 +36,82 @@ class OrchestrationTests(unittest.TestCase):
         self.assertTrue(run.environment_fingerprint)
         self.assertTrue(run.trajectory)
 
+    def test_adaptive_policy_changes_future_agent_attempt_budget(self):
+        attempts = []
+        graph = Graph([
+            Node(
+                "agent",
+                NodeKind.AGENT,
+                lambda _: attempts.append(len(attempts) + 1) or "bad",
+                max_attempts=5,
+                evaluator=lambda output: output == "good",
+                repair=lambda output, _: output,
+            )
+        ])
+        run = Orchestrator(graph).run(
+            "adaptive-task",
+            "fix repeated regression",
+            context={
+                "aer_adaptive_policy": {
+                    "version": "v42",
+                    "strategy": "evidence-first",
+                    "iteration_target": 2.0,
+                }
+            },
+        )
+        result = run.results["agent"]
+        self.assertEqual(result.status, NodeStatus.FAILED)
+        self.assertEqual(result.attempts, 2)
+        self.assertIn(
+            {"event": "adaptive_policy_applied", "version": "v42", "strategy": "evidence-first", "iteration_target": 2.0},
+            run.trajectory,
+        )
+        node_events = [item for item in run.trajectory if item.get("node") == "agent"]
+        self.assertEqual(node_events[0]["attempt_limit"], 2)
+
+    def test_adaptive_policy_never_expands_static_safety_budget(self):
+        attempts = []
+        graph = Graph([
+            Node(
+                "agent",
+                NodeKind.AGENT,
+                lambda _: attempts.append(1) or "bad",
+                max_attempts=2,
+                evaluator=lambda output: output == "good",
+                repair=lambda output, _: output,
+            )
+        ])
+        run = Orchestrator(graph).run(
+            "adaptive-task-2",
+            "preserve safety budget",
+            context={
+                "aer_adaptive_policy": {
+                    "version": "v43",
+                    "strategy": "default",
+                    "iteration_target": 32.0,
+                }
+            },
+        )
+        self.assertEqual(run.results["agent"].attempts, 2)
+
+    def test_invalid_adaptive_policy_is_ignored(self):
+        graph = Graph([
+            Node(
+                "agent",
+                NodeKind.AGENT,
+                lambda _: "bad",
+                max_attempts=3,
+                evaluator=lambda output: output == "good",
+                repair=lambda output, _: output,
+            )
+        ])
+        run = Orchestrator(graph).run(
+            "adaptive-task-3",
+            "ignore invalid policy",
+            context={"aer_adaptive_policy": {"version": "broken", "strategy": "x", "iteration_target": 0}},
+        )
+        self.assertEqual(run.results["agent"].attempts, 3)
+
     def test_agent_loop_requires_evidence_and_bounds_retries(self):
         attempts = []
         graph = Graph([
