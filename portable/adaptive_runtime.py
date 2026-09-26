@@ -204,7 +204,7 @@ class AdaptiveRuntime:
         learning_quality: float | None = None,
         learning_iterations: int | None = None,
         learning_verified: bool | None = None,
-        learning_strategy: str = "default",
+        learning_strategy: str | None = None,
         learning_confidence: float = 0.5,
     ) -> OrchestrationRun:
         project_key = self.session_store.project_key(project_root)
