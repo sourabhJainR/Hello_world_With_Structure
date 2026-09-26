@@ -28,3 +28,5 @@ class EngineeringTraceability:
         completeness=0.0 if not required else (len(required)-len(missing))/len(required)
         return TraceabilityReport(items,tuple(missing),completeness,not missing)
 __all__=["TraceLink","TraceabilityReport","EngineeringTraceability"]
+
+# Deterministic traceability gate; execution remains external to this module.
