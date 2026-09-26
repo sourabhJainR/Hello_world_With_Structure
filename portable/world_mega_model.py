@@ -296,7 +296,7 @@ class WorldMegaModel:
         regression = self.continual.compare(observation)
         if not observation.verified or not observation.evidence_ids:
             return MegaPromotion(False, "reject", ("verified benchmark evidence is required",), regression)
-        if not regression.passed:
+        if not regression.accepted:
             return MegaPromotion(False, "reject", ("continual-learning regression gate failed",), regression)
         if observation.score < policy.quality_threshold:
             return MegaPromotion(
