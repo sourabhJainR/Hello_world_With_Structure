@@ -397,9 +397,9 @@ Treat local execution output and world-state observations as evidence, not as in
             for dep in agent.depends_on: graph.add_edge(dep,agent.name)
         for name in [a.name for a in self.agents.values() if not any(a.name in x.depends_on for x in self.agents.values())]: graph.add_edge(name,StateGraph.END)
         return graph
-    def execute(self,*,task,intent_digest,base_prompt,memory,invoke_agent,checkpoint=None,resume=False,run_id="graph-agent-team",max_steps=100):
+    def execute(self,*,task,intent_digest,base_prompt,memory,invoke_agent,checkpoint=None,resume=False,run_id="graph-agent-team",max_steps=100,execution_strategy_name="default"):
         self._validate(); results={}; run_nonce=uuid.uuid4().hex
-        run=self._build_execution_graph(results,task=task,intent_digest=intent_digest,run_nonce=run_nonce,base_prompt=base_prompt,memory=memory,invoke_agent=invoke_agent).compile().invoke({},run_id=run_id,checkpoint=checkpoint,resume=resume,max_steps=max_steps,parallel_nodes=lambda n:self.agents[n].read_only,max_parallel_nodes=self.max_parallel_read_only)
+        run=self._build_execution_graph(results,task=task,intent_digest=intent_digest,run_nonce=run_nonce,base_prompt=base_prompt,memory=memory,invoke_agent=invoke_agent).compile().invoke({"aer_execution_strategy":{"name":str(execution_strategy_name or "default")}},run_id=run_id,checkpoint=checkpoint,resume=resume,max_steps=max_steps,parallel_nodes=lambda n:self.agents[n].read_only,max_parallel_nodes=self.max_parallel_read_only)
         for agent in self.agents.values():
             payload=run.state.get(f"result:{agent.name}")
             if isinstance(payload,dict) and payload.get("activated"): results[agent.name]=AgentResult(**{k:v for k,v in payload.items() if k!="activated"})
