@@ -58,6 +58,7 @@ class PromotionStatus(str, Enum):
 
 
 @dataclass(frozen=True)
+class ExecutionStrategy:\n    """Bounded runtime contract derived from learned strategy names.\n\n    Learned strategy names are data, not execution authority. Unknown names\n    deterministically fall back to the safe default profile, and every control\n    remains bounded by node/global safety limits.\n    """\n\n    name: str\n    known: bool\n    attempt_multiplier: float\n    verification_depth: str\n    resource_lane: str\n    capability_bias: tuple[str, ...]\n    minimum_evidence: int\n\n\n_EXECUTION_STRATEGIES: dict[str, ExecutionStrategy] = {\n    "default": ExecutionStrategy("default", True, 1.0, "standard", "auto", (), 1),\n    "evidence-first": ExecutionStrategy("evidence-first", True, 1.0, "deep", "auto", ("verifier", "structured_output"), 2),\n    "deep-verify": ExecutionStrategy("deep-verify", True, 1.25, "independent", "agent", ("verifier", "structured_output"), 2),\n    "fast-path": ExecutionStrategy("fast-path", True, 0.75, "standard", "auto", ("agent",), 1),\n}\n\n\ndef execution_strategy(name: str | None) -> ExecutionStrategy:\n    key = str(name or "default").strip().lower()\n    selected = _EXECUTION_STRATEGIES.get(key)\n    if selected is not None:\n        return selected\n    return ExecutionStrategy("default", False, 1.0, "standard", "auto", (), 1)\n\n\n@dataclass(frozen=True)
 class Evidence:
     kind: str
     summary: str
@@ -358,12 +359,26 @@ class Orchestrator:
         state["intent_digest"] = run.intent_digest
         adaptive_policy = self._read_adaptive_policy(state)
         if adaptive_policy is not None:
+            strategy_profile = execution_strategy(adaptive_policy["strategy"])
             state["aer_applied_adaptive_policy"] = adaptive_policy
+            state["aer_execution_strategy"] = {
+                "name": strategy_profile.name,
+                "known": strategy_profile.known,
+                "attempt_multiplier": strategy_profile.attempt_multiplier,
+                "verification_depth": strategy_profile.verification_depth,
+                "resource_lane": strategy_profile.resource_lane,
+                "capability_bias": list(strategy_profile.capability_bias),
+                "minimum_evidence": strategy_profile.minimum_evidence,
+            }
             run.trajectory.append({
                 "event": "adaptive_policy_applied",
                 "version": adaptive_policy["version"],
                 "strategy": adaptive_policy["strategy"],
                 "iteration_target": adaptive_policy["iteration_target"],
+                "strategy_known": strategy_profile.known,
+                "verification_depth": strategy_profile.verification_depth,
+                "resource_lane": strategy_profile.resource_lane,
+                "minimum_evidence": strategy_profile.minimum_evidence,
             })
         total_attempts = 0
 
@@ -481,10 +496,12 @@ class Orchestrator:
         policy = cls._read_adaptive_policy(state)
         if policy is None:
             return None
+        profile = execution_strategy(policy["strategy"])
         # The learned target is a ceiling, never an expansion of a node's
         # statically declared safety budget. Ceil keeps fractional targets
         # useful while the node's own max_attempts remains authoritative.
-        return min(node.max_attempts, max(1, int(policy["iteration_target"] + 0.999999)))
+        target = policy["iteration_target"] * profile.attempt_multiplier
+        return min(node.max_attempts, max(1, int(target + 0.999999)))
 
     @staticmethod
     def learning_signal(run: OrchestrationRun) -> LearningSignal:
