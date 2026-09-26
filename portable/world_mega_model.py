@@ -13,11 +13,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from .agency_regression_loop import PromotionDecision, PromotionPolicy
+from .agency_regression_loop import PromotionPolicy
 from .capability_acquisition import CapabilityAcquirer, CapabilityProposal
 from .capability_evolution import CapabilityEvolution, CapabilityEvolutionDecision
 from .cognitive_controller import CognitiveController, CognitivePlan
 from .cognitive_runtime import CognitiveRuntime
+from .autonomous_capability_invention import AutonomousCapabilityInvention, CapabilityComposition, HoldoutResult, InventionReceipt, SafetyResult
 from .continual_learning import BenchmarkObservation, ContinualLearningGuard, RegressionResult
 from .execution_strategy import ExecutionPathway, PathwayOptimizer, ExecutionStrategy, execution_strategy
 from .generalization import Abstraction, AnalogyCandidate, GeneralizationEngine
@@ -226,6 +227,31 @@ class WorldMegaModel:
             decision.reasons,
         )
 
+    def invent_capability(
+        self,
+        problem: str,
+        *,
+        incumbent: CapabilityComposition,
+        available_capabilities: Sequence[str],
+        holdout_ids: Sequence[str],
+        evaluate: Callable[[CapabilityComposition, str], HoldoutResult],
+        safety_gate: Callable[[CapabilityComposition], SafetyResult],
+        trigger_evidence: Iterable[str] = (),
+        strategy: str = "default",
+    ) -> InventionReceipt:
+        """Invent bounded capability compositions and graduate only verified improvements."""
+        engine = AutonomousCapabilityInvention(self.memory, self.project)
+        return engine.invent(
+            problem,
+            incumbent=incumbent,
+            available_capabilities=available_capabilities,
+            holdout_ids=holdout_ids,
+            evaluate=evaluate,
+            safety_gate=safety_gate,
+            trigger_evidence=trigger_evidence,
+            strategy=strategy,
+        )
+
     def validate_transfer(
         self,
         candidate: TransferCandidate,
@@ -270,7 +296,7 @@ class WorldMegaModel:
         regression = self.continual.compare(observation)
         if not observation.verified or not observation.evidence_ids:
             return MegaPromotion(False, "reject", ("verified benchmark evidence is required",), regression)
-        if not regression.passed:
+        if not regression.accepted:
             return MegaPromotion(False, "reject", ("continual-learning regression gate failed",), regression)
         if observation.score < policy.quality_threshold:
             return MegaPromotion(
@@ -287,4 +313,5 @@ __all__ = [
     "MegaPlan",
     "MegaPromotion",
     "WorldMegaModel",
+    "AutonomousCapabilityInvention", "CapabilityComposition", "HoldoutResult", "InventionReceipt", "SafetyResult",
 ]

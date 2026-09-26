@@ -62,6 +62,7 @@ from .adaptive_trigger import AdaptiveTrigger, AdaptiveTriggerRequest, TriggerOu
 from .trigger_runtime import TriggerClaim, TriggerEvent, TriggerRuntime, TriggerStatus
 from .local_workbench import LocalWorkbench, WorkPacket, WorkReceipt, WorkbenchReceipt, packet
 from .world_mega_model import EvolutionReceipt, MegaPlan, MegaPromotion, WorldMegaModel
+from .autonomous_capability_invention import AutonomousCapabilityInvention, CapabilityComposition, HoldoutResult, InventionCandidate, InventionReceipt, SafetyResult
 
 __all__ = [
     "main", "AdaptiveRuntime", "AdaptiveLearningStore", "DeferredLearningJob", "WorkStyleProfile", "AdaptivePolicy", "AdaptiveTuner", "ExperienceRecord", "MaintenanceReceipt", "TuningDecision", "EmpiricalImprovement", "ImprovementObservation", "ImprovementReport",
@@ -95,4 +96,5 @@ __all__ = [
     "TriggerClaim", "TriggerEvent", "TriggerRuntime", "TriggerStatus",
     "LocalWorkbench", "WorkPacket", "WorkReceipt", "WorkbenchReceipt", "packet",
     "EvolutionReceipt", "MegaPlan", "MegaPromotion", "WorldMegaModel",
+    "AutonomousCapabilityInvention", "CapabilityComposition", "HoldoutResult", "InventionCandidate", "InventionReceipt", "SafetyResult",
 ]
