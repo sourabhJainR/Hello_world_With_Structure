@@ -530,7 +530,7 @@ class WorldMegaModel:
                 strategy=selected.strategy,
                 risk=max(0.0, 1.0 - report.generalization_score),
                 evidence_quality=report.generalization_score,
-                resource_lanes=(selected.resource_lane, "agent", "local"),
+                resource_lanes=tuple(dict.fromkeys((selected.resource_lane, "agent", "local"))),
             )
         return AutonomousCapabilityEvolutionCycle(
             problem.strip(), curriculum, invention, report, lifecycle, pathway, "promoted",
