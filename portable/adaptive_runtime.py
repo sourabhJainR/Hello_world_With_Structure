@@ -27,6 +27,7 @@ from .provider_fabric import CapabilityRequest, ProviderFabric, RoutingDecision
 from .session_state import SessionCheckpoint, SessionStore
 from .trigger_runtime import TriggerEvent, TriggerRuntime
 from .world_model import PredictionError, WorldPrediction
+from .world_mega_model import WorldMegaModel
 
 
 class AdaptiveRuntime:
@@ -104,7 +105,7 @@ class AdaptiveRuntime:
     def cognition(self, project_root: Path | str) -> CognitiveRuntime:
         project_key = self.session_store.project_key(project_root)
         return CognitiveRuntime.create(self.persistent_memory, project_key)
-
+\n    def mega_model(self, project_root: Path | str) -> WorldMegaModel:\n        """Return the project-scoped world/cognition/self-evolution control plane."""\n        project_key = self.session_store.project_key(project_root)\n        return WorldMegaModel(self.persistent_memory, project_key)\n
     def emit_trigger(self, kind: str, payload: Mapping[str, Any], *, event_id: str | None = None,
                      max_attempts: int = 3) -> TriggerEvent:
         return self.trigger_runtime.emit(kind, payload, event_id=event_id, max_attempts=max_attempts)
