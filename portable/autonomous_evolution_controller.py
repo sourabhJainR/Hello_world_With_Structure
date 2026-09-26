@@ -9,7 +9,8 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Sequence
+from pathlib import Path
+from typing import Mapping, Sequence
 
 from .autonomous_capability_invention import (
     AutonomousCapabilityInvention,
@@ -34,7 +35,17 @@ class AutonomousEvolutionController:
     def __init__(self, memory: PersistentMemory, project: str, *, threshold: int = 3) -> None:
         if threshold < 2:
             raise ValueError("evolution threshold must be at least 2")
-        self.memory = memory
+        # GraphAgentTeam passes run-scoped SharedTaskMemory, while invention
+        # needs durable cross-run evidence. Attach a persistent ledger without
+        # changing the working-memory contract.
+        if hasattr(memory, "remember") and hasattr(memory, "search"):
+            self.memory = memory
+        else:
+            root = Path(getattr(memory, "project_root", Path(".")))
+            self.memory = PersistentMemory(
+                root / ".ai-harness" / "learning" / "evolution-memory.sqlite3",
+                require_approval=False,
+            )
         self.project = project
         self.threshold = threshold
 
