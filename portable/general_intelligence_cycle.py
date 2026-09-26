@@ -80,7 +80,7 @@ class GeneralIntelligenceCycle:
             capabilities=capabilities,
         )
 
-        action_name = action or plan.cognitive.action or "execute_plan"
+        action_name = action or "execute_plan"
         proposal = {
             "cycle_id": cycle_id.strip(),
             "intent": intent.strip(),
@@ -110,7 +110,7 @@ class GeneralIntelligenceCycle:
                 id=cycle_id.strip(),
                 source_project=self.model.project,
                 task_family=task_family.strip() or "general",
-                capability=capability or plan.cognitive.capability or "unknown",
+                capability=capability or "unknown",
                 outcome="accepted" if verified else "observed",
                 detail=learning_detail.strip(),
                 evidence_ids=tuple(evidence_ids),
