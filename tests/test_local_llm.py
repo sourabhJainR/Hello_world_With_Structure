@@ -16,6 +16,8 @@ class LocalLLMTests(unittest.TestCase):
         self.assertTrue(cfg.prompt_matrix)
         self.assertTrue(cfg.coding_mode)
         self.assertEqual(cfg.model, "qwen2.5-coder:3b")
+        self.assertEqual(cfg.model_path, "")
+        self.assertEqual(cfg.backend, "auto")
         self.assertEqual(cfg.seed, 17)
 
     def test_coding_contract_is_selective(self):
@@ -30,6 +32,13 @@ class LocalLLMTests(unittest.TestCase):
         self.assertIn("VERIFICATION", prompt)
         self.assertIn("every finding must cite supplied evidence", prompt)
         self.assertIn("portable/retry.py", prompt)
+
+    def test_embedded_backend_routes_without_ollama(self):
+        from portable import local_llm
+        cfg = LocalLLMConfig(backend="embedded", model_path="/models/test.gguf")
+        with patch("portable.local_llm._generate_embedded", return_value="embedded-ok") as embedded:
+            self.assertEqual(generate("hello", config=cfg), "embedded-ok")
+            embedded.assert_called_once()
 
     def test_generate_uses_ollama_payload(self):
         class Response:
