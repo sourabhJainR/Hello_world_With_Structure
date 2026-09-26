@@ -24,6 +24,7 @@ class LocalLLMConfig:
     coding_mode: bool = True
     seed: int = 17
     context_budget: int = 3200
+    max_output_chars: int = 12000
 
     @classmethod
     def from_env(cls) -> "LocalLLMConfig":
@@ -41,6 +42,7 @@ class LocalLLMConfig:
             coding_mode=os.environ.get("AER_LOCAL_LLM_CODING", "1").strip().lower() not in {"0", "false", "off", "no"},
             seed=int(os.environ.get("AER_LOCAL_LLM_SEED", cls.seed)),
             context_budget=max(512, int(os.environ.get("AER_LOCAL_LLM_CONTEXT_BUDGET", cls.context_budget))),
+            max_output_chars=max(1024, int(os.environ.get("AER_LOCAL_LLM_MAX_OUTPUT_CHARS", cls.max_output_chars))),
         )
 
 class LocalLLMError(RuntimeError):
@@ -114,7 +116,7 @@ def _matrix_prompt(prompt: str, cfg: LocalLLMConfig) -> str:
     )
 
 
-def coding_review_prompt(task: str, repository_context: str) -> str:
+def coding_review_prompt(task: str, repository_context: str, *, config: LocalLLMConfig | None = None) -> str:
     """Build a read-only, evidence-first coding review request."""
     if not isinstance(task, str) or not task.strip():
         raise ValueError("task is required")
