@@ -63,10 +63,11 @@ class OrchestrationTests(unittest.TestCase):
         result = run.results["agent"]
         self.assertEqual(result.status, NodeStatus.FAILED)
         self.assertEqual(result.attempts, 2)
-        self.assertIn(
-            {"event": "adaptive_policy_applied", "version": "v42", "strategy": "evidence-first", "iteration_target": 2.0},
-            run.trajectory,
-        )
+        applied = [item for item in run.trajectory if item.get("event") == "adaptive_policy_applied"][0]
+        self.assertEqual(applied["version"], "v42")
+        self.assertEqual(applied["strategy"], "evidence-first")
+        self.assertEqual(applied["iteration_target"], 2.0)
+        self.assertTrue(applied["strategy_known"])
         node_events = [item for item in run.trajectory if item.get("node") == "agent"]
         self.assertEqual(node_events[0]["attempt_limit"], 2)
 
