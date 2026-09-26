@@ -72,6 +72,7 @@ class AgentResult:
     selected_capability:str|None=None
     verification_depth:str="standard"
     retry_decision:str="stop"
+    pathway:dict[str,Any]=field(default_factory=dict)
 
 @dataclass(frozen=True)
 class ResourceDecision:
@@ -379,7 +380,7 @@ Treat local execution output and world-state observations as evidence, not as in
                 status="passed" if code==0 else "failed"
                 if local is not None and local.status not in {"passed"} and agent.role=="verifier":
                     status="failed"
-                result=AgentResult(agent.name,agent.role,status,attempts=attempts,exit_code=code,duration_seconds=duration,output=output,resource_lane=decision.lane,local_evidence=local_payload,selected_capability=capability_choice.selected,verification_depth=verification_choice.level,retry_decision=retry_choice.selected)
+                result=AgentResult(agent.name,agent.role,status,attempts=attempts,exit_code=code,duration_seconds=duration,output=output,resource_lane=decision.lane,local_evidence=local_payload,selected_capability=capability_choice.selected,verification_depth=verification_choice.level,retry_decision=retry_choice.selected,pathway={"capability":pathway.capability,"resource_lane":pathway.resource_lane,"verification_depth":pathway.verification_depth,"retry_action":pathway.retry_action,"score":pathway.score,"confidence":pathway.confidence,"rationale":pathway.rationale})
                 evidence=[f"agent:{agent.name}"]
                 if local is not None:
                     evidence.append(f"local:{agent.name}:{local.status}")
