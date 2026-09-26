@@ -68,6 +68,7 @@ from .autonomous_evolution_controller import AutonomousEvolutionController, Evol
 from .capability_lifecycle import CapabilityLifecycle, CapabilityLifecycleReceipt
 from .generalization_curriculum import GeneralizationCurriculum, GeneralizationExperiment, ExperimentResult, GeneralizationReport
 from .autonomous_curriculum import AutonomousCurriculumDiscovery, CurriculumCandidate, CurriculumDecision
+from .whole_system_engineering import ENGINEERING_DOMAINS, EngineeringTask, EngineeringEvaluation, EngineeringCoverage, WholeSystemEngineeringEvaluator
 
 __all__ = [
     "main", "AdaptiveRuntime", "AdaptiveLearningStore", "DeferredLearningJob", "WorkStyleProfile", "AdaptivePolicy", "AdaptiveTuner", "ExperienceRecord", "MaintenanceReceipt", "TuningDecision", "EmpiricalImprovement", "ImprovementObservation", "ImprovementReport",
@@ -102,5 +103,5 @@ __all__ = [
     "LocalWorkbench", "WorkPacket", "WorkReceipt", "WorkbenchReceipt", "packet",
     "CognitiveCycleResult", "GeneralIntelligenceCycle", "EvolutionReceipt", "MegaPlan", "MegaPromotion", "AutonomousGeneralizationCycle", "AutonomousCapabilityEvolutionCycle", "WorldMegaModel",
     "AutonomousCapabilityInvention", "CapabilityComposition", "HoldoutResult", "InventionCandidate", "InventionReceipt", "SafetyResult",
-    "AutonomousEvolutionController", "EvolutionTrigger", "CapabilityLifecycle", "CapabilityLifecycleReceipt", "GeneralizationCurriculum", "GeneralizationExperiment", "ExperimentResult", "GeneralizationReport", "AutonomousCurriculumDiscovery", "CurriculumCandidate", "CurriculumDecision",
+    "AutonomousEvolutionController", "EvolutionTrigger", "CapabilityLifecycle", "CapabilityLifecycleReceipt", "GeneralizationCurriculum", "GeneralizationExperiment", "ExperimentResult", "GeneralizationReport", "AutonomousCurriculumDiscovery", "CurriculumCandidate", "CurriculumDecision", "ENGINEERING_DOMAINS", "EngineeringTask", "EngineeringEvaluation", "EngineeringCoverage", "WholeSystemEngineeringEvaluator",
 ]

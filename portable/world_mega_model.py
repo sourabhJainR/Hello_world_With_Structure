@@ -29,6 +29,7 @@ from .learning_transfer import LearningExperience, LearningTransfer, TransferCan
 from .persistent_memory import PersistentMemory
 from .transfer_validation import TransferValidation, TransferValidationReceipt, TransferValidator
 from .world_model import Observation, PredictionError, WorldModel, WorldPrediction
+from .whole_system_engineering import EngineeringCoverage, EngineeringEvaluation, EngineeringTask, WholeSystemEngineeringEvaluator
 
 
 @dataclass(frozen=True)
@@ -148,6 +149,7 @@ class WorldMegaModel:
         self.lifecycle = CapabilityLifecycle(memory, self.project)
         self.experience_router = experience_router
         self.pathways = PathwayOptimizer(experience_router) if experience_router is not None else None
+        self.engineering = WholeSystemEngineeringEvaluator()
 
     def observe(self, observation: Observation) -> Observation:
         return self.world.observe(observation)
@@ -537,6 +539,35 @@ class WorldMegaModel:
             ("curriculum, invention, generalization, canary, and pathway gates passed",),
         )
 
+    def evaluate_whole_system_engineering(
+        self,
+        intent: str,
+        evaluator: Callable[[EngineeringTask], EngineeringEvaluation],
+        *,
+        budget: int = 12,
+        required_domains: Sequence[str] = (),
+        minimum_domain_score: float = 0.70,
+        minimum_overall_score: float = 0.75,
+    ) -> EngineeringCoverage:
+        """Evaluate full-stack engineering competence without granting authority.
+
+        The probe set deliberately spans requirements, architecture, frontend,
+        backend, APIs, data, tests, security, performance, operations,
+        observability and documentation. Results are evidence inputs for the
+        existing learning and capability loops; they do not self-promote code.
+        """
+        tasks = self.engineering.generate(
+            intent,
+            budget=budget,
+            required_domains=required_domains,
+        )
+        return self.engineering.evaluate(
+            tasks,
+            evaluator,
+            minimum_domain_score=minimum_domain_score,
+            minimum_overall_score=minimum_overall_score,
+        )
+
     def record_abstraction(self, abstraction: Abstraction) -> None:
         self.generalization.record(abstraction)
 
@@ -591,4 +622,5 @@ __all__ = [
     "CapabilityLifecycleReceipt",
     "WorldMegaModel", "CurriculumCandidate", "CurriculumDecision",
     "AutonomousCapabilityInvention", "CapabilityComposition", "HoldoutResult", "InventionReceipt", "SafetyResult",
+    "EngineeringCoverage", "EngineeringEvaluation", "EngineeringTask", "WholeSystemEngineeringEvaluator",
 ]
