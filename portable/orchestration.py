@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Mapping
+from .execution_strategy import ExecutionStrategy, execution_strategy
 
 
 class NodeKind(str, Enum):
@@ -55,40 +56,6 @@ class PromotionStatus(str, Enum):
     SAFETY_FAILED = "safety_failed"
     PROMOTED = "promoted"
     ROLLED_BACK = "rolled_back"
-
-
-@dataclass(frozen=True)
-class ExecutionStrategy:
-    """Bounded runtime contract derived from learned strategy names.
-
-    Learned strategy names are data, not execution authority. Unknown names
-    deterministically fall back to the safe default profile, and every control
-    remains bounded by node/global safety limits.
-    """
-
-    name: str
-    known: bool
-    attempt_multiplier: float
-    verification_depth: str
-    resource_lane: str
-    capability_bias: tuple[str, ...]
-    minimum_evidence: int
-
-
-_EXECUTION_STRATEGIES: dict[str, ExecutionStrategy] = {
-    "default": ExecutionStrategy("default", True, 1.0, "standard", "auto", (), 1),
-    "evidence-first": ExecutionStrategy("evidence-first", True, 1.0, "deep", "auto", ("verifier", "structured_output"), 2),
-    "deep-verify": ExecutionStrategy("deep-verify", True, 1.25, "independent", "agent", ("verifier", "structured_output"), 2),
-    "fast-path": ExecutionStrategy("fast-path", True, 0.75, "standard", "auto", ("agent",), 1),
-}
-
-
-def execution_strategy(name: str | None) -> ExecutionStrategy:
-    key = str(name or "default").strip().lower()
-    selected = _EXECUTION_STRATEGIES.get(key)
-    if selected is not None:
-        return selected
-    return ExecutionStrategy("default", False, 1.0, "standard", "auto", (), 1)
 
 
 @dataclass(frozen=True)

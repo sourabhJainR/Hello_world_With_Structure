@@ -19,6 +19,7 @@ from portable.historical_resource_router import HistoricalResourceRouter
 from portable.counterfactual_engine import BranchCandidate, CounterfactualEngine
 from portable.adaptive_decision import AdaptiveInferencePolicy
 from portable.experience_router import ExperienceRouter
+from portable.execution_strategy import PathwayOptimizer, execution_strategy, max_verification_depth
 from portable.task_planner import Task,TaskPlan
 from runtime.task_memory import guidance
 
@@ -71,6 +72,7 @@ class AgentResult:
     selected_capability:str|None=None
     verification_depth:str="standard"
     retry_decision:str="stop"
+    pathway:dict[str,Any]=field(default_factory=dict)
 
 @dataclass(frozen=True)
 class ResourceDecision:
@@ -82,6 +84,8 @@ class ResourceDecision:
     pressure:dict[str,float]=field(default_factory=dict)
     historical:dict[str,Any]=field(default_factory=dict)
     inference_depth:str="standard"
+    strategy:str="default"
+    pathway:dict[str,Any]=field(default_factory=dict)
 
 class SharedTaskMemory:
     """Run-scoped working memory with hard entry/size limits and cross-process writes."""
@@ -161,8 +165,9 @@ class GraphAgentTeam:
     def digest(self):
         payload=[{"name":a.name,"role":a.role,"depends_on":list(a.depends_on),"read_only":a.read_only,"critical":a.critical,"focus":a.focus,"local_command":list(a.local_command)} for level in self.levels() for a in level]
         return hashlib.sha256(json.dumps(payload,sort_keys=True).encode()).hexdigest()
-    def _resource_decision(self,agent:AgentSpec,broker:LocalOffloadBroker)->ResourceDecision:
+    def _resource_decision(self,agent:AgentSpec,broker:LocalOffloadBroker,strategy_name:str="default")->ResourceDecision:
         pressure=broker.pressure()
+        strategy=execution_strategy(strategy_name)
         historical=HistoricalResourceRouter(broker.project_root).estimate(agent)
         historical_payload=historical.as_dict() if historical else {}
         failure_probability=float(historical.failure_probability) if historical else 0.0
@@ -170,7 +175,7 @@ class GraphAgentTeam:
         risk=1.0 if agent.isolation_required else (0.55 if agent.critical and agent.role=="verifier" else 0.35)
         inference=AdaptiveInferencePolicy().decide(uncertainty=1.0-evidence_quality,risk=risk,evidence_quality=evidence_quality,failure_probability=failure_probability)
         if not agent.local_command:
-            return ResourceDecision("agent","no deterministic local work declared",pressure=pressure,historical=historical_payload,inference_depth=inference.depth)
+            return ResourceDecision("agent","no deterministic local work declared",pressure=pressure,historical=historical_payload,inference_depth=max_verification_depth(inference.depth, strategy.verification_depth),strategy=strategy.name)
         if not agent.read_only:
             return ResourceDecision("agent","mutating agent remains on the existing agent lane",pressure=pressure,historical=historical_payload,inference_depth=inference.depth)
         if agent.name=="learning-steward":
@@ -262,13 +267,23 @@ class GraphAgentTeam:
                 deps=[state.get(f"result:{n}") for n in agent.depends_on]
                 if agent.name!="learning-steward" and any(not x or x.get("status")!="passed" for x in deps):
                     return {f"result:{agent.name}":{"status":"blocked","activated":False}}
-                decision=self._resource_decision(agent,broker)
+                strategy_name=str(state.get("aer_execution_strategy",{}).get("name","default"))
+                decision=self._resource_decision(agent,broker,strategy_name)
                 experience=ExperienceRouter(memory.project_root)
                 capability_candidates=agent.capabilities or (("local_offload",) if agent.local_command else ("delegate_task",))
-                capability_choice=experience.choose_capability(capability_candidates,key_prefix=agent.role+":"+task[:96],risk=1.0 if agent.critical else 0.25)
+                profile=execution_strategy(strategy_name)
                 evidence_quality=float(decision.historical.get("evidence_yield", agent.evidence_value))
-                verification_choice=experience.verification_depth(key=agent.role+":"+task[:96],risk=1.0 if agent.isolation_required else (0.55 if agent.critical else 0.25),evidence_quality=evidence_quality)
-                retry_choice=experience.retry_or_escalate(key=agent.role+":"+task[:96],risk=1.0 if agent.isolation_required else 0.35,failure_probability=float(decision.historical.get("failure_probability", 0.0)))
+                pathway=PathwayOptimizer(experience).discover(
+                    capabilities=capability_candidates,
+                    key_prefix=agent.role+":"+task[:96],
+                    strategy=profile,
+                    risk=1.0 if agent.critical else 0.25,
+                    evidence_quality=evidence_quality,
+                    resource_lanes=("agent","local") if agent.local_command else ("agent",),
+                )
+                capability_choice=type("_Choice",(),{"selected":pathway.capability})()
+                verification_choice=type("_Verification",(),{"level":max_verification_depth(pathway.verification_depth, decision.inference_depth)})()
+                retry_choice=type("_Retry",(),{"selected":pathway.retry_action})()
                 world_state = self._record_world_state(agent=agent, task=task, intent_digest=intent_digest, run_nonce=run_nonce, decision=decision,
                     capability=capability_choice.selected, verification=verification_choice.level, retry=retry_choice.selected,
                     evidence_quality=evidence_quality, memory=memory)
@@ -365,7 +380,7 @@ Treat local execution output and world-state observations as evidence, not as in
                 status="passed" if code==0 else "failed"
                 if local is not None and local.status not in {"passed"} and agent.role=="verifier":
                     status="failed"
-                result=AgentResult(agent.name,agent.role,status,attempts=attempts,exit_code=code,duration_seconds=duration,output=output,resource_lane=decision.lane,local_evidence=local_payload,selected_capability=capability_choice.selected,verification_depth=verification_choice.level,retry_decision=retry_choice.selected)
+                result=AgentResult(agent.name,agent.role,status,attempts=attempts,exit_code=code,duration_seconds=duration,output=output,resource_lane=decision.lane,local_evidence=local_payload,selected_capability=capability_choice.selected,verification_depth=verification_choice.level,retry_decision=retry_choice.selected,pathway={"capability":pathway.capability,"resource_lane":pathway.resource_lane,"verification_depth":pathway.verification_depth,"retry_action":pathway.retry_action,"score":pathway.score,"confidence":pathway.confidence,"rationale":pathway.rationale})
                 evidence=[f"agent:{agent.name}"]
                 if local is not None:
                     evidence.append(f"local:{agent.name}:{local.status}")
@@ -374,6 +389,7 @@ Treat local execution output and world-state observations as evidence, not as in
                 result.memory_ids.append(memory.publish(agent=agent.name,role=agent.role,kind="handoff",text=handoff.render(memory.context.policy.output_chars),evidence=evidence,confidence=.8 if status=="passed" else .2))
                 if agent.name=="learning-steward": LearningSteward(memory.project_root,run_id=intent_digest,task=task).persist(output,evidence_ids=[f"agent:{n}" for n in self.agents if n!=agent.name])
                 LearningSteward(memory.project_root,run_id=intent_digest,task=task).record_experience(key=agent.role+":"+task[:96],outcome=status,evidence_quality=evidence_quality if status=="passed" else 0.1,cost_score=float(decision.cost_score),duration_seconds=duration,decision="capability="+capability_choice.selected+";verification="+verification_choice.level+";retry="+retry_choice.selected,evidence_ids=["agent:"+agent.name])
+                result.pathway = {"capability": pathway.capability, "resource_lane": pathway.resource_lane, "verification_depth": pathway.verification_depth, "retry_action": pathway.retry_action, "score": pathway.score, "confidence": pathway.confidence, "rationale": pathway.rationale}
                 results[agent.name]=result; payload=result.__dict__.copy(); payload["activated"]=True
                 return {f"result:{agent.name}":payload}
             graph.add_node(agent.name,run)
@@ -382,9 +398,9 @@ Treat local execution output and world-state observations as evidence, not as in
             for dep in agent.depends_on: graph.add_edge(dep,agent.name)
         for name in [a.name for a in self.agents.values() if not any(a.name in x.depends_on for x in self.agents.values())]: graph.add_edge(name,StateGraph.END)
         return graph
-    def execute(self,*,task,intent_digest,base_prompt,memory,invoke_agent,checkpoint=None,resume=False,run_id="graph-agent-team",max_steps=100):
+    def execute(self,*,task,intent_digest,base_prompt,memory,invoke_agent,checkpoint=None,resume=False,run_id="graph-agent-team",max_steps=100,execution_strategy_name="default"):
         self._validate(); results={}; run_nonce=uuid.uuid4().hex
-        run=self._build_execution_graph(results,task=task,intent_digest=intent_digest,run_nonce=run_nonce,base_prompt=base_prompt,memory=memory,invoke_agent=invoke_agent).compile().invoke({},run_id=run_id,checkpoint=checkpoint,resume=resume,max_steps=max_steps,parallel_nodes=lambda n:self.agents[n].read_only,max_parallel_nodes=self.max_parallel_read_only)
+        run=self._build_execution_graph(results,task=task,intent_digest=intent_digest,run_nonce=run_nonce,base_prompt=base_prompt,memory=memory,invoke_agent=invoke_agent).compile().invoke({"aer_execution_strategy":{"name":str(execution_strategy_name or "default")}},run_id=run_id,checkpoint=checkpoint,resume=resume,max_steps=max_steps,parallel_nodes=lambda n:self.agents[n].read_only,max_parallel_nodes=self.max_parallel_read_only)
         for agent in self.agents.values():
             payload=run.state.get(f"result:{agent.name}")
             if isinstance(payload,dict) and payload.get("activated"): results[agent.name]=AgentResult(**{k:v for k,v in payload.items() if k!="activated"})
