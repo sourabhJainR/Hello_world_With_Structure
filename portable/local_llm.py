@@ -144,7 +144,7 @@ VERIFICATION
 Rules: every finding must cite supplied evidence; label uncertain claims as unknown;
 never claim a test or tool was run; distinguish correctness from style; prioritize
 defects, regressions, security and compatibility.""",
-            LocalLLMConfig(),
+            config or LocalLLMConfig.from_env(),
         )
         + "\\nTASK:\\n" + task
         + "\\nREPOSITORY EVIDENCE:\\n" + repository_context
