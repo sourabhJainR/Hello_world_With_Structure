@@ -389,7 +389,7 @@ Treat local execution output and world-state observations as evidence, not as in
                 if agent.name=="learning-steward": LearningSteward(memory.project_root,run_id=intent_digest,task=task).persist(output,evidence_ids=[f"agent:{n}" for n in self.agents if n!=agent.name])
                 LearningSteward(memory.project_root,run_id=intent_digest,task=task).record_experience(key=agent.role+":"+task[:96],outcome=status,evidence_quality=evidence_quality if status=="passed" else 0.1,cost_score=float(decision.cost_score),duration_seconds=duration,decision="capability="+capability_choice.selected+";verification="+verification_choice.level+";retry="+retry_choice.selected,evidence_ids=["agent:"+agent.name])
                 result.pathway = {"capability": pathway.capability, "resource_lane": pathway.resource_lane, "verification_depth": pathway.verification_depth, "retry_action": pathway.retry_action, "score": pathway.score, "confidence": pathway.confidence, "rationale": pathway.rationale}
-                 results[agent.name]=result; payload=result.__dict__.copy(); payload["activated"]=True
+                results[agent.name]=result; payload=result.__dict__.copy(); payload["activated"]=True
                 return {f"result:{agent.name}":payload}
             graph.add_node(agent.name,run)
         for name in [a.name for a in self.agents.values() if not a.depends_on]: graph.add_edge(StateGraph.START,name)
